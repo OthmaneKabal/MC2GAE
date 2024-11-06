@@ -1,0 +1,190 @@
+[
+ {
+  "sentence": "3D mesh segmentation is a fundamental process in different applications such as shape reconstruction in reverse engineering, 3D models retrieval, and CAD/CAM applications, etc.",
+  "subject": "shape reconstruction",
+  "predicate": "is",
+  "object": "application",
+  "relation_occ": 45441,
+  "confidence": 45441,
+  "old_predicate": "is-a"
+ },
+ {
+  "sentence": "Framework presentation includes system design, damage potential scoring algorithm design and an illustration of scoring computations.",
+  "subject": "damage potential scoring algorithm design",
+  "predicate": "is",
+  "object": "framework presentation",
+  "relation_occ": 45441,
+  "confidence": 45441,
+  "old_predicate": "is-a"
+ },
+ {
+  "sentence": "A high level of concern is placed on the storage, handling, transportation, and distribution of vaccines and other pharmaceutical products, particularly those that are time and temperature sensitive.",
+  "subject": "vaccine",
+  "predicate": "is",
+  "object": "pharmaceutical product",
+  "relation_occ": 45441,
+  "confidence": 45441,
+  "old_predicate": "is-a"
+ },
+ {
+  "sentence": "However, most of the presently available methods are slow and inefficient because of sequential design however the recent development in the field of programmable logic devices such as FPLA and CPLD opens the new area of parallel and high speed floating point designs.",
+  "subject": "FPLA",
+  "predicate": "is",
+  "object": "programmable logic",
+  "relation_occ": 45441,
+  "confidence": 45441,
+  "old_predicate": "is-a"
+ },
+ {
+  "sentence": "However, most of the presently available methods are slow and inefficient because of sequential design however the recent development in the field of programmable logic devices such as FPLA and CPLD opens the new area of parallel and high speed floating point designs.",
+  "subject": "CPLD",
+  "predicate": "is",
+  "object": "programmable logic",
+  "relation_occ": 45441,
+  "confidence": 45441,
+  "old_predicate": "is-a"
+ },
+ {
+  "sentence": "involve has caused the emergence of many distributed graph processing systems including Pre-gel and Apache Giraph.",
+  "subject": "Pregel",
+  "predicate": "is",
+  "object": "graph processing system",
+  "relation_occ": 45441,
+  "confidence": 45441,
+  "old_predicate": "is-a"
+ },
+ {
+  "sentence": "involve has caused the emergence of many distributed graph processing systems including Pre-gel and Apache Giraph.",
+  "subject": "Apache Giraph",
+  "predicate": "is",
+  "object": "graph processing system",
+  "relation_occ": 45441,
+  "confidence": 45441,
+  "old_predicate": "is-a"
+ },
+ {
+  "sentence": "A number of computer vision problems such as facial age estimation, crowd counting and pose estimation can be solved by learning regression mapping on low-level imagery features.",
+  "subject": "facial age estimation",
+  "predicate": "is",
+  "object": "computer vision problem",
+  "relation_occ": 45441,
+  "confidence": 45441,
+  "old_predicate": "is-a"
+ },
+ {
+  "sentence": "A periodic processes scheduling problem appears for flexible manufacturing systems, computer systems, and other applications.",
+  "subject": "flexible manufacturing system",
+  "predicate": "is",
+  "object": "application",
+  "relation_occ": 45441,
+  "confidence": 45441,
+  "old_predicate": "is-a"
+ },
+ {
+  "sentence": "Furthermore, we analyse a cryptographic protocol to share sensitive information while preserving the privacy of the customer as well as the information of the commercial institution by using Petri nets to verify the absence of livelocks, deadlocks, and other anomalies in a cryptographic protocol to share sensitive information while preserving the privacy of the customer as well as the information of the commercial institution .",
+  "subject": "livelock",
+  "predicate": "is",
+  "object": "anomaly",
+  "relation_occ": 45441,
+  "confidence": 45441,
+  "old_predicate": "is-a"
+ },
+ {
+  "sentence": "Furthermore, we analyse a cryptographic protocol to share sensitive information while preserving the privacy of the customer as well as the information of the commercial institution by using Petri nets to verify the absence of livelocks, deadlocks, and other anomalies in a cryptographic protocol to share sensitive information while preserving the privacy of the customer as well as the information of the commercial institution .",
+  "subject": "deadlock",
+  "predicate": "is",
+  "object": "anomaly",
+  "relation_occ": 45441,
+  "confidence": 45441,
+  "old_predicate": "is-a"
+ },
+ {
+  "sentence": "Computing Education Academy (CEA) at Fairfield University class modules include Scratch, AppInventor, Circuit Design, Arduino, and final team project of developing home management system under the guidance of graduate assistants and faculty of Fairfield University .",
+  "subject": "Scratch",
+  "predicate": "is",
+  "object": "Fairfield University class module",
+  "relation_occ": 45441,
+  "confidence": 45441,
+  "old_predicate": "is-a"
+ },
+ {
+  "sentence": "Computing Education Academy (CEA) at Fairfield University class modules include Scratch, AppInventor, Circuit Design, Arduino, and final team project of developing home management system under the guidance of graduate assistants and faculty of Fairfield University .",
+  "subject": "AppInventor",
+  "predicate": "is",
+  "object": "Fairfield University class module",
+  "relation_occ": 45441,
+  "confidence": 45441,
+  "old_predicate": "is-a"
+ },
+ {
+  "sentence": "Computing Education Academy (CEA) at Fairfield University class modules include Scratch, AppInventor, Circuit Design, Arduino, and final team project of developing home management system under the guidance of graduate assistants and faculty of Fairfield University .",
+  "subject": "Circuit Design",
+  "predicate": "is",
+  "object": "Fairfield University class module",
+  "relation_occ": 45441,
+  "confidence": 45441,
+  "old_predicate": "is-a"
+ },
+ {
+  "sentence": "Computing Education Academy (CEA) at Fairfield University class modules include Scratch, AppInventor, Circuit Design, Arduino, and final team project of developing home management system under the guidance of graduate assistants and faculty of Fairfield University .",
+  "subject": "Arduino",
+  "predicate": "is",
+  "object": "Fairfield University class module",
+  "relation_occ": 45441,
+  "confidence": 45441,
+  "old_predicate": "is-a"
+ },
+ {
+  "sentence": "Computing Education Academy (CEA) at Fairfield University class modules include Scratch, AppInventor, Circuit Design, Arduino, and final team project of developing home management system under the guidance of graduate assistants and faculty of Fairfield University .",
+  "subject": "final team project",
+  "predicate": "is",
+  "object": "Fairfield University class module",
+  "relation_occ": 45441,
+  "confidence": 45441,
+  "old_predicate": "is-a"
+ },
+ {
+  "sentence": "Home management system consists of several modules to remotely control the lamp, central light, air conditioner, door lock, and other electronic devices in the room using mobile app.",
+  "subject": "lamp",
+  "predicate": "is",
+  "object": "electronic device",
+  "relation_occ": 45441,
+  "confidence": 45441,
+  "old_predicate": "is-a"
+ },
+ {
+  "sentence": "Home management system consists of several modules to remotely control the lamp, central light, air conditioner, door lock, and other electronic devices in the room using mobile app.",
+  "subject": "central light",
+  "predicate": "is",
+  "object": "electronic device",
+  "relation_occ": 45441,
+  "confidence": 45441,
+  "old_predicate": "is-a"
+ },
+ {
+  "sentence": "Home management system consists of several modules to remotely control the lamp, central light, air conditioner, door lock, and other electronic devices in the room using mobile app.",
+  "subject": "air conditioner",
+  "predicate": "is",
+  "object": "electronic device",
+  "relation_occ": 45441,
+  "confidence": 45441,
+  "old_predicate": "is-a"
+ },
+ {
+  "sentence": "Home management system consists of several modules to remotely control the lamp, central light, air conditioner, door lock, and other electronic devices in the room using mobile app.",
+  "subject": "door lock",
+  "predicate": "is",
+  "object": "electronic device",
+  "relation_occ": 45441,
+  "confidence": 45441,
+  "old_predicate": "is-a"
+ },
+ {
+  "sentence": "Although various modern trackers have impressive performance, some challenges such as occlusion and target scale variation are still intractable, especially in the complex scenarios.",
+  "subject": "occlusion",
+  "predicate": "is",
+  "object": "challenge",
+  "relation_occ": 45441,
+  "confidence": 45441,
+  "old_predicate": "is-a"
+ }]

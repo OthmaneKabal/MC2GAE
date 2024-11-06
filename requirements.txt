@@ -1,0 +1,7 @@
+torch~=2.5.1+cu124
+torch-geometric~=2.6.1
+tqdm~=4.66.6
+transformers~=4.46.2
+scikit-learn~=1.5.2
+networkx~=3.2.1
+numpy~=1.26.3
