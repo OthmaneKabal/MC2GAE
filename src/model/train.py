@@ -24,7 +24,7 @@ from MC2GEA import  MC2GEA
 
 
 # Chargement des données
-device = "cpu"
+device = config['device']
 Entities_path = config["Entities_path"]
 Edges_path = config["Edges_path"]
 KG_path = config["KG_path"]
@@ -35,6 +35,7 @@ gdp = GraphDataPreparation(Entities_path, KG_path, edges_embd_path=Edges_path, i
 data = gdp.prepare_graph_with_type()
 data = Data(x=data.x, edge_index=data.edge_index, edge_type=data.edge_type).to(device)
 
+print(data)
 # Initialisation du modèle
 RGCN_encoder = RGCNEncoder(data, config["out_channels"], config["num_layers"], config["num_bases"]).to(device)
 RGCN_decoder = RGCNDecoder(RGCN_encoder, data,config["num_bases"], config["alpha"]).to(device)
@@ -60,11 +61,11 @@ def train(model, data, optimizer, num_epochs, save_every=10, save_dir="checkpoin
             optimizer.zero_grad()
 
             # Forward pass
-            embeddings = model.encode({"G1":masked_edges_data,"G2":masked_edges_data})
-            reconstructed_x = model.decode_x(data, embeddings)
+            embeddings = model.encode({"G1":masked_features_data,"G2":masked_edges_data})
+            reconstructed_x = model.decode_x(data, embeddings["H1"])
 
-            # loss = 0 * model.recon_x_loss(data, reconstructed_x) + model.contrastive_loss({"G1":masked_edges_data,"G2":masked_edges_data})
-            loss =  model.contrastive_loss()
+            loss = model.recon_x_loss(data, reconstructed_x) #+ model.contrastive_loss({"G1":masked_edges_data,"G2":masked_edges_data})
+            # loss =  model.contrastive_loss(embeddings)
 
             # Backward pass and optimization
             loss.backward()

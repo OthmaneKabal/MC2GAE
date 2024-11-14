@@ -22,7 +22,7 @@ class MC2GEA(nn.Module):
         self.x_decoder = x_decoder
         self.reset_parameters()
         self.contrastive = contrastive
-
+        self.r_decoder = r_decoder
 
     def reset_parameters(self):
         """Réinitialise tous les paramètres apprenables du module."""
