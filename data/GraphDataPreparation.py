@@ -282,7 +282,7 @@ class GraphDataPreparation:
     #     return self.build_torch_geometric_data_with_types()
     def build_networkx_graph_type(self):
         print("Building NetworkX graph with unique relation type IDs")
-        graph_data = u.read_json_file(self.kg_path)[:10000]
+        graph_data = u.read_json_file(self.kg_path)[:20000]
         embeddings = u.read_pickle_file(self.entities_embd_path)
         edge_embeddings = u.read_pickle_file(self.edges_embd_path) if self.edges_embd_path else None
 
@@ -300,7 +300,7 @@ class GraphDataPreparation:
         # Generate a unique ID for each predicate
         unique_predicates = {entry['predicate'] for entry in graph_data}
         self.predicate_to_id = {predicate: idx for idx, predicate in enumerate(unique_predicates)}
-
+        print("----------- Unique relation ------->",len(self.predicate_to_id.keys()))
         # Add edges with embeddings and relation type ID
         for entry in graph_data:
             subject = entry['subject']

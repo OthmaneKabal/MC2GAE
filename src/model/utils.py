@@ -2,7 +2,7 @@ import os
 import torch
 
 
-def save_model(model, optimizer, epoch, save_dir="checkpoints"):
+def save_model(model, optimizer, epoch, save_dir="checkpoints", name = False):
     """
     Saves the model and optimizer state dictionaries.
 
@@ -18,7 +18,12 @@ def save_model(model, optimizer, epoch, save_dir="checkpoints"):
     # Define the checkpoint path
     checkpoint_path = os.path.join(save_dir, f"model_epoch_{epoch + 1}.pth")
 
+    if is_best:
+        checkpoint_path = os.path.join(save_dir, f"best_model.pth")
+
+
     # Save the model and optimizer states
+
     torch.save({
         'epoch': epoch + 1,
         'model_state_dict': model.state_dict(),

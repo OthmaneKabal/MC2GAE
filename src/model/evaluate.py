@@ -97,7 +97,7 @@ def classify_terms_by_cosine_similarity(gs_embeddings, core_concepts_embeddings,
     :param threshold: Seuil de similarité cosinus pour la classification
     :return: Dictionnaire avec chaque terme du GS, son core concept le plus proche, et la classe prédite
     """
-    similarity = []
+    similarities = []
     classifications = {}
 
     # Boucle sur chaque terme du GS pour calculer les similarités
@@ -112,14 +112,14 @@ def classify_terms_by_cosine_similarity(gs_embeddings, core_concepts_embeddings,
             if similarity > best_similarity:
                 best_similarity = similarity
                 best_core_concept = concept
-        similarity.append(best_similarity)
+        similarities.append(best_similarity)
         # Assigner la classe en fonction du seuil
         classifications[term] = {
             'core_concept': best_core_concept if best_similarity >= threshold else 'o',
             'class': best_core_concept if best_similarity >= threshold else 'o'
         }
 
-    median = np.median(similarity)
+    median = np.median(similarities)
     print(median)
     return classifications
 
@@ -185,7 +185,7 @@ def evaluate_classification(gs_path, classifications):
 KG_path = config["KG_path"]
 Gs_path = config["Gs_path"]
 
-embeddings_dict,cc_embd = generate_gs_embeddings(KG_path,"checkpoints/model_epoch_20.pth",Gs_path,config["core_concepts"],config,embedding_model= "Bert")
+embeddings_dict,cc_embd = generate_gs_embeddings(KG_path,"checkpoints/best_model.pth",Gs_path,config["core_concepts"],config,embedding_model= "GNN")
 # Paramètres de seuil de classification
 
 thresholds = [0.1,0.2,0.4,0.5,0.6,0.7,0.8]
