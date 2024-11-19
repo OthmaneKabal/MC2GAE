@@ -16,13 +16,13 @@ class MC2GEA(nn.Module):
     """
 
 ## options["X", "R", "cotrastive"]
-    def __init__(self, encoder: nn.Module, x_decoder: nn.Module, r_decoder = None, options = ["X"]):
+    def __init__(self, encoder: nn.Module, x_decoder: nn.Module, r_decoder = None): #, options = ["X"]):
         super(MC2GEA, self).__init__()
         self.encoder = encoder
         self.x_decoder = x_decoder
         self.reset_parameters()
         self.r_decoder = r_decoder
-        self.options = options
+        # self.options = options
     def reset_parameters(self):
         """Réinitialise tous les paramètres apprenables du module."""
         self.encoder.reset_parameters()
@@ -34,18 +34,8 @@ class MC2GEA(nn.Module):
 
 
     def encode(self, data):
-
-        if "contrastive" in self.options:
-            embeddings = {}
-            H_1 = self.encoder(data["G1"])
-            H_2 = self.encoder(data["G2"])
-            embeddings["H1"] = H_1
-            embeddings["H2"] = H_2
-            return embeddings
-
-        else:
-            embeddings = self.encoder(data)
-            return embeddings
+        embeddings = self.encoder(data)
+        return embeddings
 
 
     def decode_x(self, data, embeddings):
@@ -53,13 +43,13 @@ class MC2GEA(nn.Module):
         return reconstructed_x
 
 
-    def recon_x_loss(self, data, reconstructed_x):
+    def recon_x_loss(self, x, reconstructed_x):
         loss_fn = nn.MSELoss()
-        return loss_fn(reconstructed_x, data.x)
+        return loss_fn(reconstructed_x, x)
 
-    #
-    # def contrastive_loss(self, embeddings):
-    #     c_l = ContrastiveLoss.ContrastiveLoss()
-    #     c_l.contrastive_loss(embeddings["H1"], embeddings["H2"])
-    #     return c_l
+
+    def contrastive_loss(self, H_1, H_2):
+        c_l = ContrastiveLoss.ContrastiveLoss()
+        cl_loss = c_l.contrastive_loss(H_1, H_2)
+        return cl_loss
 

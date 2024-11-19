@@ -10,7 +10,8 @@ from torch_geometric.data import Data
 import pandas as pd
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
-
+import numpy as np
+from sklearn.metrics.pairwise import cosine_similarity
 
 
 def generate_gs_embeddings(graph_path, checkpoint_path, gs_path, core_concepts, config,embedding_model = "GNN"):
@@ -91,12 +92,12 @@ from sklearn.metrics.pairwise import cosine_similarity
 def classify_terms_by_cosine_similarity(gs_embeddings, core_concepts_embeddings, threshold=0.5):
     """
     Classe les termes du GS en fonction de leur similarité cosinus avec les core concepts.
-
     :param gs_embeddings: Dictionnaire avec les termes du GS comme clés et leurs embeddings comme valeurs
     :param core_concepts_embeddings: Dictionnaire avec les core concepts comme clés et leurs embeddings comme valeurs
     :param threshold: Seuil de similarité cosinus pour la classification
     :return: Dictionnaire avec chaque terme du GS, son core concept le plus proche, et la classe prédite
     """
+
     similarities = []
     classifications = {}
 
@@ -118,6 +119,7 @@ def classify_terms_by_cosine_similarity(gs_embeddings, core_concepts_embeddings,
             'core_concept': best_core_concept if best_similarity >= threshold else 'o',
             'class': best_core_concept if best_similarity >= threshold else 'o'
         }
+
 
     median = np.median(similarities)
     print(median)
@@ -155,6 +157,10 @@ def evaluate_classification(gs_path, classifications):
 
     # Extraire les labels réels et les prédictions, en les convertissant en chaînes de caractères
     true_labels = gold_standard_labels['label'].astype(str).values
+    print(len(classifications), len(gold_standard_labels))
+    missing_terms = [term for term in gold_standard_labels['term'] if term not in classifications]
+    print("Missing terms:", missing_terms)
+
     predicted_labels = [str(classifications[term]['core_concept']) for term in gold_standard_labels['term']]
     print("True labels (sample):", true_labels[:10])
     print("Predicted labels (sample):", predicted_labels[:10])
@@ -185,7 +191,7 @@ def evaluate_classification(gs_path, classifications):
 KG_path = config["KG_path"]
 Gs_path = config["Gs_path"]
 
-embeddings_dict,cc_embd = generate_gs_embeddings(KG_path,"checkpoints/best_model.pth",Gs_path,config["core_concepts"],config,embedding_model= "GNN")
+embeddings_dict,cc_embd = generate_gs_embeddings(KG_path,"checkpoints/model_epoch_1.pth",Gs_path,config["core_concepts"],config,embedding_model= "GNN")
 # Paramètres de seuil de classification
 
 thresholds = [0.1,0.2,0.4,0.5,0.6,0.7,0.8]
@@ -193,10 +199,8 @@ for threshold in thresholds:
         print("\n************** threshold = ", threshold, "**********************\n")
         # Classification des termes en fonction de la similarité cosinus avec les core concepts
         classifications = classify_terms_by_cosine_similarity(embeddings_dict, cc_embd, threshold=threshold)
-
         # Évaluation de la classification
         metrics_df = evaluate_classification(Gs_path, classifications)
-
         # Afficher les résultats
         print(metrics_df)
 # print(embeddings_dict.keys(), "\n",cc_embd.keys())

@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 
 
-class ContrastiveLoss:
+class ContrastiveLoss(torch.nn.Module):
     def __init__(self, tau=0.5):
         self.tau = tau
 

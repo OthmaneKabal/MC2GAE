@@ -5,3 +5,4 @@ transformers~=4.46.2
 scikit-learn~=1.5.2
 networkx~=3.2.1
 numpy~=1.26.3
+torch-scatter torch-sparse torch-cluster torch-spline-conv torch-geometric -f https://data.pyg.org/whl/torch-2.5.1+cu124.html

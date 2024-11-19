@@ -282,7 +282,7 @@ class GraphDataPreparation:
     #     return self.build_torch_geometric_data_with_types()
     def build_networkx_graph_type(self):
         print("Building NetworkX graph with unique relation type IDs")
-        graph_data = u.read_json_file(self.kg_path)[:20000]
+        graph_data = u.read_json_file(self.kg_path)
         embeddings = u.read_pickle_file(self.entities_embd_path)
         edge_embeddings = u.read_pickle_file(self.edges_embd_path) if self.edges_embd_path else None
 

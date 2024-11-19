@@ -18,7 +18,7 @@ def save_model(model, optimizer, epoch, save_dir="checkpoints", name = False):
     # Define the checkpoint path
     checkpoint_path = os.path.join(save_dir, f"model_epoch_{epoch + 1}.pth")
 
-    if is_best:
+    if name:
         checkpoint_path = os.path.join(save_dir, f"best_model.pth")
 
 
