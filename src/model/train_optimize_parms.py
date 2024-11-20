@@ -45,7 +45,7 @@ hyperparams_grid = {
 training_options = ["contrastive"]
 
 # Fonction de sauvegarde de modèle incluant les hyperparamètres dans le nom du fichier
-def save_model_with_hyperparams(model, optimizer, epoch, num_bases, out_channels, save_dir="checkpoints",
+def save_model_with_hyperparams(model, optimizer, epoch, num_bases, out_channels, save_dir="checkpoints_contrastive",
                                 is_best=False):
     os.makedirs(save_dir, exist_ok=True)
     base_filename = f"best_model_bases{num_bases}_channels{'-'.join(map(str, out_channels))}"
@@ -64,7 +64,7 @@ def save_model_with_hyperparams(model, optimizer, epoch, num_bases, out_channels
 
 # Fonction d'entraînement avec suivi de la perte dans wandb
 def train_with_hyperparams(model, data, optimizer, num_epochs, num_bases, out_channels, save_every=10,
-                           save_dir="checkpoints", training_options = ["contrastive"]):
+                           save_dir="checkpoints_contrastive", training_options = ["contrastive"]):
     model.train()
     best_loss = float('inf')
 

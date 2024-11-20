@@ -1,20 +1,23 @@
+import os
+import re
+
+from sympy import false
+
 from data.GraphDataPreparation import GraphDataPreparation
 from src.layers.RGCNDecoder import RGCNDecoder
 from src.layers.RGCNEncoder import RGCNEncoder
 from src.model.MC2GEA import MC2GEA
-from src.model.utils import save_model, load_model_checkpoint
+from src.model.utils import save_model, load_model_checkpoint, load_gold_standard_labels
 from config import config
 import torch
 from torch import optim
 from torch_geometric.data import Data
 import pandas as pd
-from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 
-
-def generate_gs_embeddings(graph_path, checkpoint_path, gs_path, core_concepts, config,embedding_model = "GNN"):
+def generate_gs_embeddings(graph_path, checkpoint_path, gs_path, core_concepts, config, embedding_model = "GNN"):
     """
     Charge le graphe, initialise et charge le modèle à partir du checkpoint, et génère les embeddings
     pour les termes présents dans le GS ainsi que pour les concepts principaux spécifiés.
@@ -86,12 +89,12 @@ def generate_gs_embeddings(graph_path, checkpoint_path, gs_path, core_concepts, 
     return gs_embeddings, core_concepts_embeddings
 
 
-import numpy as np
-from sklearn.metrics.pairwise import cosine_similarity
 
-def classify_terms_by_cosine_similarity(gs_embeddings, core_concepts_embeddings, threshold=0.5):
+
+def classify_terms_by_cosine_similarity(gs_embeddings, core_concepts_embeddings, with_other = True, threshold = 0.5):
     """
     Classe les termes du GS en fonction de leur similarité cosinus avec les core concepts.
+    :param with_other: si on va considerer la classe 'other'
     :param gs_embeddings: Dictionnaire avec les termes du GS comme clés et leurs embeddings comme valeurs
     :param core_concepts_embeddings: Dictionnaire avec les core concepts comme clés et leurs embeddings comme valeurs
     :param threshold: Seuil de similarité cosinus pour la classification
@@ -100,12 +103,9 @@ def classify_terms_by_cosine_similarity(gs_embeddings, core_concepts_embeddings,
 
     similarities = []
     classifications = {}
-
-    # Boucle sur chaque terme du GS pour calculer les similarités
     for term, term_embedding in gs_embeddings.items():
         best_similarity = -1
         best_core_concept = 'o'  # Valeur par défaut si aucune similarité ne dépasse le seuil
-        # Calculer la similarité cosinus avec chaque core concept
         for concept, concept_embedding in core_concepts_embeddings.items():
             similarity = cosine_similarity([term_embedding], [concept_embedding])[0, 0]
 
@@ -114,34 +114,19 @@ def classify_terms_by_cosine_similarity(gs_embeddings, core_concepts_embeddings,
                 best_similarity = similarity
                 best_core_concept = concept
         similarities.append(best_similarity)
-        # Assigner la classe en fonction du seuil
+        # Assigner la classe: 2 choix en utilisant la classe "other" pour ce qui sont loin (thrshold)
+        if not with_other:
+            class_ =  best_core_concept
+        else:
+            class_ = best_core_concept if best_similarity >= threshold else 'o'
         classifications[term] = {
-            'core_concept': best_core_concept if best_similarity >= threshold else 'o',
-            'class': best_core_concept if best_similarity >= threshold else 'o'
+            'class': class_
         }
-
-
-    median = np.median(similarities)
-    print(median)
+    # print(f'*****Median: {np.median(similarities)} ********** Mean: {np.mean(similarities)} ***********')
     return classifications
 
 
 
-def load_gold_standard_labels(gs_path):
-    """
-    Charge les labels du gold standard à partir d'un fichier Excel.
-
-    :param gs_path: Chemin vers le fichier Excel contenant le GS
-    :return: DataFrame avec les colonnes 'term' et 'label'
-    """
-    # Charger la feuille contenant les termes et labels
-    gold_standard_df = pd.read_excel(gs_path, sheet_name='Sheet1')
-
-    # Vérifier que les colonnes nécessaires sont présentes
-    if 'term' not in gold_standard_df.columns or 'label' not in gold_standard_df.columns:
-        raise ValueError("Le fichier GS doit contenir les colonnes 'term' et 'label'.")
-
-    return gold_standard_df[['term', 'label']]
 
 
 def evaluate_classification(gs_path, classifications):
@@ -154,23 +139,16 @@ def evaluate_classification(gs_path, classifications):
     """
     # Charger le fichier GS et obtenir les labels
     gold_standard_labels = load_gold_standard_labels(gs_path)
-
     # Extraire les labels réels et les prédictions, en les convertissant en chaînes de caractères
     true_labels = gold_standard_labels['label'].astype(str).values
-    print(len(classifications), len(gold_standard_labels))
-    missing_terms = [term for term in gold_standard_labels['term'] if term not in classifications]
-    print("Missing terms:", missing_terms)
-
-    predicted_labels = [str(classifications[term]['core_concept']) for term in gold_standard_labels['term']]
-    print("True labels (sample):", true_labels[:10])
-    print("Predicted labels (sample):", predicted_labels[:10])
+    predicted_labels = [str(classifications[term]['class']) for term in gold_standard_labels['term']]
     # Calcul des métriques
-    accuracy = accuracy_score(true_labels, predicted_labels)
-    f1 = f1_score(true_labels, predicted_labels, average='macro', zero_division=0)
-    precision = precision_score(true_labels, predicted_labels, average='macro', zero_division=0)
-    recall = recall_score(true_labels, predicted_labels, average='macro', zero_division=0)
 
-    # Stocker les métriques dans un dictionnaire pour les afficher sous forme de DataFrame
+    accuracy = accuracy_score(true_labels, predicted_labels)
+    f1 = f1_score(true_labels, predicted_labels, average='weighted', zero_division=0)
+    precision = precision_score(true_labels, predicted_labels, average='weighted', zero_division=0)
+    recall = recall_score(true_labels, predicted_labels, average='weighted', zero_division=0)
+
     metrics = {
         'accuracy': accuracy,
         'f1_score': f1,
@@ -181,27 +159,92 @@ def evaluate_classification(gs_path, classifications):
     metrics_df = pd.DataFrame([metrics], index=['Metrics'])
     return metrics_df
 
+def extract_params(filename):
+    # Utilise une expression régulière pour extraire les valeurs de bases et channels
+    match = re.search(r"bases(\d+)_channels(\d+)-(\d+)", filename)
+    if match:
+        bases = int(match.group(1))
+        channels = [int(match.group(2)), int(match.group(3))]
+        return bases, channels
+    else:
+        raise ValueError("Le format du nom de fichier n'est pas valide")
 
 
 
+def evaluate_all(KG_path, GS_path, ckpt_dir, config, embedding_model = "GNN", with_other = True, thresholds_list = [0.5]):
+        for filename in os.listdir(ckpt_dir):
+            if filename.endswith(".pth"):
+                if embedding_model != "GNN":
+                    embeddings_dict, cc_embd = generate_gs_embeddings(KG_path,
+                                                                      str(filename),
+                                                                      GS_path, config["core_concepts"], config,
+                                                                      embedding_model="bert")
 
+                    if with_other:
+                        for threshold in thresholds_list:
+                            print(f'\n************* {threshold} *****************\n')
+                            classifications = classify_terms_by_cosine_similarity(embeddings_dict, cc_embd, threshold=threshold,
+                                                                                  with_other=with_other)
+                            metrics_df = evaluate_classification(Gs_path, classifications)
+                            print(metrics_df)
+                        return
+                    else:
+                        classifications = classify_terms_by_cosine_similarity(embeddings_dict, cc_embd, with_other=with_other)
+                        metrics_df = evaluate_classification(Gs_path, classifications)
+                        print(metrics_df)
+                        return
 
+                else:
+
+                        print("\n --------------------"+ filename + "-------------------------- \n")
+                        bases, channels = extract_params(filename)
+                        if bases is not None and channels is not None:
+                            config['num_bases'] = bases
+                            config["out_channels"] = channels
+                            embeddings_dict, cc_embd = generate_gs_embeddings(KG_path,
+                                                                              ckpt_dir+'/'+str(filename),
+                                                                              GS_path, config["core_concepts"], config,
+                                                                              embedding_model = embedding_model)
+                            if with_other:
+                                for threshold in thresholds_list:
+                                    print(f'\n************* {threshold} *****************\n')
+                                    classifications = classify_terms_by_cosine_similarity(embeddings_dict, cc_embd, threshold=threshold, with_other=with_other)
+                                    metrics_df = evaluate_classification(Gs_path, classifications)
+                                    print(metrics_df)
+                            else:
+                                classifications = classify_terms_by_cosine_similarity(embeddings_dict, cc_embd, with_other=with_other)
+                                metrics_df = evaluate_classification(Gs_path, classifications)
+                                print(metrics_df)
 
 
 KG_path = config["KG_path"]
 Gs_path = config["Gs_path"]
+thresholds_list = [0.5,0.7,0.6,0.8,0.9, 0.95]
 
-embeddings_dict,cc_embd = generate_gs_embeddings(KG_path,"checkpoints/model_epoch_1.pth",Gs_path,config["core_concepts"],config,embedding_model= "GNN")
-# Paramètres de seuil de classification
 
-thresholds = [0.1,0.2,0.4,0.5,0.6,0.7,0.8]
-for threshold in thresholds:
-        print("\n************** threshold = ", threshold, "**********************\n")
-        # Classification des termes en fonction de la similarité cosinus avec les core concepts
-        classifications = classify_terms_by_cosine_similarity(embeddings_dict, cc_embd, threshold=threshold)
-        # Évaluation de la classification
-        metrics_df = evaluate_classification(Gs_path, classifications)
-        # Afficher les résultats
-        print(metrics_df)
-# print(embeddings_dict.keys(), "\n",cc_embd.keys())
+evaluate_all(KG_path, Gs_path, "checkpoints/checkpoints_Reconstruct_X", config, embedding_model = "bert", with_other = True, thresholds_list = thresholds_list)
 
+
+
+
+
+
+
+
+
+#
+#
+# embeddings_dict,cc_embd = generate_gs_embeddings(KG_path,"checkpoints/best_model_bases110_channels600-500.pth",Gs_path,config["core_concepts"],config,embedding_model= "bert")
+# # Paramètres de seuil de classification
+#
+# thresholds = [0.1,0.2,0.5,0.6,0.7,0.8,0.9, 0.95, 0.97]
+# for threshold in thresholds:
+#         print("\n************** threshold = ", threshold, "**********************\n")
+#         # Classification des termes en fonction de la similarité cosinus avec les core concepts
+#         classifications = classify_terms_by_cosine_similarity(embeddings_dict, cc_embd, threshold=threshold)
+#         # Évaluation de la classification
+#         metrics_df = evaluate_classification(Gs_path, classifications)
+#         # Afficher les résultats
+#         print(metrics_df)
+# # print(embeddings_dict.keys(), "\n",cc_embd.keys())
+#

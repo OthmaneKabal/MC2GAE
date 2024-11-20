@@ -1,5 +1,23 @@
 import os
+
+import pandas as pd
 import torch
+
+def load_gold_standard_labels(gs_path):
+    """
+    Charge les labels du gold standard à partir d'un fichier Excel.
+
+    :param gs_path: Chemin vers le fichier Excel contenant le GS
+    :return: DataFrame avec les colonnes 'term' et 'label'
+    """
+    # Charger la feuille contenant les termes et labels
+    gold_standard_df = pd.read_excel(gs_path, sheet_name='Sheet1')
+
+    # Vérifier que les colonnes nécessaires sont présentes
+    if 'term' not in gold_standard_df.columns or 'label' not in gold_standard_df.columns:
+        raise ValueError("Le fichier GS doit contenir les colonnes 'term' et 'label'.")
+
+    return gold_standard_df[['term', 'label']]
 
 
 def save_model(model, optimizer, epoch, save_dir="checkpoints", name = False):

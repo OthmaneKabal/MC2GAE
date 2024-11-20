@@ -13,7 +13,6 @@ class GraphBERTEmbedder:
         self.pretrained_model_name_or_path = pretrained_model_name_or_path
         self.bertModel = bem.BertEmbedder(self.pretrained_model_name_or_path)
         self.KG = u.read_json_file(KG_path)
-        
         ## directory path for the outputs
         self.output_path = output_path
         
