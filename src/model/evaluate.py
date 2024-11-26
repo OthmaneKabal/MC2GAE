@@ -1,11 +1,16 @@
 import os
+import pickle
 import re
+import sys
+from typing import Counter
 
 from sympy import false
+from torch_geometric.nn import DeepGraphInfomax
 
 from data.GraphDataPreparation import GraphDataPreparation
 from src.layers.RGCNDecoder import RGCNDecoder
 from src.layers.RGCNEncoder import RGCNEncoder
+from src.layers.RGCNEncoder1 import RGCNEncoder1
 from src.model.MC2GEA import MC2GEA
 from src.model.utils import save_model, load_model_checkpoint, load_gold_standard_labels
 from config import config
@@ -16,8 +21,50 @@ import pandas as pd
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
+from collections import Counter
 
-def generate_gs_embeddings(graph_path, checkpoint_path, gs_path, core_concepts, config, embedding_model = "GNN"):
+
+sys.path.append("../../utilities")
+import utilities as u
+
+import torch
+import random
+import numpy as np
+
+
+
+import os
+
+# Set the environment variable programmatically
+os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
+
+# Enable deterministic algorithms in PyTorch
+import torch
+torch.use_deterministic_algorithms(True)
+
+# seed = 42
+# torch.manual_seed(seed)
+# torch.cuda.manual_seed(seed)
+# np.random.seed(seed)
+# random.seed(seed)
+# torch.backends.cudnn.deterministic = True
+# torch.backends.cudnn.benchmark = False
+# torch.use_deterministic_algorithms(True)
+# os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
+#
+# torch.set_float32_matmul_precision("medium")
+torch.manual_seed(42)
+import numpy as np
+np.random.seed(42)
+import random
+random.seed(42)
+torch.backends.cudnn.deterministic = True
+torch.use_deterministic_algorithms(True)
+os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
+torch.backends.cudnn.benchmark = False
+
+
+def generate_gs_embeddings(graph_path, checkpoint_path, gs_path, core_concepts, config, embedding_model = "GNN", emb_file = None):
     """
     Charge le graphe, initialise et charge le modèle à partir du checkpoint, et génère les embeddings
     pour les termes présents dans le GS ainsi que pour les concepts principaux spécifiés.
@@ -38,28 +85,45 @@ def generate_gs_embeddings(graph_path, checkpoint_path, gs_path, core_concepts, 
     data = Data(x=data.x, edge_index=data.edge_index, edge_type=data.edge_type).to(config["device"])
     print(data)
 
-    if embedding_model == "GNN":
+    if embedding_model == "GNN" and not emb_file:
     # Initialisation du modèle
         RGCN_encoder = RGCNEncoder(data, config["out_channels"], config["num_layers"], config["num_bases"]).to(
             config["device"])
         RGCN_decoder = RGCNDecoder(RGCN_encoder, data, config["num_bases"], config["alpha"]).to(config["device"])
         autoencoder = MC2GEA(RGCN_encoder, RGCN_decoder).to(config["device"])
 
+        # RGCN_encoder = RGCNEncoder1(data, config["out_channels"], config["num_layers"], config["num_bases"]).to(
+        #     config["device"])
+        # # RGCN_decoder = RGCNDecoder(RGCN_encoder, data, num_bases, config["alpha"]).to(device)
+        # # autoencoder = MC2GEA(RGCN_encoder, RGCN_decoder).to(device)
+        # autoencoder = DeepGraphInfomax(
+        #     hidden_channels = config["out_channels"][1], encoder=RGCN_encoder,
+        #     summary=lambda z, *args, **kwargs: torch.sigmoid(z.mean(dim=0)),
+        #     corruption=lambda x, edge_index: (x[torch.randperm(x.size(0))], edge_index)
+        # ).to(config["device"])
+
+
+
         optimizer = optim.Adam(autoencoder.parameters(), lr=config["learning_rate"])
 
         # Charger le modèle et l'optimiseur à partir du checkpoint
         model, optimizer, start_epoch = load_model_checkpoint(autoencoder, optimizer, checkpoint_path)
-
-        # Mettre le modèle en mode évaluation
+        model.to(config["device"])
         model.eval()
-
         # Encoder le graphe
         with torch.no_grad():
-            embeddings = model.encode(data)
-
-    else:
+             embeddings = model.encode(data)
+             # embeddings = model.decode_x(data,embeddings)
+            # embeddings = model.encoder(data.x, data.edge_index, data.edge_type)
+            # print(embeddings[0])
+    elif not emb_file:
         embeddings = data.x
-
+        # print(embeddings, print(embeddings.shape))
+        # print(embeddings[0])
+    else:
+        print("load_emb_from_file")
+        embeddings = u.read_pickle_file( "embeddings_DGI.pkl")
+        print(embeddings, print(embeddings.shape))
 
     # Charger le fichier GS
     gs_df = pd.read_excel(gs_path, sheet_name='Sheet1')
@@ -77,11 +141,11 @@ def generate_gs_embeddings(graph_path, checkpoint_path, gs_path, core_concepts, 
         term_lower = term.lower()
         # Vérifier si le terme est dans le GS
         if term_lower in gs_terms:
-            gs_embeddings[term] = embeddings[node_id].cpu().numpy()  # Extraire l'embedding et le stocker
+            gs_embeddings[term] = embeddings[node_id].detach().cpu().numpy()  # Extraire l'embedding et le stocker
 
         # Vérifier si le terme est dans les core concepts
         if term_lower in [concept.lower() for concept in core_concepts]:
-            core_concepts_embeddings[term] = embeddings[node_id].cpu().numpy()
+            core_concepts_embeddings[term] = embeddings[node_id].detach().cpu().numpy()
     #
     # print(f"Nombre de termes du GS avec embeddings : {len(gs_embeddings)}")
     # print(f"Nombre de core concepts avec embeddings : {len(core_concepts_embeddings)}")
@@ -143,6 +207,16 @@ def evaluate_classification(gs_path, classifications):
     true_labels = gold_standard_labels['label'].astype(str).values
     predicted_labels = [str(classifications[term]['class']) for term in gold_standard_labels['term']]
     # Calcul des métriques
+    #
+    # from sklearn.metrics import classification_report
+    #
+    # # Afficher un rapport de classification par classe
+    # print(classification_report(true_labels, predicted_labels, zero_division=0))
+    # exit(555)
+    count_p = Counter(predicted_labels)
+    count_b = Counter(true_labels)
+    print("\n+++++++++++ predicted +++++++++++\n",count_p ,"\n++++++++++++++++\n")
+    # print("\n+++++++++++ Benchmark +++++++++++\n",count_b ,"\n++++++++++++++++\n")
 
     accuracy = accuracy_score(true_labels, predicted_labels)
     f1 = f1_score(true_labels, predicted_labels, average='weighted', zero_division=0)
@@ -172,13 +246,13 @@ def extract_params(filename):
 
 
 def evaluate_all(KG_path, GS_path, ckpt_dir, config, embedding_model = "GNN", with_other = True, thresholds_list = [0.5]):
-        for filename in os.listdir(ckpt_dir):
+    for filename in os.listdir(ckpt_dir):
             if filename.endswith(".pth"):
                 if embedding_model != "GNN":
                     embeddings_dict, cc_embd = generate_gs_embeddings(KG_path,
                                                                       str(filename),
                                                                       GS_path, config["core_concepts"], config,
-                                                                      embedding_model="bert")
+                                                                      embedding_model="bert", emb_file = True)
 
                     if with_other:
                         for threshold in thresholds_list:
@@ -217,34 +291,134 @@ def evaluate_all(KG_path, GS_path, ckpt_dir, config, embedding_model = "GNN", wi
                                 print(metrics_df)
 
 
+
+
+def evaluate_all_save_best(KG_path, GS_path, ckpt_dir, config, embedding_model = "GNN", with_other = True, thresholds_list = [0.5]):
+    best_results = {}
+    for filename in os.listdir(ckpt_dir):
+            if filename.endswith(".pth"):
+                if embedding_model != "GNN":
+                    embeddings_dict, cc_embd = generate_gs_embeddings(KG_path,
+                                                                      str(filename),
+                                                                      GS_path, config["core_concepts"], config,
+                                                                      embedding_model="bert")
+
+                    if with_other:
+                        model_metrics = []
+                        for threshold in thresholds_list:
+
+                            classifications = classify_terms_by_cosine_similarity(embeddings_dict, cc_embd, threshold=threshold,
+                                                                                  with_other=with_other)
+                            metrics_df = evaluate_classification(Gs_path, classifications)
+                            metrics = {
+                                'threshold': threshold,
+                                'accuracy': metrics_df.loc['Metrics', 'accuracy'],
+                                'f1_score': metrics_df.loc['Metrics', 'f1_score'],
+                                'precision': metrics_df.loc['Metrics', 'precision'],
+                                'recall': metrics_df.loc['Metrics', 'recall']
+                            }
+                            model_metrics.append(metrics)
+                        best_accuracy = max(model_metrics, key=lambda x: x['accuracy'])
+                        best_f1 = max(model_metrics, key=lambda x: x['f1_score'])
+                        if best_accuracy == best_f1:
+                            best_results["BERT"] = {'best_result': best_accuracy}
+                        else:
+                            best_results["BERT"] = {
+                                'best_accuracy': best_accuracy,
+                                'best_f1': best_f1
+                            }
+
+                        return best_results
+                    else:
+                        classifications = classify_terms_by_cosine_similarity(embeddings_dict, cc_embd, with_other=with_other)
+                        metrics_df = evaluate_classification(Gs_path, classifications)
+                        metrics = {
+                            'threshold': "-",
+                            'accuracy': metrics_df.loc['Metrics', 'accuracy'],
+                            'f1_score': metrics_df.loc['Metrics', 'f1_score'],
+                            'precision': metrics_df.loc['Metrics', 'precision'],
+                            'recall': metrics_df.loc['Metrics', 'recall']
+                        }
+                        best_results["BERT"] = {'best_result': metrics}
+                        return best_results
+
+                else:
+
+                        print("\n --------------------"+ filename + "-------------------------- \n")
+                        bases, channels = extract_params(filename)
+                        if bases is not None and channels is not None:
+                            config['num_bases'] = bases
+                            config["out_channels"] = channels
+                            embeddings_dict, cc_embd = generate_gs_embeddings(KG_path,
+                                                                              ckpt_dir+'/'+str(filename),
+                                                                              GS_path, config["core_concepts"], config,
+                                                                              embedding_model = embedding_model)
+                            if with_other:
+                                model_metrics = []
+                                for threshold in thresholds_list:
+                                    print(f'\n************* {threshold} *****************\n')
+                                    classifications = classify_terms_by_cosine_similarity(embeddings_dict, cc_embd, threshold=threshold, with_other=with_other)
+                                    metrics_df = evaluate_classification(Gs_path, classifications)
+                                    metrics = {
+                                        'threshold': threshold,
+                                        'accuracy': metrics_df.loc['Metrics', 'accuracy'],
+                                        'f1_score': metrics_df.loc['Metrics', 'f1_score'],
+                                        'precision': metrics_df.loc['Metrics', 'precision'],
+                                        'recall': metrics_df.loc['Metrics', 'recall']
+                                    }
+                                    model_metrics.append(metrics)
+                                best_accuracy = max(model_metrics, key=lambda x: x['accuracy'])
+                                best_f1 = max(model_metrics, key=lambda x: x['f1_score'])
+                                if best_accuracy == best_f1:
+                                    best_results[filename] = {'best_result': best_accuracy}
+                                else:
+                                    best_results[filename] = {
+                                        'best_accuracy': best_accuracy,
+                                        'best_f1': best_f1
+                                    }
+
+                            else:
+                                classifications = classify_terms_by_cosine_similarity(embeddings_dict, cc_embd, with_other=with_other)
+                                metrics_df = evaluate_classification(Gs_path, classifications)
+                                # print(metrics_df)
+                                metrics = {
+                                    'threshold': "-",
+                                    'accuracy': metrics_df.loc['Metrics', 'accuracy'],
+                                    'f1_score': metrics_df.loc['Metrics', 'f1_score'],
+                                    'precision': metrics_df.loc['Metrics', 'precision'],
+                                    'recall': metrics_df.loc['Metrics', 'recall']
+                                }
+                                best_results[filename] = {'best_result': metrics}
+    return best_results
+
+
+
+
 KG_path = config["KG_path"]
-Gs_path = config["Gs_path"]
-thresholds_list = [0.5,0.7,0.6,0.8,0.9, 0.95]
+Gs_path = config["Gs_path_no_other"]
+thresholds_list = [0.6,0.7,0.8]
 
 
-evaluate_all(KG_path, Gs_path, "checkpoints/checkpoints_Reconstruct_X", config, embedding_model = "bert", with_other = True, thresholds_list = thresholds_list)
+evaluate_all(KG_path, Gs_path, "checkpoints/checkpoints_Reconstruct_X", config, embedding_model = "GNN", with_other = False, thresholds_list = thresholds_list)
+
+# rows = []
+# for model_name, metrics in res.items():
+#     for metric_type, values in metrics.items():
+#         row = {
+#             "Model Name": model_name,
+#             "Threshold": values["threshold"],
+#             "Accuracy": values["accuracy"],
+#             "F1-score": values["f1_score"],
+#             "Precision": values["precision"],
+#             "Recall": values["recall"]
+#         }
+#         rows.append(row)
+
+# # Creating the DataFrame
+# df_ = pd.DataFrame(rows)
+# file_path = 'GNN_with_no_other.xlsx'
+# df_.to_excel(file_path, index=False)
+# # print(df_)
 
 
-
-
-
-
-
-
-
-#
-#
-# embeddings_dict,cc_embd = generate_gs_embeddings(KG_path,"checkpoints/best_model_bases110_channels600-500.pth",Gs_path,config["core_concepts"],config,embedding_model= "bert")
-# # Paramètres de seuil de classification
-#
-# thresholds = [0.1,0.2,0.5,0.6,0.7,0.8,0.9, 0.95, 0.97]
-# for threshold in thresholds:
-#         print("\n************** threshold = ", threshold, "**********************\n")
-#         # Classification des termes en fonction de la similarité cosinus avec les core concepts
-#         classifications = classify_terms_by_cosine_similarity(embeddings_dict, cc_embd, threshold=threshold)
-#         # Évaluation de la classification
-#         metrics_df = evaluate_classification(Gs_path, classifications)
-#         # Afficher les résultats
-#         print(metrics_df)
-# # print(embeddings_dict.keys(), "\n",cc_embd.keys())
-#
+# print(res)

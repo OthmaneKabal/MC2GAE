@@ -91,6 +91,9 @@ def train(model, data, optimizer, num_epochs, save_every=10, save_dir="checkpoin
                     total_loss += loss.item()
                     batch_pbar.set_postfix(batch_loss=loss.item())
                     batch_pbar.update(1)
+            elif "reconstruct_r" in training_options:
+                pass
+
             else:
                 for batch in G1_data_loader:
                     batch = batch.to(device)

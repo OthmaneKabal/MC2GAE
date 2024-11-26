@@ -298,8 +298,15 @@ class GraphDataPreparation:
                 self.nxGraph.add_node(node, emb=emb.clone().detach())
 
         # Generate a unique ID for each predicate
-        unique_predicates = {entry['predicate'] for entry in graph_data}
+
+        unique_predicates = sorted({entry['predicate'] for entry in graph_data})  # Sorted for determinism
         self.predicate_to_id = {predicate: idx for idx, predicate in enumerate(unique_predicates)}
+
+
+
+        # unique_predicates = {entry['predicate'] for entry in graph_data}
+        # self.predicate_to_id = {predicate: idx for idx, predicate in enumerate(unique_predicates)}
+
         print("----------- Unique relation ------->",len(self.predicate_to_id.keys()))
         # Add edges with embeddings and relation type ID
         for entry in graph_data:

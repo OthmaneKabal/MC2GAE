@@ -17,7 +17,7 @@ class RGCNEncoder(nn.Module):
 
         # Assurer que le nombre de couches correspond à la taille de out_channels
         assert len(out_channels) == num_layers, "La longueur de out_channels doit être égale à num_layers"
-
+        self.out_channels = out_channels[1]
         # Extraire les dimensions d'entrée et le nombre de relations depuis l'objet data
         in_channels = data.x.shape[1]
         num_relations = data.edge_type.max().item() + 1
@@ -28,7 +28,6 @@ class RGCNEncoder(nn.Module):
             input_dim = in_channels if i == 0 else out_channels[i - 1]
             # Ajouter le nombre de bases spécifié dans chaque couche RGCN
             self.convs.append(RGCNConv(input_dim, out_channels[i], num_relations, num_bases=num_bases))
-
         # Instancier ReLU pour l'activation
         self.relu = nn.ReLU()
 

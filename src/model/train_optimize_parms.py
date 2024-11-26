@@ -19,10 +19,37 @@ from GraphDataPreparation import GraphDataPreparation
 from MC2GEA import  MC2GEA
 from tqdm import tqdm
 import wandb
+import torch
+import random
+import numpy as np
+seed = 42
+torch.manual_seed(seed)
+torch.cuda.manual_seed(seed)
+np.random.seed(seed)
+random.seed(seed)
+import torch
+import random
+import numpy as np
+
+def set_seed(seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+
+set_seed(42)  # Remplace 42 par la graine que tu souhaites utiliser.
+
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
+
 wandb.require("legacy-service")
 wandb.login(key="c278e62d2025b60ff8b984a40f7b62b697f9b4fd", relogin=True)
 # Configuration du projet wandb
-wandb_project_name = "MC2GAE_hyperparam_optimization_contrastive"
+wandb_project_name = "MC2GAE_Reconstruct_X_similarity"
 
 # Chargement des données
 device = config['device']
@@ -38,14 +65,14 @@ data = Data(x=data.x, edge_index=data.edge_index, edge_type=data.edge_type).to(d
 # Dictionnaire pour stocker les combinaisons d'hyperparamètres
 
 hyperparams_grid = {
-    "num_bases": [10, 55, 110],  # Exemple de valeurs pour num_bases
-    "out_channels": [[600,500],[500, 250], [128, 64], [50,25]]  # Exemple de valeurs pour out_channels
+    "num_bases": [10],  # Exemple de valeurs pour num_bases
+    "out_channels": [[640,512],[512, 256], [256, 128], [64,32]]  # Exemple de valeurs pour out_channels
 }
 
-training_options = ["contrastive"]
+training_options = ["Reconstruct_X"]
 
 # Fonction de sauvegarde de modèle incluant les hyperparamètres dans le nom du fichier
-def save_model_with_hyperparams(model, optimizer, epoch, num_bases, out_channels, save_dir="checkpoints_contrastive",
+def save_model_with_hyperparams(model, optimizer, epoch, num_bases, out_channels, save_dir="checkpoints_Recons_X_similarity",
                                 is_best=False):
     os.makedirs(save_dir, exist_ok=True)
     base_filename = f"best_model_bases{num_bases}_channels{'-'.join(map(str, out_channels))}"
@@ -64,7 +91,7 @@ def save_model_with_hyperparams(model, optimizer, epoch, num_bases, out_channels
 
 # Fonction d'entraînement avec suivi de la perte dans wandb
 def train_with_hyperparams(model, data, optimizer, num_epochs, num_bases, out_channels, save_every=10,
-                           save_dir="checkpoints_contrastive", training_options = ["contrastive"]):
+                           save_dir="checkpoints_Recons_X_similarity", training_options = training_options):
     model.train()
     best_loss = float('inf')
 
@@ -79,8 +106,12 @@ def train_with_hyperparams(model, data, optimizer, num_epochs, num_bases, out_ch
 
     G2_data_loader = GraphDataLoader(masked_edges_data, num_neighbors=config["num_neighbors"],
                                      batch_size=config["batch_size"], shuffle=config["shuffle"]).get_loader()
+
+
     for epoch in range(num_epochs):
         total_loss = 0
+        total_mse_loss = 0
+        total_cos_loss = 0
         with tqdm(total=len(G1_data_loader), desc=f"Epoch {epoch + 1}/{num_epochs}", unit="batch") as batch_pbar:
             if "contrastive" in training_options:
                 for G1_batch, G2_batch in zip(G1_data_loader, G2_data_loader):
@@ -92,12 +123,33 @@ def train_with_hyperparams(model, data, optimizer, num_epochs, num_bases, out_ch
                     mask_G2 = torch.isin(n_id_2, G2_batch.input_id)
                     H1_batch = model.encode(G1_batch)
                     H2_batch = model.encode(G2_batch)
-                    loss = model.contrastive_loss(H1_batch[mask_G1], H2_batch[mask_G2])
+                    H1_projected = model.projector_fc1(H1_batch)[mask_G1]
+                    H2_projected = model.projector_fc2(H2_batch)[mask_G2]
+                    # Compute contrastive loss
+                    loss = model.contrastive_loss(H1_projected, H2_projected)
                     loss.backward()
                     optimizer.step()
                     total_loss += loss.item()
                     batch_pbar.set_postfix(batch_loss=loss.item())
                     batch_pbar.update(1)
+                    # loss = model.contrastive_loss(H1_batch[mask_G1], H2_batch[mask_G2])
+                    # loss.backward()
+                    # optimizer.step()
+                    # total_loss += loss.item()
+                    # batch_pbar.set_postfix(batch_loss=loss.item())
+                    # batch_pbar.update(1)
+
+            elif "reconstruct_r" in training_options:
+                for G1_batch, G2_batch in zip(G1_data_loader, G2_data_loader):
+                    G1_batch.to(device)
+                    G2_batch.to(device)
+                    n_id_1 = G1_batch.n_id  ## The global node index for every sampled node
+                    mask_G1 = torch.isin(n_id_1, G1_batch.input_id)  ## mask to get only the embedding of input_id nodes
+                    n_id_2 = G2_batch.n_id
+                    mask_G2 = torch.isin(n_id_2, G2_batch.input_id)
+                    H1_batch = model.encode(G1_batch)
+                    H2_batch = model.encode(G2_batch)
+
             else:
                 for batch in G1_data_loader:
                     batch = batch.to(device)
@@ -108,18 +160,24 @@ def train_with_hyperparams(model, data, optimizer, num_epochs, num_bases, out_ch
                     # print(batch)
                     reconstructed_x = model.decode_x(batch, embeddings)
                     reconstructed_x = reconstructed_x[mask]
-                    loss = model.recon_x_loss(batch.x[mask], reconstructed_x)
+                    # Calcul de la perte avec conservation de la similarité
+                    mse_loss, cos_loss = model.recon_x_loss(batch.x[mask], reconstructed_x, embeddings[mask])
+                    loss = mse_loss + config["cosine_loss_weight"] * cos_loss
                     loss.backward()
                     optimizer.step()
                     total_loss += loss.item()
+                    total_mse_loss += mse_loss.item()
+                    total_cos_loss += cos_loss.item()
                     batch_pbar.set_postfix(batch_loss=loss.item())
                     batch_pbar.update(1)
 
         avg_loss = total_loss / len(G1_data_loader)
+        avg_mse_loss = total_mse_loss / len(G1_data_loader)
+        avg_cos_loss = total_cos_loss / len(G1_data_loader)
 
         # Loguer la perte de chaque époque dans wandb
-        if "contrastive" in training_options and len(training_options) == 1:
-            wandb.log({"epoch": epoch + 1, "Reconstruct_X_loss": avg_loss})
+        if "Reconstruct_X" not in training_options and len(training_options) == 1:
+            wandb.log({"epoch": epoch + 1, "global loss": avg_loss, "mse_loss":avg_mse_loss,"cos_loss": avg_cos_loss})
         elif "contrastive" in training_options and len(training_options) == 1:
             wandb.log({"epoch": epoch + 1, "Contrastive_loss": avg_loss})
 

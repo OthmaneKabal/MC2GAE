@@ -1,16 +1,17 @@
 import torch
 config = {
-    "device": "cuda" if torch.cuda.is_available() else "cpu",
-    "out_channels": [600,500],
+    "device": "cuda" if torch.cuda.is_available() else "cpu", #
+    "out_channels": [500,250],
     "num_layers": 2,
-    "num_bases": 110,
+    "num_bases": 10,
     "alpha": 0.01,
     "max_masking_percentage": 0.3,
     "total_drop_rate": 0.2,
     "learning_rate": 0.001,
     "batch_size": 256,
+    "cosine_loss_weight": 0.5,
     "shuffle": False,
-    "num_neighbors": [214, 100],
+    "num_neighbors": [100, 50],
     "num_epochs": 150,
     "Entities_path": "../outputs/EntitiesBertEmbeddingAugmented.pickle",
     "Edges_path": "../outputs/PredicatesBertEmbeddingAugmented.pickle",
