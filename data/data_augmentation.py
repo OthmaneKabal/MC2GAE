@@ -1,7 +1,7 @@
 import torch
 from torch_geometric.data import Data
 
-def view_partial_features_masking(data, max_masking_percentage=0.3):
+def view_partial_features_masking(data, max_masking_percentage=0.3, random_seed=42):
     """
     Génère une vue augmentée du graphe en appliquant un masquage partiel exact
     sur les caractéristiques des nœuds, respectant le pourcentage de masquage pour chaque nœud.
@@ -14,7 +14,14 @@ def view_partial_features_masking(data, max_masking_percentage=0.3):
     - data_augmented : une copie de l'objet Data avec les caractéristiques des nœuds masquées
     """
     # Vérifier l'appareil et déplacer tous les éléments de data sur le même appareil
+
+
+
     device = data.x.device
+    torch.manual_seed(random_seed)
+    if device == "cuda":
+        torch.cuda.manual_seed_all(random_seed)
+
     data.x = data.x.to(device)
     data.edge_index = data.edge_index.to(device)
     if data.edge_attr is not None:
@@ -49,8 +56,27 @@ def view_partial_features_masking(data, max_masking_percentage=0.3):
 
     return data_augmented
 
-def relation_based_edge_dropping(data, total_drop_rate):
+
+def relation_based_edge_dropping_balanced(data, total_drop_rate, max_drop_fraction_per_node=0.3, random_seed=42):
+
+    """
+    Suppression équilibrée des relations dans un graphe en limitant les suppressions par nœud
+    tout en évitant l'isolation des nœuds.
+
+    :param data: Objet Data contenant le graphe.
+    :param total_drop_rate: Fraction globale d'arêtes à supprimer.
+    :param max_drop_fraction_per_node: Fraction maximale d'arêtes pouvant être supprimées par nœud.
+    :return: Nouvel objet Data avec les arêtes mises à jour, indices supprimés, et types supprimés.
+    """
     # Créer des copies pour éviter de modifier l'objet data original
+    device = data.x.device
+    torch.manual_seed(random_seed)
+    if device == "cuda":
+        torch.cuda.manual_seed_all(random_seed)
+
+    assert 0 <= total_drop_rate <= 1, "total_drop_rate doit être entre 0 et 1"
+    assert 0 <= max_drop_fraction_per_node <= 1, "max_drop_fraction_per_node doit être entre 0 et 1"
+
     edge_index = data.edge_index.clone()
     edge_type = data.edge_type.clone()
 
@@ -65,32 +91,51 @@ def relation_based_edge_dropping(data, total_drop_rate):
     edges_to_drop_per_type = {edge_type.item(): int(num_edges_to_drop * (count.item() / total_edges))
                               for edge_type, count in zip(edge_types, edge_counts)}
 
-    # Liste pour stocker les indices des arêtes à garder
+    # Suivi des arêtes à garder
     keep_edge_indices = list(range(total_edges))
+    removed_edge_indices = []  # Indices des arêtes supprimées
 
-    # Pour chaque type de relation, tirer aléatoirement les indices d'arêtes à supprimer
+    # Pour chaque type de relation, supprimer les arêtes de manière équilibrée
     for edge_type_value, edges_to_drop in edges_to_drop_per_type.items():
         # Trouver les indices des arêtes de ce type
         edge_indices_of_type = torch.where(edge_type == edge_type_value)[0].tolist()
 
-        # Tirer aléatoirement le nombre requis d'indices à supprimer
+        # Indices à supprimer
         indices_to_remove = []
+
         while len(indices_to_remove) < edges_to_drop and edge_indices_of_type:
             candidate = edge_indices_of_type.pop(torch.randint(0, len(edge_indices_of_type), (1,)).item())
 
-            # Vérifier la contrainte de non-isolation des nœuds
+            # Vérifier la contrainte de suppression par nœud
             src, dst = edge_index[:, candidate]
-            if torch.sum(edge_index == src).item() > 1 and torch.sum(edge_index == dst).item() > 1:
+            remaining_edges_src = len(torch.where(edge_index[0] == src)[0]) + len(
+                torch.where(edge_index[1] == src)[0])
+            remaining_edges_dst = len(torch.where(edge_index[0] == dst)[0]) + len(
+                torch.where(edge_index[1] == dst)[0])
+
+            max_removable_edges_src = int(remaining_edges_src * max_drop_fraction_per_node)
+            max_removable_edges_dst = int(remaining_edges_dst * max_drop_fraction_per_node)
+
+            # Vérifier également la condition de non-isolation des nœuds
+            if (remaining_edges_src > max_removable_edges_src and
+                    remaining_edges_dst > max_removable_edges_dst and
+                    remaining_edges_src > 1 and
+                    remaining_edges_dst > 1):
                 indices_to_remove.append(candidate)
 
-        # Supprimer les indices sélectionnés du jeu d'arêtes à garder
+        # Mettre à jour les listes des arêtes gardées et supprimées
+        removed_edge_indices.extend(indices_to_remove)
         keep_edge_indices = [idx for idx in keep_edge_indices if idx not in indices_to_remove]
+
+    # Récupérer les types des arêtes supprimées
+    removed_edge_types = edge_type[removed_edge_indices]
 
     # Création d'un nouvel objet Data avec les arêtes mises à jour
     new_data = Data(
-        x=data.x,  # Copie des noeuds
+        x=data.x,  # Copie des nœuds
         edge_index=edge_index[:, keep_edge_indices],  # Arêtes mises à jour
         edge_type=edge_type[keep_edge_indices],  # Types d'arêtes mis à jour
     )
 
-    return new_data
+    return new_data, torch.tensor(removed_edge_indices), removed_edge_types
+

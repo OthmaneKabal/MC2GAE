@@ -31,7 +31,8 @@ class RGCNDecoder(nn.Module):
             self.convs.append(RGCNConv(input_dim, output_dim, data.edge_type.max().item() + 1, num_bases=num_bases))
 
         # Instancier Leaky ReLU avec le coefficient alpha
-        self.leaky_relu = nn.LeakyReLU(negative_slope=alpha)
+        self.relu = nn.ReLU()
+
 
     def reset_parameters(self):
         """Réinitialise les paramètres des couches de décodeur."""
@@ -54,8 +55,12 @@ class RGCNDecoder(nn.Module):
         edge_index, edge_type = data.edge_index, data.edge_type
 
         # Appliquer chaque couche RGCN avec une activation ReLU entre chaque couche
-        for conv in self.convs:
-            x = conv(x, edge_index, edge_type)
-            x = self.leaky_relu(x)
 
+        for i, conv in enumerate(self.convs):
+            x = conv(x, edge_index, edge_type)
+            # Appliquer ReLU sauf après la dernière couche
+            if i < len(self.convs) - 1:
+                x = self.relu(x)
+        x = nn.functional.normalize(x, p=2, dim=1)
         return x
+

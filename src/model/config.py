@@ -8,7 +8,7 @@ config = {
     "max_masking_percentage": 0.3,
     "total_drop_rate": 0.2,
     "learning_rate": 0.001,
-    "batch_size": 256,
+    "batch_size": 512,
     "cosine_loss_weight": 0.5,
     "shuffle": False,
     "num_neighbors": [100, 50],

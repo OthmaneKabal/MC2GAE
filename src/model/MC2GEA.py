@@ -51,34 +51,47 @@ class MC2GEA(nn.Module):
         reconstructed_x = self.x_decoder(data, embeddings)
         return reconstructed_x
 
+    def recon_x_loss(self, x, reconstructed_x, embeddings, k = 256):
+        """
+        Calcule la perte de reconstruction et minimise l'écart des similarités cosinus entre X et Z.
 
-    def recon_x_loss(self, x, reconstructed_x, embeddings, k = 15):
-        # loss_fn = nn.MSELoss()
-        # return loss_fn(reconstructed_x, x)
+        Args:
+            x: Les vraies caractéristiques des nœuds.
+            reconstructed_x: Les caractéristiques reconstruites des nœuds.
+            embeddings: Les embeddings des nœuds.
+            k: Nombre de paires les plus similaires à considérer.
 
+        Returns:
+            mse_loss: La perte de reconstruction.
+            similarity_loss: La perte liée à l'écart de similarités.
+        """
+        # Perte MSE standard
         loss_fn = nn.MSELoss()
         mse_loss = loss_fn(reconstructed_x, x)
 
-        # Calcul de la similarité cosinus entre tous les nœuds du batch
-        similarity_matrix = cosine_similarity(embeddings.unsqueeze(1), embeddings.unsqueeze(0), dim=-1)
+        # Calcul de la similarité cosinus dans X (caractéristiques originales)
+        similarity_matrix_x = cosine_similarity(x.unsqueeze(1), x.unsqueeze(0), dim=-1)
 
-        # Sélectionner les k paires de nœuds les plus similaires
-        indices = torch.triu_indices(similarity_matrix.size(0), similarity_matrix.size(1), 1)
-        values = similarity_matrix[indices[0], indices[1]]
-        topk_values, topk_indices = torch.topk(values, k=min(k, len(values)), largest=True)
+        # Sélectionner les k paires les plus similaires dans X
+        indices = torch.triu_indices(similarity_matrix_x.size(0), similarity_matrix_x.size(1), 1)
+        values_x = similarity_matrix_x[indices[0], indices[1]]
+        topk_values_x, topk_indices_x = torch.topk(values_x, k=min(k, len(values_x)), largest=True)
 
-        # Embeddings des nœuds les plus similaires
-        similar_pairs = [(indices[0][idx], indices[1][idx]) for idx in topk_indices]
-        cos_loss = 0
-        for i, j in similar_pairs:
-            cos_loss += 1 - cosine_similarity(embeddings[i].unsqueeze(0), embeddings[j].unsqueeze(0), dim=-1).mean()
+        # Embeddings des paires les plus similaires (dans Z)
+        similar_pairs_x = [(indices[0][idx], indices[1][idx]) for idx in topk_indices_x]
+        similarity_loss = 0
+        for i, j in similar_pairs_x:
+            # Similarité cosinus dans Z
+            sim_z = cosine_similarity(embeddings[i].unsqueeze(0), embeddings[j].unsqueeze(0), dim=-1)
+
+            # Différence entre similarités dans X et Z
+            similarity_loss += (sim_z - similarity_matrix_x[i, j]).abs()
 
         # Moyenne sur toutes les paires
-        cos_loss /= len(similar_pairs)
+        similarity_loss /= len(similar_pairs_x)
 
-        # Combiner la perte MSE et la perte cosinus
-        # total_loss = mse_loss + config["cosine_loss_weight"] * cos_loss
-        return mse_loss, cos_loss
+        # Retourner les pertes MSE et similarité
+        return mse_loss, similarity_loss
 
 
 

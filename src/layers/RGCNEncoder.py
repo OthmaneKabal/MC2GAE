@@ -50,9 +50,10 @@ class RGCNEncoder(nn.Module):
         # Extraire les attributs de l'objet Data
         x, edge_index, edge_type = data.x, data.edge_index, data.edge_type
 
-        # Appliquer chaque couche RGCN avec une activation ReLU entre chaque couche
-        for conv in self.convs:
+        for i, conv in enumerate(self.convs):
             x = conv(x, edge_index, edge_type)
-            x = self.relu(x)
-
+            # Appliquer ReLU sauf après la dernière couche
+            if i < len(self.convs) - 1:
+                x = self.relu(x)
+        x = nn.functional.normalize(x, p=2, dim=1)
         return x

@@ -399,7 +399,7 @@ Gs_path = config["Gs_path_no_other"]
 thresholds_list = [0.6,0.7,0.8]
 
 
-evaluate_all(KG_path, Gs_path, "checkpoints/checkpoints_Reconstruct_X", config, embedding_model = "GNN", with_other = False, thresholds_list = thresholds_list)
+evaluate_all(KG_path, Gs_path, "checkpoints/checkpoints_Recons_X_similarity", config, embedding_model = "GNN", with_other = False, thresholds_list = thresholds_list)
 
 # rows = []
 # for model_name, metrics in res.items():
