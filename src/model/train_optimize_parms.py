@@ -4,6 +4,12 @@ import os
 
 import torch
 
+from src.layers.ConvE import ConvE
+from src.model.utils.ConvENegativeSampling import generate_negatives, get_positives
+
+from src.model.utils.ConvEDataLoader import create_data_loader
+
+from src.model.utils.utils import generate_relation_embeddings_tensor, removed_edges_train_test_split
 
 # Ajouter les dossiers 'layers' et 'data' au chemin Python
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'layers')))
@@ -70,10 +76,10 @@ data = Data(x=data.x, edge_index=data.edge_index, edge_type=data.edge_type).to(d
 
 hyperparams_grid = {
     "num_bases": [10],  # Exemple de valeurs pour num_bases
-    "out_channels": [[640,512],[512, 256], [256, 128], [64,32]]  # Exemple de valeurs pour out_channels
+    "out_channels": [[768,768],[512, 256], [256, 128], [64,32]]  # Exemple de valeurs pour out_channels
 }
 
-training_options = ["Reconstruct_X"]
+training_options = ["reconstruct_r"]
 
 # Fonction de sauvegarde de modèle incluant les hyperparamètres dans le nom du fichier
 def save_model_with_hyperparams(model, optimizer, epoch, num_bases, out_channels, save_dir="checkpoints_Recons_X_similarity_v1",
@@ -95,30 +101,47 @@ def save_model_with_hyperparams(model, optimizer, epoch, num_bases, out_channels
 
 # Fonction d'entraînement avec suivi de la perte dans wandb
 def train_with_hyperparams(model, data, optimizer, num_epochs, num_bases, out_channels, save_every=10,
-                           save_dir="checkpoints_Recons_X_similarity_v1", training_options = training_options):
-    model.train()
+                           save_dir="checkpoints_Recons_X_similarity_v1", training_options = training_options, device = config['device']):
+
+    unique_relations = list(set([i.item() for i in data.edge_type]))
+    relation_embeddings = generate_relation_embeddings_tensor(unique_relations, out_channels[1], device,
+                                                              seed=42)
+
+
     best_loss = float('inf')
 
     # Application du masque de features
     print("\nmask_features...\n")
 
     masked_features_data= view_partial_features_masking(data)
+
+
     print("\nEdge_dripping...\n")
     masked_edges_data, removed_edge_indices, removed_edge_types  = relation_based_edge_dropping_balanced(data, config["total_drop_rate"], max_drop_fraction_per_node=0.3, random_seed=42)
 
+    train_removed_edges_indices, test_removed_edges_indices, train_relations, test_relations = removed_edges_train_test_split(removed_edge_indices, removed_edge_types)
+    print(len(removed_edge_indices),"---")
+
+
+    set_seed(42)
     G1_data_loader = GraphDataLoader(masked_features_data, num_neighbors=config["num_neighbors"],
                                      batch_size=config["batch_size"], shuffle=config["shuffle"]).get_loader()
 
-    G2_data_loader = GraphDataLoader(masked_edges_data, num_neighbors=config["num_neighbors"],
+    G2_data_loader = GraphDataLoader(data, num_neighbors=config["num_neighbors"],
                                      batch_size=config["batch_size"], shuffle=config["shuffle"]).get_loader()
 
 
+
+
+
     for epoch in range(num_epochs):
+        model.train()
         total_loss = 0
         total_mse_loss = 0
         total_cos_loss = 0
-        with tqdm(total=len(G1_data_loader), desc=f"Epoch {epoch + 1}/{num_epochs}", unit="batch") as batch_pbar:
-            if "contrastive" in training_options:
+
+        if "contrastive" in training_options:
+            with tqdm(total=len(G1_data_loader), desc=f"Epoch {epoch + 1}/{num_epochs}", unit="batch") as batch_pbar:
                 for G1_batch, G2_batch in zip(G1_data_loader, G2_data_loader):
                     G1_batch.to(device)
                     G2_batch.to(device)
@@ -144,77 +167,107 @@ def train_with_hyperparams(model, data, optimizer, num_epochs, num_bases, out_ch
                     # batch_pbar.set_postfix(batch_loss=loss.item())
                     # batch_pbar.update(1)
 
-            elif "reconstruct_r" in training_options:
+        elif "reconstruct_r" in training_options:
+            with tqdm(total=len(G2_data_loader), desc=f"Epoch {epoch + 1}/{num_epochs}", unit="batch") as main_pbar:
+                nb_intersections = 0
+                dest_tensor = data.edge_index[1][removed_edge_indices].to(device)  # Déplacer sur GPU
+
                 for G2_batch in G2_data_loader:
+                    G2_batch.to(device)  # Déplacer tout le batch sur GPU
 
+                    # Déplacer les indices d'arêtes supprimées au même appareil
+                    removed_edge_indices = removed_edge_indices.to(G2_batch.e_id.device)
+
+                    # Identifier les arêtes du batch correspondant aux arêtes supprimées
+                    intersect_edge = G2_batch.e_id[torch.isin(G2_batch.e_id, removed_edge_indices)]
+
+                    # Identifier les nœuds cibles dans le batch
+                    intersect_cilbes = G2_batch.n_id[G2_batch.input_id].to(device)
+
+                    # Trouver les intersections entre les arêtes et les nœuds cibles
+                    intersection = intersect_edge[torch.isin(intersect_edge, intersect_cilbes)]
+
+                    # Mettre à jour le compteur si des intersections sont trouvées
+                    if len(intersection) > 0:
+                        nb_intersections += len(intersection)
+                exit(555555)
+                if nb_intersections == 0:
                     G2_batch.to(device)
+                    optimizer.zero_grad()
                     H_2 = model.encode(G2_batch)
-                    e1_pos, e2_pos = G2_batch.edge_index[0], G2_batch.edge_index[1]
-                    rel_pos = G2_batch.edge_type
+                    # Générer les triplets négatifs et positifs
+                    negative_triplets = generate_negatives(data, G2_batch, negative_ratio=1)
+                    positive_triplets = get_positives(G2_batch)
+                    # Générer les embeddings de relations
 
-                    # Générer des triplets négatifs
-                    neg_edges = negative_sampling(
-                        edge_index=G2_batch.edge_index,
-                        num_nodes=G2_batch.x.size(0),
-                        num_neg_samples=G2_batch.edge_index.size(1)  # Nombre d'échantillons négatifs = nombre d'arêtes
+                    # Créer le DataLoader pour les batchs ConvE
+                    convE_loader = create_data_loader(positive_triplets, negative_triplets, H_2, relation_embeddings,
+                                                      config["batch_size"]*2, shuffle=True)
+
+                    convE_loss = 0
+                    convE_batches_processed = 0
+                    avg_convE_loss = 0
+                    for convE_batch in convE_loader:
+                        # Prédictions et calcul de la perte
+                        preds = model.r_decoder(convE_batch[0], convE_batch[1], convE_batch[2])
+                        loss = model.recon_r_loss(preds, convE_batch[3].to(device))
+                        # Backpropagation avec accumulation des gradients
+                        loss.backward(retain_graph=True)
+                        # Accumuler la perte totale pour ConvE
+                        convE_loss += loss.item()
+                        convE_batches_processed += 1
+                        # Mise à jour de la barre principale avec les détails du batch ConvE
+                        main_pbar.set_postfix(
+                            convE_batches=f"{convE_batches_processed}/{len(convE_loader)}"
+                        )
+
+                    # Optimisation après accumulation
+                    optimizer.step()
+                    avg_convE_loss += convE_loss/convE_batches_processed
+                    total_loss += avg_convE_loss
+                    # Mise à jour de la barre principale pour chaque batch du graphe
+                    main_pbar.update(1)
+                    main_pbar.set_postfix(
+                        convE_batches=f"{convE_batches_processed}/{len(convE_loader)}",
+                        total_loss=f"{convE_loss:.4f}"
                     )
-                    e1_neg, e2_neg = neg_edges[0], neg_edges[1]
-                    rel_neg = torch.randint(0, rel_pos.max() + 1, (e1_neg.size(0),), device=batch.x.device)
-
-                    # Combine les triplets positifs et négatifs
-                    e1 = torch.cat([e1_pos, e1_neg], dim=0)
-                    e2 = torch.cat([e2_pos, e2_neg], dim=0)
-                    rel = torch.cat([rel_pos, rel_neg], dim=0)
-
-                    # Labels : 1 pour les positifs, 0 pour les négatifs
-                    labels = torch.cat([torch.ones(len(e1_pos)), torch.zeros(len(e1_neg))], dim=0).to(batch.x.device)
-
-                    # Passer les triplets dans le décodeur (ConvE)
-                    scores = model.decode_r(e1, rel, e2)
-
-                    # Calcul de la perte de classification binaire
-                    loss_fn = nn.BCELoss()
-                    loss = loss_fn(scores, labels)
-
-                    # Optimisation
-                    optimizer.zero_grad()
-                    loss.backward()
-                    optimizer.step()
+                avg_loss = total_loss / len(G2_data_loader)
 
 
 
+                # Loguer la perte de chaque époque dans wandb
+                if "reconstruct_r" in training_options and len(training_options) == 1:
+                    wandb.log({"epoch": epoch + 1, "global loss": avg_loss})
 
 
+        else:
 
-
-
-            else:
-                for batch in G1_data_loader:
-                    batch = batch.to(device)
-                    n_id = batch.n_id ## The global node index for every sampled node
-                    mask = torch.isin(n_id, batch.input_id) ## mask to get only the embedding of input_id nodes
-                    optimizer.zero_grad()
-                    embeddings = model.encode(batch)
-                    # print(batch)
-                    reconstructed_x = model.decode_x(batch, embeddings)
-                    reconstructed_x = reconstructed_x[mask]
-                    # Calcul de la perte avec conservation de la similarité
-                    mse_loss, cos_loss = model.recon_x_loss(batch.x[mask], reconstructed_x, embeddings[mask])
-                    loss = mse_loss + 2 * cos_loss
-                    loss.backward()
-                    optimizer.step()
-                    total_loss += loss.item()
-                    total_mse_loss += mse_loss.item()
-                    total_cos_loss += cos_loss.item()
-                    batch_pbar.set_postfix(batch_loss=loss.item())
-                    batch_pbar.update(1)
+            for batch in G1_data_loader:
+                batch = batch.to(device)
+                n_id = batch.n_id ## The global node index for every sampled node
+                mask = torch.isin(n_id, batch.input_id) ## mask to get only the embedding of input_id nodes
+                optimizer.zero_grad()
+                embeddings = model.encode(batch)
+                # print(batch)
+                reconstructed_x = model.decode_x(batch, embeddings)
+                reconstructed_x = reconstructed_x[mask]
+                # Calcul de la perte avec conservation de la similarité
+                mse_loss, cos_loss = model.recon_x_loss(batch.x[mask], reconstructed_x, embeddings[mask])
+                loss = mse_loss + 2 * cos_loss
+                loss.backward()
+                optimizer.step()
+                total_loss += loss.item()
+                total_mse_loss += mse_loss.item()
+                total_cos_loss += cos_loss.item()
+                batch_pbar.set_postfix(batch_loss=loss.item())
+                batch_pbar.update(1)
 
         avg_loss = total_loss / len(G1_data_loader)
         avg_mse_loss = total_mse_loss / len(G1_data_loader)
         avg_cos_loss = total_cos_loss / len(G1_data_loader)
 
         # Loguer la perte de chaque époque dans wandb
-        if "Reconstruct_X" not in training_options and len(training_options) == 1:
+        if "Reconstruct_X"  in training_options and len(training_options) == 1:
             wandb.log({"epoch": epoch + 1, "global loss": avg_loss, "mse_loss":avg_mse_loss,"cos_loss": avg_cos_loss})
         elif "contrastive" in training_options and len(training_options) == 1:
             wandb.log({"epoch": epoch + 1, "Contrastive_loss": avg_loss})
@@ -252,8 +305,11 @@ for num_bases in hyperparams_grid["num_bases"]:
         # Initialiser le modèle avec les hyperparamètres actuels
         RGCN_encoder = RGCNEncoder(data, out_channels, config["num_layers"], num_bases).to(device)
         RGCN_decoder = RGCNDecoder(RGCN_encoder, data, num_bases, config["alpha"]).to(device)
-        autoencoder = MC2GEA(RGCN_encoder, RGCN_decoder).to(device)
+        r_decoder = ConvE(config["convE_config"])
+
+        autoencoder = MC2GEA(RGCN_encoder, RGCN_decoder, r_decoder = r_decoder).to(device)
         # Optimizer
+
         optimizer = optim.Adam(autoencoder.parameters(), lr=config["learning_rate"])
 
         # Lancer l'entraînement avec les hyperparamètres actuels

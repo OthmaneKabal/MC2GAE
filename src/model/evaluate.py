@@ -399,26 +399,26 @@ Gs_path = config["Gs_path_no_other"]
 thresholds_list = [0.6,0.7,0.8]
 
 
-evaluate_all(KG_path, Gs_path, "checkpoints/checkpoints_Recons_X_similarity", config, embedding_model = "GNN", with_other = False, thresholds_list = thresholds_list)
+res = evaluate_all_save_best(KG_path, Gs_path, "checkpoints/checkpoints_Reconstruct_X", config, embedding_model = "GNN", with_other = False, thresholds_list = thresholds_list)
 
-# rows = []
-# for model_name, metrics in res.items():
-#     for metric_type, values in metrics.items():
-#         row = {
-#             "Model Name": model_name,
-#             "Threshold": values["threshold"],
-#             "Accuracy": values["accuracy"],
-#             "F1-score": values["f1_score"],
-#             "Precision": values["precision"],
-#             "Recall": values["recall"]
-#         }
-#         rows.append(row)
+rows = []
+for model_name, metrics in res.items():
+    for metric_type, values in metrics.items():
+        row = {
+            "Model Name": model_name,
+            "Threshold": values["threshold"],
+            "Accuracy": values["accuracy"],
+            "F1-score": values["f1_score"],
+            "Precision": values["precision"],
+            "Recall": values["recall"]
+        }
+        rows.append(row)
 
-# # Creating the DataFrame
-# df_ = pd.DataFrame(rows)
-# file_path = 'GNN_with_no_other.xlsx'
-# df_.to_excel(file_path, index=False)
-# # print(df_)
+# Creating the DataFrame
+df_ = pd.DataFrame(rows)
+file_path = 'Recons_x_encoder_results.xlsx'
+df_.to_excel(file_path, index=False)
+# print(df_)
 
 
-# print(res)
+print(res)

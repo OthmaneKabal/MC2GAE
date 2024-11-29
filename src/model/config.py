@@ -8,7 +8,7 @@ config = {
     "max_masking_percentage": 0.3,
     "total_drop_rate": 0.2,
     "learning_rate": 0.001,
-    "batch_size": 512,
+    "batch_size": 1024,
     "cosine_loss_weight": 0.5,
     "shuffle": False,
     "num_neighbors": [100, 50],
@@ -28,7 +28,17 @@ config = {
                          'distributed computing',
                          'machine learning'
                         ],
-    "options": ["X"]
+    "options": ["X"],
+    "convE_config":{
+                    'embedding_dim': 768,
+                    'input_drop': 0.2,
+                    'hidden_drop': 0.3,
+                    'feat_drop': 0.2,
+                    'embedding_shape1': 32,  # Nouvelle valeur
+                    'hidden_size': 43648,    # ## 2048 ----> 123008 ; 768 ----> 43648
+                    'label_smoothing': 0.1,
+                    'use_bias': True,
+}
 }
 
 

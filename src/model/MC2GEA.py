@@ -1,9 +1,8 @@
 import torch
 from torch import nn, cosine_similarity
 from transformers.models.cvt.convert_cvt_original_pytorch_checkpoint_to_pytorch import embeddings
-
+import torch.nn.functional as F
 import ContrastiveLoss
-
 
 
 class MC2GEA(nn.Module):
@@ -101,9 +100,22 @@ class MC2GEA(nn.Module):
         cl_loss = c_l.contrastive_loss(H_1, H_2)
         return cl_loss
 
-    def recon_r(self, ):
-        pass
+    def recon_r(self, e1,rel,e2):
+        """
 
+        :param e1: head entity
+        :param rel: relation between e1 and e2
+        :param e2: tail entity
+        :return: score of triplet correctness
+        """
+        return self.r_decoder.forward(e1,rel,e2)
 
-    def recon_r_loss(self):
-        pass
+    def recon_r_loss(self, preds, labels):
+        """
+        :param preds: a tensor of prediction (triplet's score)
+        :param labels: true labels
+        :return: BCE loss
+        """
+
+        R_recons_loss =  F.binary_cross_entropy(preds, labels)
+        return R_recons_loss
