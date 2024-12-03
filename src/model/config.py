@@ -6,16 +6,16 @@ config = {
     "num_bases": 10,
     "alpha": 0.01,
     "max_masking_percentage": 0.3,
-    "total_drop_rate": 0.2,
+    "total_drop_rate": 0.1,
     "learning_rate": 0.001,
     "batch_size": 1024,
     "cosine_loss_weight": 0.5,
     "shuffle": False,
-    "num_neighbors": [100, 50],
+    "num_neighbors": [200, 50],
     "num_epochs": 150,
     "Entities_path": "../outputs/EntitiesBertEmbeddingAugmented.pickle",
     "Edges_path": "../outputs/PredicatesBertEmbeddingAugmented.pickle",
-    "KG_path": "../../data/graph_filtred_gpt_20.json",
+    "KG_path": "../../data/graph_filtred_gpt_20_tst.json",
     "Gs_path": "../../data/gs_vf.xlsx",
     "Gs_path_no_other": "../../data/gs_vf_no_other.xlsx",
     "core_concepts" : [  'data structure',
@@ -30,15 +30,16 @@ config = {
                         ],
     "options": ["X"],
     "convE_config":{
-                    'embedding_dim': 768,
+                    'embedding_dim': 32,
                     'input_drop': 0.2,
                     'hidden_drop': 0.3,
                     'feat_drop': 0.2,
                     'embedding_shape1': 32,  # Nouvelle valeur
-                    'hidden_size': 43648,    # ## 2048 ----> 123008 ; 768 ----> 43648
+                    'hidden_size': 27776,    # ## 2048 ----> 123008 ; 768 ----> 43648 ; 256 ----> 11904; 512 --> 27776 ; 128----> 3968
                     'label_smoothing': 0.1,
                     'use_bias': True,
-}
+                    },
+    "coresp_hidden_sizes":{768 : 43648, 512: 27776, 256: 11904, 128: 3968, 64:27776}
 }
 
 

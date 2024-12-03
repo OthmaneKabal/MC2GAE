@@ -144,3 +144,32 @@ def removed_edges_train_test_split(indices: torch.Tensor, labels: torch.Tensor, 
         test_labels = torch.tensor(labels_cpu[test_idx], device=output_device)
 
     return train_indices, test_indices, train_labels, test_labels
+
+#
+# def count_valid_elements(batch, removed):
+#     """
+#     Compte le nombre d'arêtes dans batch.e_id qui sont dans `removed` et dont
+#     le nœud de destination est présent dans batch.input_id.
+#
+#     Args:
+#         batch (dict): Contient les clés 'e_id', 'edge_index', et 'input_id'.
+#                       - e_id: Tensor des identifiants des arêtes.
+#                       - edge_index: Tensor [2, num_edges] représentant les arêtes du graphe.
+#                       - input_id: Tensor des nœuds cibles du batch.
+#         removed (Tensor): Tensor des indices d'arêtes à vérifier.
+#
+#     Returns:
+#         int: Nombre d'éléments qui satisfont la condition.
+#     """
+#     # Trouver les indices des arêtes dans removed
+#     mask = torch.isin(batch["e_id"], removed)
+#     indices = torch.nonzero(mask, as_tuple=True)[0]
+#
+#     # Obtenir les nœuds de destination des arêtes correspondantes
+#     dest_nodes = batch["edge_index"][1][indices]
+#
+#     # Vérifier si ces nœuds de destination sont dans batch.input_id
+#     is_in_input_id = torch.isin(dest_nodes, batch["input_id"])
+#
+#     # Retourner le nombre d'éléments qui satisfont la condition
+#     return is_in_input_id.sum().item()

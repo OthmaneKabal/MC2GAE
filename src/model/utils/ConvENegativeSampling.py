@@ -24,7 +24,8 @@ def generate_negatives(data, batch, negative_ratio=1, relation_weight=None):
     edge_index = batch.edge_index  # (2, num_edges)
     edge_type = batch.edge_type    # (num_edges,)
     num_nodes = batch.num_nodes
-    num_relations = batch.num_relations if hasattr(batch, "num_relations") else torch.max(edge_type).item() + 1
+    data_edge_type = data.edge_type
+    num_relations = batch.num_relations if hasattr(batch, "num_relations") else torch.max(data_edge_type).item() + 1
 
     positives = []
     negatives = []

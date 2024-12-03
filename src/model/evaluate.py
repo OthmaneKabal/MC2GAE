@@ -12,7 +12,7 @@ from src.layers.RGCNDecoder import RGCNDecoder
 from src.layers.RGCNEncoder import RGCNEncoder
 from src.layers.RGCNEncoder1 import RGCNEncoder1
 from src.model.MC2GEA import MC2GEA
-from src.model.utils import save_model, load_model_checkpoint, load_gold_standard_labels
+from src.model.utils.utils import save_model, load_model_checkpoint, load_gold_standard_labels
 from config import config
 import torch
 from torch import optim
@@ -113,7 +113,12 @@ def generate_gs_embeddings(graph_path, checkpoint_path, gs_path, core_concepts, 
         # Encoder le graphe
         with torch.no_grad():
              embeddings = model.encode(data)
-             # embeddings = model.decode_x(data,embeddings)
+             embeddings_decode = model.decode_x(data,embeddings)
+                # checkpoint_path
+             u.save_to_pickle("Hidden.pickle", embeddings)
+             u.save_to_pickle("Recons_X.pickle", embeddings_decode)
+             u.save_to_pickle("X.pickle", data.x)
+
             # embeddings = model.encoder(data.x, data.edge_index, data.edge_type)
             # print(embeddings[0])
     elif not emb_file:
@@ -399,26 +404,26 @@ Gs_path = config["Gs_path_no_other"]
 thresholds_list = [0.6,0.7,0.8]
 
 
-res = evaluate_all_save_best(KG_path, Gs_path, "checkpoints/checkpoints_Reconstruct_X", config, embedding_model = "GNN", with_other = False, thresholds_list = thresholds_list)
-
-rows = []
-for model_name, metrics in res.items():
-    for metric_type, values in metrics.items():
-        row = {
-            "Model Name": model_name,
-            "Threshold": values["threshold"],
-            "Accuracy": values["accuracy"],
-            "F1-score": values["f1_score"],
-            "Precision": values["precision"],
-            "Recall": values["recall"]
-        }
-        rows.append(row)
-
-# Creating the DataFrame
-df_ = pd.DataFrame(rows)
-file_path = 'Recons_x_encoder_results.xlsx'
-df_.to_excel(file_path, index=False)
-# print(df_)
+res = evaluate_all_save_best(KG_path, Gs_path, "checkpoints/best_X", config, embedding_model = "GNN", with_other = False, thresholds_list = thresholds_list)
+#
+# rows = []
+# for model_name, metrics in res.items():
+#     for metric_type, values in metrics.items():
+#         row = {
+#             "Model Name": model_name,
+#             "Threshold": values["threshold"],
+#             "Accuracy": values["accuracy"],
+#             "F1-score": values["f1_score"],
+#             "Precision": values["precision"],
+#             "Recall": values["recall"]
+#         }
+#         rows.append(row)
+#
+# # Creating the DataFrame
+# df_ = pd.DataFrame(rows)
+# file_path = 'Recons_x_encoder_results.xlsx'
+# df_.to_excel(file_path, index=False)
+# # print(df_)
 
 
 print(res)
