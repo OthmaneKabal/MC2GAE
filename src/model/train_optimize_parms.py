@@ -191,13 +191,13 @@ def train_with_hyperparams(model, data, optimizer, num_epochs, num_bases, out_ch
 
     print("\nEdge_dripping...\n")
     masked_edges_data, removed_edge_indices, removed_edge_types  = relation_based_edge_dropping_balanced(data, config["total_drop_rate"], max_drop_fraction_per_node=0.3, random_seed=42)
-    removed_edge_indices = removed_edge_indices.to(device)
 
 
-    # train_removed_edges_indices, test_removed_edges_indices, train_relations, test_relations = removed_edges_train_test_split(removed_edge_indices, removed_edge_types)
+
+    train_removed_edges_indices, test_removed_edges_indices, train_relations, test_relations = removed_edges_train_test_split(removed_edge_indices, removed_edge_types)
     # print(len(removed_edge_indices),"---")
-
-
+    removed_edge_indices = train_removed_edges_indices.to(device)
+    test_removed_edges_indices = test_removed_edges_indices.to(device)
     set_seed(42)
     G1_data_loader = GraphDataLoader(masked_features_data, num_neighbors=config["num_neighbors"],
                                      batch_size=config["batch_size"], shuffle=config["shuffle"]).get_loader()
@@ -343,7 +343,7 @@ def train_with_hyperparams(model, data, optimizer, num_epochs, num_bases, out_ch
                     shuffle=False
                 )
 
-                test_avg_loss, test_accuracy, test_recall, test_precision, test_f1 = evaluate_ConvE(model, data, test_data_loader, removed_edge_indices, device, relation_embeddings)
+                test_avg_loss, test_accuracy, test_recall, test_precision, test_f1 = evaluate_ConvE(model, data, test_data_loader, test_removed_edges_indices, device, relation_embeddings)
 
 
                 if "reconstruct_r" in training_options and len(training_options) == 1:
