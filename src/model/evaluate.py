@@ -8,6 +8,7 @@ from sympy import false
 from torch_geometric.nn import DeepGraphInfomax
 
 from data.GraphDataPreparation import GraphDataPreparation
+from src.layers.ConvE import ConvE
 from src.layers.RGCNDecoder import RGCNDecoder
 from src.layers.RGCNEncoder import RGCNEncoder
 from src.layers.RGCNEncoder1 import RGCNEncoder1
@@ -90,7 +91,11 @@ def generate_gs_embeddings(graph_path, checkpoint_path, gs_path, core_concepts, 
         RGCN_encoder = RGCNEncoder(data, config["out_channels"], config["num_layers"], config["num_bases"]).to(
             config["device"])
         RGCN_decoder = RGCNDecoder(RGCN_encoder, data, config["num_bases"], config["alpha"]).to(config["device"])
-        autoencoder = MC2GEA(RGCN_encoder, RGCN_decoder).to(config["device"])
+        config["convE_config"]["embedding_dim"] = config["out_channels"][1]
+        config["convE_config"]["hidden_size"] = config["coresp_hidden_sizes"][config["out_channels"][1]]
+        r_decoder = ConvE(config["convE_config"])
+
+        autoencoder = MC2GEA(RGCN_encoder, RGCN_decoder, r_decoder).to(config["device"])
 
         # RGCN_encoder = RGCNEncoder1(data, config["out_channels"], config["num_layers"], config["num_bases"]).to(
         #     config["device"])
@@ -113,11 +118,11 @@ def generate_gs_embeddings(graph_path, checkpoint_path, gs_path, core_concepts, 
         # Encoder le graphe
         with torch.no_grad():
              embeddings = model.encode(data)
-             embeddings_decode = model.decode_x(data,embeddings)
-                # checkpoint_path
-             u.save_to_pickle("Hidden.pickle", embeddings)
-             u.save_to_pickle("Recons_X.pickle", embeddings_decode)
-             u.save_to_pickle("X.pickle", data.x)
+             # embeddings_decode = model.decode_x(data,embeddings)
+             #    # checkpoint_path
+             # u.save_to_pickle("Hidden.pickle", embeddings)
+             # u.save_to_pickle("Recons_X.pickle", embeddings_decode)
+             # u.save_to_pickle("X.pickle", data.x)
 
             # embeddings = model.encoder(data.x, data.edge_index, data.edge_type)
             # print(embeddings[0])
@@ -404,7 +409,7 @@ Gs_path = config["Gs_path_no_other"]
 thresholds_list = [0.6,0.7,0.8]
 
 
-res = evaluate_all_save_best(KG_path, Gs_path, "checkpoints/checkpoints_Reconstruct_X_best_model", config, embedding_model = "GNN", with_other = False, thresholds_list = thresholds_list)
+res = evaluate_all_save_best(KG_path, Gs_path, "checkpoints/checkpoints_Recons_R", config, embedding_model = "GNN", with_other = False, thresholds_list = thresholds_list)
 #
 # rows = []
 # for model_name, metrics in res.items():
