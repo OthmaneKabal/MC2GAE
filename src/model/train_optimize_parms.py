@@ -360,46 +360,48 @@ def train_with_hyperparams(model, data, optimizer, num_epochs, num_bases, out_ch
 
 
         else:
+            print("Training with X ")
+            with tqdm(total=len(G1_data_loader), desc=f"Epoch {epoch + 1}/{num_epochs}", unit="batch") as batch_pbar:
+                for batch in G1_data_loader:
+                    batch = batch.to(device)
+                    n_id = batch.n_id ## The global node index for every sampled node
+                    mask = torch.isin(n_id, batch.input_id) ## mask to get only the embedding of input_id nodes
+                    optimizer.zero_grad()
+                    embeddings = model.encode(batch)
+                    # print(batch)
+                    reconstructed_x = model.decode_x(batch, embeddings)
+                    reconstructed_x = reconstructed_x[mask]
 
-            for batch in G1_data_loader:
-                batch = batch.to(device)
-                n_id = batch.n_id ## The global node index for every sampled node
-                mask = torch.isin(n_id, batch.input_id) ## mask to get only the embedding of input_id nodes
-                optimizer.zero_grad()
-                embeddings = model.encode(batch)
-                # print(batch)
-                reconstructed_x = model.decode_x(batch, embeddings)
-                reconstructed_x = reconstructed_x[mask]
+                    # Calcul de la perte avec conservation de la similarité
+                    mse_loss, cos_loss = model.recon_x_loss(data.x[n_id[mask]], reconstructed_x, embeddings[mask])
+                    print("--- is heeere ")
+                    loss = mse_loss +  cos_loss
+                    loss.backward()
+                    optimizer.step()
+                    total_loss += loss.item()
+                    total_mse_loss += mse_loss.item()
+                    total_cos_loss += cos_loss.item()
+                    batch_pbar.set_postfix(batch_loss=loss.item())
+                    batch_pbar.update(1)
 
-                # Calcul de la perte avec conservation de la similarité
-                mse_loss, cos_loss = model.recon_x_loss(data.x[n_id[mask]], reconstructed_x, embeddings[mask])
-                loss = mse_loss +  cos_loss
-                loss.backward()
-                optimizer.step()
-                total_loss += loss.item()
-                total_mse_loss += mse_loss.item()
-                total_cos_loss += cos_loss.item()
-                batch_pbar.set_postfix(batch_loss=loss.item())
-                batch_pbar.update(1)
+                avg_loss = total_loss / len(G1_data_loader)
+                avg_mse_loss = total_mse_loss / len(G1_data_loader)
+                avg_cos_loss = total_cos_loss / len(G1_data_loader)
 
-            avg_loss = total_loss / len(G1_data_loader)
-            avg_mse_loss = total_mse_loss / len(G1_data_loader)
-            avg_cos_loss = total_cos_loss / len(G1_data_loader)
-
-        # Loguer la perte de chaque époque dans wandb
-            if "Reconstruct_X"  in training_options and len(training_options) == 1:
-                wandb.log({"epoch": epoch + 1, "global loss": avg_loss, "mse_loss":avg_mse_loss,"cos_loss": avg_cos_loss})
-        # elif "contrastive" in training_options and len(training_options) == 1:
-        #     wandb.log({"epoch": epoch + 1, "Contrastive_loss": avg_loss})
-        #
+            # Loguer la perte de chaque époque dans wandb
+                if "Reconstruct_X"  in training_options and len(training_options) == 1:
+                    wandb.log({"epoch": epoch + 1, "global loss": avg_loss, "mse_loss":avg_mse_loss,"cos_loss": avg_cos_loss})
+            # elif "contrastive" in training_options and len(training_options) == 1:
+            #     wandb.log({"epoch": epoch + 1, "Contrastive_loss": avg_loss})
+            #
 
 
-        # Sauvegarde du modèle si la perte est la plus faible
-            if avg_loss < best_loss:
-                best_loss = avg_loss
-                save_model_with_hyperparams(model, optimizer, epoch, num_bases, out_channels, save_dir=save_dir,
-                                            is_best=True)
-                print(f'Model saved with Avg Loss: {best_loss:.4f}')
+            # Sauvegarde du modèle si la perte est la plus faible
+                if avg_loss < best_loss:
+                    best_loss = avg_loss
+                    save_model_with_hyperparams(model, optimizer, epoch, num_bases, out_channels, save_dir=save_dir,
+                                                is_best=True)
+                    print(f'Model saved with Avg Loss: {best_loss:.4f}')
 
 
 # Boucle d'optimisation des hyperparamètres
