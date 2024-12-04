@@ -404,7 +404,7 @@ Gs_path = config["Gs_path_no_other"]
 thresholds_list = [0.6,0.7,0.8]
 
 
-res = evaluate_all_save_best(KG_path, Gs_path, "checkpoints/best_X", config, embedding_model = "GNN", with_other = False, thresholds_list = thresholds_list)
+res = evaluate_all_save_best(KG_path, Gs_path, "checkpoints/checkpoints_Reconstruct_X_best_model", config, embedding_model = "GNN", with_other = False, thresholds_list = thresholds_list)
 #
 # rows = []
 # for model_name, metrics in res.items():

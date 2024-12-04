@@ -2,6 +2,8 @@ import os
 
 import pandas as pd
 import torch
+from sklearn.model_selection import train_test_split
+import torch
 from sklearn.model_selection import StratifiedShuffleSplit
 def load_gold_standard_labels(gs_path):
     """
@@ -111,7 +113,46 @@ def generate_relation_embeddings_tensor(relations, embedding_size, device, seed=
 
 
 
-def removed_edges_train_test_split(indices: torch.Tensor, labels: torch.Tensor, test_size=0.2, random_state=42,output_device="cuda"):
+# def removed_edges_train_test_split(indices: torch.Tensor, labels: torch.Tensor, test_size=0.2, random_state=42,output_device="cuda"):
+#     """
+#     Split GPU tensors into training and testing sets, preserving class balance, with a specified output device.
+#
+#     Args:
+#         indices (torch.Tensor): Tensor of indices (on GPU).
+#         labels (torch.Tensor): Tensor of labels (on GPU).
+#         test_size (float): Proportion of the dataset to include in the test split.
+#         random_state (int): Seed for reproducibility.
+#         output_device (str): Device for the output tensors (e.g., "cuda" or "cpu").
+#
+#     Returns:
+#         train_indices (torch.Tensor): Tensor of training indices (on output_device).
+#         test_indices (torch.Tensor): Tensor of testing indices (on output_device).
+#         train_labels (torch.Tensor): Tensor of training labels (on output_device).
+#         test_labels (torch.Tensor): Tensor of testing labels (on output_device).
+#     """
+#
+#     # Move tensors to CPU for compatibility with StratifiedShuffleSplit
+#     indices_cpu = indices.cpu().numpy()
+#     labels_cpu = labels.cpu().numpy()
+#
+#     # Initialize StratifiedShuffleSplit
+#     splitter = StratifiedShuffleSplit(n_splits=1, test_size=test_size, random_state=random_state)
+#
+#     # Perform the split
+#     for train_idx, test_idx in splitter.split(indices_cpu, labels_cpu):
+#         train_indices = torch.tensor(indices_cpu[train_idx], device=output_device)
+#         test_indices = torch.tensor(indices_cpu[test_idx], device=output_device)
+#         train_labels = torch.tensor(labels_cpu[train_idx], device=output_device)
+#         test_labels = torch.tensor(labels_cpu[test_idx], device=output_device)
+#
+#     return train_indices, test_indices, train_labels, test_labels
+#
+#
+
+
+
+
+def removed_edges_train_test_split(indices: torch.Tensor, labels: torch.Tensor, test_size=0.25, random_state=42, output_device="cuda"):
     """
     Split GPU tensors into training and testing sets, preserving class balance, with a specified output device.
 
@@ -129,21 +170,27 @@ def removed_edges_train_test_split(indices: torch.Tensor, labels: torch.Tensor, 
         test_labels (torch.Tensor): Tensor of testing labels (on output_device).
     """
 
-    # Move tensors to CPU for compatibility with StratifiedShuffleSplit
+    # Move tensors to CPU for compatibility with train_test_split
     indices_cpu = indices.cpu().numpy()
     labels_cpu = labels.cpu().numpy()
 
-    # Initialize StratifiedShuffleSplit
-    splitter = StratifiedShuffleSplit(n_splits=1, test_size=test_size, random_state=random_state)
+    # Perform stratified train-test split
+    train_idx, test_idx, train_labels_cpu, test_labels_cpu = train_test_split(
+        indices_cpu,
+        labels_cpu,
+        test_size=test_size,
+        random_state=random_state,
+        stratify=labels_cpu
+    )
 
-    # Perform the split
-    for train_idx, test_idx in splitter.split(indices_cpu, labels_cpu):
-        train_indices = torch.tensor(indices_cpu[train_idx], device=output_device)
-        test_indices = torch.tensor(indices_cpu[test_idx], device=output_device)
-        train_labels = torch.tensor(labels_cpu[train_idx], device=output_device)
-        test_labels = torch.tensor(labels_cpu[test_idx], device=output_device)
+    # Convert the results back to PyTorch tensors on the specified device
+    train_indices = torch.tensor(train_idx, device=output_device)
+    test_indices = torch.tensor(test_idx, device=output_device)
+    train_labels = torch.tensor(train_labels_cpu, device=output_device)
+    test_labels = torch.tensor(test_labels_cpu, device=output_device)
 
     return train_indices, test_indices, train_labels, test_labels
+
 
 #
 # def count_valid_elements(batch, removed):

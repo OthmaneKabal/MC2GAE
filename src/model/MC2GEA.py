@@ -74,13 +74,18 @@ class MC2GEA(nn.Module):
         # Sélectionner les k paires les plus similaires dans X
         indices = torch.triu_indices(similarity_matrix_x.size(0), similarity_matrix_x.size(1), 1)
         values_x = similarity_matrix_x[indices[0], indices[1]]
-        topk_values_x, topk_indices_x = torch.topk(values_x, k=min(k, len(values_x)), largest=True)
+        # topk_values_x, topk_indices_x = torch.topk(values_x, k=min(k, len(values_x)), largest=True)
+        
+        # topk_values_x = values_x
+        topk_indices_x = torch.arange(len(values_x))
+
 
         # Embeddings des paires les plus similaires (dans Z)
         similar_pairs_x = [(indices[0][idx], indices[1][idx]) for idx in topk_indices_x]
         similarity_loss = 0
         for i, j in similar_pairs_x:
             # Similarité cosinus dans Z
+
             sim_z = cosine_similarity(embeddings[i].unsqueeze(0), embeddings[j].unsqueeze(0), dim=-1)
 
             # Différence entre similarités dans X et Z

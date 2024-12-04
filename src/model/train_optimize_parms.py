@@ -64,7 +64,7 @@ torch.backends.cudnn.benchmark = False
 wandb.require("legacy-service")
 wandb.login(key="c278e62d2025b60ff8b984a40f7b62b697f9b4fd", relogin=True)
 # Configuration du projet wandb
-wandb_project_name = "MC2GAE_Reconstruct_R"
+wandb_project_name = "MC2GAE_Reconstruct_X_All_cosine"
 
 # Chargement des données
 device = config['device']
@@ -81,13 +81,13 @@ data = Data(x=data.x, edge_index=data.edge_index, edge_type=data.edge_type).to(d
 
 hyperparams_grid = {
     "num_bases": [10],  # Exemple de valeurs pour num_bases
-    "out_channels": [[256, 128],[640,512], [768,768]]  # Exemple de valeurs pour out_channels
+    "out_channels": [[640,512] , [256, 128], [768,768], [100,50]]  # Exemple de valeurs pour out_channels
 }
 
-training_options = ["reconstruct_r"]
+training_options = ["Reconstruct_X"]
 
 # Fonction de sauvegarde de modèle incluant les hyperparamètres dans le nom du fichier
-def save_model_with_hyperparams(model, optimizer, epoch, num_bases, out_channels, save_dir="checkpoints_Recons_R",
+def save_model_with_hyperparams(model, optimizer, epoch, num_bases, out_channels, save_dir="checkpoints_X_all_cosine",
                                 is_best=False):
     os.makedirs(save_dir, exist_ok=True)
     base_filename = f"best_model_bases{num_bases}_channels{'-'.join(map(str, out_channels))}"
@@ -173,7 +173,7 @@ def evaluate_ConvE(model, data, data_loader, test_removed_index, device, relatio
 
 # Fonction d'entraînement avec suivi de la perte dans wandb
 def train_with_hyperparams(model, data, optimizer, num_epochs, num_bases, out_channels, save_every=10,
-                           save_dir="checkpoints_Recons_R", training_options = training_options, device = config['device']):
+                           save_dir="checkpoints_X_all_cosine", training_options = training_options, device = config['device']):
 
     unique_relations = list(set([i.item() for i in data.edge_type]))
     relation_embeddings = generate_relation_embeddings_tensor(unique_relations, out_channels[1], device,
@@ -181,7 +181,7 @@ def train_with_hyperparams(model, data, optimizer, num_epochs, num_bases, out_ch
 
 
     best_loss = float('inf')
-    best_F1 = float('inf')
+    best_F1 = 0
 
     # Application du masque de features
     print("\nmask_features...\n")
@@ -198,6 +198,8 @@ def train_with_hyperparams(model, data, optimizer, num_epochs, num_bases, out_ch
     # print(len(removed_edge_indices),"---")
     removed_edge_indices = train_removed_edges_indices.to(device)
     test_removed_edges_indices = test_removed_edges_indices.to(device)
+
+
     set_seed(42)
     G1_data_loader = GraphDataLoader(masked_features_data, num_neighbors=config["num_neighbors"],
                                      batch_size=config["batch_size"], shuffle=config["shuffle"]).get_loader()
@@ -368,9 +370,10 @@ def train_with_hyperparams(model, data, optimizer, num_epochs, num_bases, out_ch
                 # print(batch)
                 reconstructed_x = model.decode_x(batch, embeddings)
                 reconstructed_x = reconstructed_x[mask]
+
                 # Calcul de la perte avec conservation de la similarité
-                mse_loss, cos_loss = model.recon_x_loss(batch.x[mask], reconstructed_x, embeddings[mask])
-                loss = mse_loss + 2 * cos_loss
+                mse_loss, cos_loss = model.recon_x_loss(data.x[n_id[mask]], reconstructed_x, embeddings[mask])
+                loss = mse_loss +  cos_loss
                 loss.backward()
                 optimizer.step()
                 total_loss += loss.item()
@@ -383,12 +386,12 @@ def train_with_hyperparams(model, data, optimizer, num_epochs, num_bases, out_ch
             avg_mse_loss = total_mse_loss / len(G1_data_loader)
             avg_cos_loss = total_cos_loss / len(G1_data_loader)
 
-        # # Loguer la perte de chaque époque dans wandb
-        #     if "Reconstruct_X"  in training_options and len(training_options) == 1:
-        #         wandb.log({"epoch": epoch + 1, "global loss": avg_loss, "mse_loss":avg_mse_loss,"cos_loss": avg_cos_loss})
-        # # elif "contrastive" in training_options and len(training_options) == 1:
-        # #     wandb.log({"epoch": epoch + 1, "Contrastive_loss": avg_loss})
-        # #
+        # Loguer la perte de chaque époque dans wandb
+            if "Reconstruct_X"  in training_options and len(training_options) == 1:
+                wandb.log({"epoch": epoch + 1, "global loss": avg_loss, "mse_loss":avg_mse_loss,"cos_loss": avg_cos_loss})
+        # elif "contrastive" in training_options and len(training_options) == 1:
+        #     wandb.log({"epoch": epoch + 1, "Contrastive_loss": avg_loss})
+        #
 
 
         # Sauvegarde du modèle si la perte est la plus faible
