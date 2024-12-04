@@ -9,17 +9,20 @@ from networkx.algorithms.triads import all_triplets
 from sklearn.metrics import f1_score, accuracy_score, recall_score, precision_score
 from torch_geometric.loader import NeighborLoader
 
-from src.layers.ConvE import ConvE
-from src.model.utils.ConvENegativeSampling import generate_negatives, get_positives
 
-from src.model.utils.ConvEDataLoader import create_data_loader
-
-from src.model.utils.utils import generate_relation_embeddings_tensor, removed_edges_train_test_split
 
 # Ajouter les dossiers 'layers' et 'data' au chemin Python
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'layers')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..', 'data')))
-from data.data_augmentation import relation_based_edge_dropping_balanced
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..', 'utils')))
+
+from ConvE import ConvE
+from utils.ConvENegativeSampling import generate_negatives, get_positives
+
+from utils.ConvEDataLoader import create_data_loader
+
+from utils.utils import generate_relation_embeddings_tensor, removed_edges_train_test_split
+from data_augmentation import relation_based_edge_dropping_balanced
 
 from data_augmentation import view_partial_features_masking
 from GraphDataLoader import GraphDataLoader
@@ -374,7 +377,7 @@ def train_with_hyperparams(model, data, optimizer, num_epochs, num_bases, out_ch
 
                     # Calcul de la perte avec conservation de la similarité
                     mse_loss, cos_loss = model.recon_x_loss(data.x[n_id[mask]], reconstructed_x, embeddings[mask])
-                    print("--- is heeere ")
+                 
                     loss = mse_loss +  cos_loss
                     loss.backward()
                     optimizer.step()
