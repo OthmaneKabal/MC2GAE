@@ -118,11 +118,11 @@ def generate_gs_embeddings(graph_path, checkpoint_path, gs_path, core_concepts, 
         # Encoder le graphe
         with torch.no_grad():
              embeddings = model.encode(data)
-             # embeddings_decode = model.decode_x(data,embeddings)
+             embeddings_decode = model.decode_x(data,embeddings)
              #    # checkpoint_path
-             # u.save_to_pickle("Hidden.pickle", embeddings)
-             # u.save_to_pickle("Recons_X.pickle", embeddings_decode)
-             # u.save_to_pickle("X.pickle", data.x)
+             u.save_to_pickle("Hidden.pickle", embeddings)
+             u.save_to_pickle("Recons_X.pickle", embeddings_decode)
+             u.save_to_pickle("X.pickle", data.x)
 
             # embeddings = model.encoder(data.x, data.edge_index, data.edge_type)
             # print(embeddings[0])
@@ -223,10 +223,23 @@ def evaluate_classification(gs_path, classifications):
     # # Afficher un rapport de classification par classe
     # print(classification_report(true_labels, predicted_labels, zero_division=0))
     # exit(555)
-    count_p = Counter(predicted_labels)
-    count_b = Counter(true_labels)
-    print("\n+++++++++++ predicted +++++++++++\n",count_p ,"\n++++++++++++++++\n")
+    # count_p = Counter(predicted_labels)
+    # count_b = Counter(true_labels)
+    # print("\n+++++++++++ predicted +++++++++++\n",count_p ,"\n++++++++++++++++\n")
     # print("\n+++++++++++ Benchmark +++++++++++\n",count_b ,"\n++++++++++++++++\n")
+    # print(type(predicted_labels), "\n", type(true_labels),"\n")
+    #
+    data__ = pd.DataFrame({
+        "Predictions": predicted_labels,
+        "Labels": true_labels
+    })
+
+    # Saving to an Excel file
+
+    file_path = "Recons_x_vf.xlsx"
+    data__.to_excel(file_path, index=False)
+
+
 
     accuracy = accuracy_score(true_labels, predicted_labels)
     f1 = f1_score(true_labels, predicted_labels, average='weighted', zero_division=0)
@@ -409,7 +422,7 @@ Gs_path = config["Gs_path_no_other"]
 thresholds_list = [0.6,0.7,0.8]
 
 
-res = evaluate_all_save_best(KG_path, Gs_path, "checkpoints/checkpoints_Recons_R", config, embedding_model = "GNN", with_other = False, thresholds_list = thresholds_list)
+res = evaluate_all_save_best(KG_path, Gs_path, "checkpoints/checkpoints_Recons_X_vf_75", config, embedding_model = "GNN", with_other = False, thresholds_list = thresholds_list)
 #
 # rows = []
 # for model_name, metrics in res.items():

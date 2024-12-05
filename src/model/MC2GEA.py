@@ -97,7 +97,7 @@ class MC2GEA(nn.Module):
     #     # Retourner les pertes MSE et similarité
     #     return mse_loss, similarity_loss
 
-    def recon_x_loss(self, x, reconstructed_x, embeddings, k=256):
+    def recon_x_loss(self, x, reconstructed_x, embeddings, k=None):
         """
         Calcule la perte de reconstruction et minimise l'écart des similarités cosinus entre X et Z.
 
@@ -126,7 +126,7 @@ class MC2GEA(nn.Module):
         values_x = similarity_matrix_x[indices[0], indices[1]]
 
         # Si k est inférieur au nombre de paires, sélectionne les k plus grandes similarités
-        if k < len(values_x):
+        if k:
             topk_values_x, topk_indices = torch.topk(values_x, k=k, largest=True)
             selected_indices = (indices[0][topk_indices], indices[1][topk_indices])
         else:
@@ -142,6 +142,12 @@ class MC2GEA(nn.Module):
         # Retourner les pertes MSE et similarité
         return mse_loss, similarity_loss
 
+    def sce_loss(x, y, alpha=3):
+        x = F.normalize(x, p=2, dim=-1)
+        y = F.normalize(y, p=2, dim=-1)
+        loss = (1 - (x * y).sum(dim=-1)).pow_(alpha)
+        loss = loss.mean()
+        return loss
 
 
     def contrastive_loss(self, H_1, H_2):
