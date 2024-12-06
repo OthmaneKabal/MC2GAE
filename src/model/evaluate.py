@@ -65,7 +65,10 @@ os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
 torch.backends.cudnn.benchmark = False
 
 
+
+
 def generate_gs_embeddings(graph_path, checkpoint_path, gs_path, core_concepts, config, embedding_model = "GNN", emb_file = None):
+
     """
     Charge le graphe, initialise et charge le modèle à partir du checkpoint, et génère les embeddings
     pour les termes présents dans le GS ainsi que pour les concepts principaux spécifiés.
@@ -93,9 +96,9 @@ def generate_gs_embeddings(graph_path, checkpoint_path, gs_path, core_concepts, 
         RGCN_decoder = RGCNDecoder(RGCN_encoder, data, config["num_bases"], config["alpha"]).to(config["device"])
         config["convE_config"]["embedding_dim"] = config["out_channels"][1]
         config["convE_config"]["hidden_size"] = config["coresp_hidden_sizes"][config["out_channels"][1]]
-        r_decoder = ConvE(config["convE_config"])
+        # r_decoder = ConvE(config["convE_config"])
 
-        autoencoder = MC2GEA(RGCN_encoder, RGCN_decoder, r_decoder).to(config["device"])
+        autoencoder = MC2GEA(RGCN_encoder, RGCN_decoder).to(config["device"])
 
         # RGCN_encoder = RGCNEncoder1(data, config["out_channels"], config["num_layers"], config["num_bases"]).to(
         #     config["device"])
@@ -118,11 +121,11 @@ def generate_gs_embeddings(graph_path, checkpoint_path, gs_path, core_concepts, 
         # Encoder le graphe
         with torch.no_grad():
              embeddings = model.encode(data)
-             embeddings_decode = model.decode_x(data,embeddings)
-             #    # checkpoint_path
-             u.save_to_pickle("Hidden.pickle", embeddings)
-             u.save_to_pickle("Recons_X.pickle", embeddings_decode)
-             u.save_to_pickle("X.pickle", data.x)
+             # embeddings_decode = model.decode_x(data,embeddings)
+             # #    # checkpoint_path
+             # u.save_to_pickle("Hidden.pickle", embeddings)
+             # u.save_to_pickle("Recons_X.pickle", embeddings_decode)
+             # u.save_to_pickle("X.pickle", data.x)
 
             # embeddings = model.encoder(data.x, data.edge_index, data.edge_type)
             # print(embeddings[0])
@@ -162,10 +165,39 @@ def generate_gs_embeddings(graph_path, checkpoint_path, gs_path, core_concepts, 
 
     return gs_embeddings, core_concepts_embeddings
 
+def generate_gs_embeddgs_from_model(model, data,gs_path, core_concepts, gdp):
+    model.eval()
+    with torch.no_grad():
+        embeddings = model.encode(data)
+    gs_df = pd.read_excel(gs_path, sheet_name='Sheet1')
+    gs_terms = set(gs_df['term'].str.lower().unique())  # Termes du GS en minuscules pour uniformiser
+    node_index_to_text = gdp.decode_indexes()
+    gs_embeddings = {}
+    core_concepts_embeddings = {}
+    for node_id, term in node_index_to_text.items():
+        term_lower = term.lower()
+        if term_lower in gs_terms:
+            gs_embeddings[term] = embeddings[node_id].detach().cpu().numpy()
+        if term_lower in [concept.lower() for concept in core_concepts]:
+            core_concepts_embeddings[term] = embeddings[node_id].detach().cpu().numpy()
+    return gs_embeddings, core_concepts_embeddings
 
+def evaluate(model, data,gs_path, core_concepts, gdp):
+    gs_embeddings, core_concepts_embeddings = generate_gs_embeddgs_from_model(model, data,gs_path, core_concepts, gdp)
+    classifications = classify_terms_by_cosine_similarity(gs_embeddings, core_concepts_embeddings, with_other = False, threshold = 0.5)
+    print('\n--------------------\n')
+    metrics_df = evaluate_classification(gs_path, classifications)
+    print('\n--------------------\n')
+    metrics = {
+        'accuracy': metrics_df.loc['Metrics', 'accuracy'],
+        'f1_score': metrics_df.loc['Metrics', 'f1_score'],
+        'precision': metrics_df.loc['Metrics', 'precision'],
+        'recall': metrics_df.loc['Metrics', 'recall']
+    }
+    print(metrics)
+    return metrics
 
-
-def classify_terms_by_cosine_similarity(gs_embeddings, core_concepts_embeddings, with_other = True, threshold = 0.5):
+def classify_terms_by_cosine_similarity(gs_embeddings, core_concepts_embeddings, with_other = False, threshold = 0.5):
     """
     Classe les termes du GS en fonction de leur similarité cosinus avec les core concepts.
     :param with_other: si on va considerer la classe 'other'
@@ -229,15 +261,15 @@ def evaluate_classification(gs_path, classifications):
     # print("\n+++++++++++ Benchmark +++++++++++\n",count_b ,"\n++++++++++++++++\n")
     # print(type(predicted_labels), "\n", type(true_labels),"\n")
     #
-    data__ = pd.DataFrame({
-        "Predictions": predicted_labels,
-        "Labels": true_labels
-    })
-
-    # Saving to an Excel file
-
-    file_path = "Recons_x_vf.xlsx"
-    data__.to_excel(file_path, index=False)
+    # data__ = pd.DataFrame({
+    #     "Predictions": predicted_labels,
+    #     "Labels": true_labels
+    # })
+    #
+    # # Saving to an Excel file
+    #
+    # file_path = "Recons_x_vf.xlsx"
+    # data__.to_excel(file_path, index=False)
 
 
 
@@ -252,7 +284,6 @@ def evaluate_classification(gs_path, classifications):
         'precision': precision,
         'recall': recall
     }
-
     metrics_df = pd.DataFrame([metrics], index=['Metrics'])
     return metrics_df
 
@@ -416,13 +447,13 @@ def evaluate_all_save_best(KG_path, GS_path, ckpt_dir, config, embedding_model =
 
 
 
-
-KG_path = config["KG_path"]
-Gs_path = config["Gs_path_no_other"]
-thresholds_list = [0.6,0.7,0.8]
-
-
-res = evaluate_all_save_best(KG_path, Gs_path, "checkpoints/checkpoints_Recons_X_vf_75", config, embedding_model = "GNN", with_other = False, thresholds_list = thresholds_list)
+#
+# KG_path = config["KG_path"]
+# Gs_path = config["Gs_path_no_other"]
+# thresholds_list = [0.6,0.7,0.8]
+#
+#
+# evaluate_all(KG_path, Gs_path, "checkpoints/checkpoints_SCE_Recons_X", config, embedding_model = "GNN", with_other = False, thresholds_list = thresholds_list)
 #
 # rows = []
 # for model_name, metrics in res.items():
@@ -442,6 +473,3 @@ res = evaluate_all_save_best(KG_path, Gs_path, "checkpoints/checkpoints_Recons_X
 # file_path = 'Recons_x_encoder_results.xlsx'
 # df_.to_excel(file_path, index=False)
 # # print(df_)
-
-
-print(res)

@@ -15,7 +15,7 @@ class MC2GEA(nn.Module):
     """
 
 ## options["X", "R", "cotrastive"]
-    def __init__(self, encoder: nn.Module, x_decoder: nn.Module, r_decoder = None, projections = [256, 256]): #, options = ["X"]):
+    def __init__(self, encoder: nn.Module, x_decoder: nn.Module, r_decoder = None, projections = [500, 500]): #, options = ["X"]):
         super(MC2GEA, self).__init__()
         self.encoder = encoder
         self.x_decoder = x_decoder
@@ -142,7 +142,8 @@ class MC2GEA(nn.Module):
         # Retourner les pertes MSE et similarité
         return mse_loss, similarity_loss
 
-    def sce_loss(x, y, alpha=3):
+    def sce_loss(self,x, y, alpha=3):
+        print(type(x))
         x = F.normalize(x, p=2, dim=-1)
         y = F.normalize(y, p=2, dim=-1)
         loss = (1 - (x * y).sum(dim=-1)).pow_(alpha)

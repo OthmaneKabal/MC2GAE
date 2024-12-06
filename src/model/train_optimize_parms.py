@@ -9,7 +9,7 @@ from networkx.algorithms.triads import all_triplets
 from sklearn.metrics import f1_score, accuracy_score, recall_score, precision_score
 from torch_geometric.loader import NeighborLoader
 
-
+from src.model.evaluate import evaluate
 
 # Ajouter les dossiers 'layers' et 'data' au chemin Python
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'layers')))
@@ -67,7 +67,7 @@ torch.backends.cudnn.benchmark = False
 wandb.require("legacy-service")
 wandb.login(key="c278e62d2025b60ff8b984a40f7b62b697f9b4fd", relogin=True)
 # Configuration du projet wandb
-wandb_project_name = "MC2GAE_Reconstruct_X_All_cosine"
+wandb_project_name = "MC2GAE_SCE_Recons_X_v2"
 
 # Chargement des données
 device = config['device']
@@ -87,15 +87,16 @@ hyperparams_grid = {
     "out_channels": [[640,512] , [256, 128], [768,768], [100,50]]  # Exemple de valeurs pour out_channels
 }
 
-training_options = ["Reconstruct_X"]
+training_options = ["SCE_Recons_X"]
 
 # Fonction de sauvegarde de modèle incluant les hyperparamètres dans le nom du fichier
-def save_model_with_hyperparams(model, optimizer, epoch, num_bases, out_channels, save_dir="checkpoints_X_all_cosine",
+def save_model_with_hyperparams(model, optimizer, epoch, num_bases, out_channels, save_dir="checkpoints_SCE_Recons_X_v1",
                                 is_best=False):
     os.makedirs(save_dir, exist_ok=True)
     base_filename = f"best_model_bases{num_bases}_channels{'-'.join(map(str, out_channels))}"
     checkpoint_path = os.path.join(save_dir,
                                    f"{base_filename}.pth" if is_best else f"{base_filename}_epoch_{epoch + 1}.pth")
+
 
     torch.save({
         'epoch': epoch + 1,
@@ -175,8 +176,8 @@ def evaluate_ConvE(model, data, data_loader, test_removed_index, device, relatio
 
 
 # Fonction d'entraînement avec suivi de la perte dans wandb
-def train_with_hyperparams(model, data, optimizer, num_epochs, num_bases, out_channels, save_every=10,
-                           save_dir="checkpoints_X_all_cosine", training_options = training_options, device = config['device']):
+def train_with_hyperparams(model, data, optimizer, num_epochs, num_bases, out_channels, gdp,save_every=10,
+                           save_dir="checkpoints_SCE_Recons_X_v1", training_options = training_options, device = config['device']):
 
     unique_relations = list(set([i.item() for i in data.edge_type]))
     relation_embeddings = generate_relation_embeddings_tensor(unique_relations, out_channels[1], device,
@@ -185,7 +186,7 @@ def train_with_hyperparams(model, data, optimizer, num_epochs, num_bases, out_ch
 
     best_loss = float('inf')
     best_F1 = 0
-
+    best_accuracy = 0
     # Application du masque de features
     print("\nmask_features...\n")
 
@@ -194,20 +195,25 @@ def train_with_hyperparams(model, data, optimizer, num_epochs, num_bases, out_ch
 
     print("\nEdge_dripping...\n")
     masked_edges_data, removed_edge_indices, removed_edge_types  = relation_based_edge_dropping_balanced(data, config["total_drop_rate"], max_drop_fraction_per_node=0.3, random_seed=42)
-
+    removed_edge_indices = removed_edge_indices.to(device)
+    removed_edge_types = removed_edge_types.to(device)
 
     train_removed_edges_indices, test_removed_edges_indices, train_relations, test_relations = removed_edges_train_test_split(removed_edge_indices, removed_edge_types)
     # print(len(removed_edge_indices),"---")
-    removed_edge_indices = train_removed_edges_indices.to(device)
-    test_removed_edges_indices = test_removed_edges_indices.to(device)
+    # removed_edge_indices = train_removed_edges_indices.to(device)
+    # test_removed_edges_indices = test_removed_edges_indices.to(device)
 
 
     set_seed(42)
     G1_data_loader = GraphDataLoader(masked_features_data, num_neighbors=config["num_neighbors"],
                                      batch_size=config["batch_size"], shuffle=config["shuffle"]).get_loader()
 
-    G2_data_loader = GraphDataLoader(data, num_neighbors=config["num_neighbors"],
+
+    G_data_loader = GraphDataLoader(data, num_neighbors=config["num_neighbors"],
                                      batch_size=config["batch_size"], shuffle=config["shuffle"]).get_loader()
+
+    G2_data_loader = GraphDataLoader(masked_edges_data, num_neighbors=config["num_neighbors"],
+                                    batch_size=config["batch_size"], shuffle=config["shuffle"]).get_loader()
 
 
 
@@ -220,41 +226,67 @@ def train_with_hyperparams(model, data, optimizer, num_epochs, num_bases, out_ch
         total_cos_loss = 0
 
         if "contrastive" in training_options:
-            with tqdm(total=len(G1_data_loader), desc=f"Epoch {epoch + 1}/{num_epochs}", unit="batch") as batch_pbar:
-                for G1_batch, G2_batch in zip(G1_data_loader, G2_data_loader):
-                    G1_batch.to(device)
-                    G2_batch.to(device)
-                    n_id_1 = G1_batch.n_id  ## The global node index for every sampled node
-                    mask_G1 = torch.isin(n_id_1, G1_batch.input_id) ## mask to get only the embedding of input_id nodes
-                    n_id_2 = G2_batch.n_id
-                    mask_G2 = torch.isin(n_id_2, G2_batch.input_id)
-                    H1_batch = model.encode(G1_batch)
-                    H2_batch = model.encode(G2_batch)
-                    H1_projected = model.projector_fc1(H1_batch)[mask_G1]
-                    H2_projected = model.projector_fc2(H2_batch)[mask_G2]
-                    # Compute contrastive loss
-                    loss = model.contrastive_loss(H1_projected, H2_projected)
+            with tqdm(total=len(G_data_loader), desc=f"Epoch {epoch + 1}/{num_epochs}", unit="batch") as batch_pbar:
+
+                for g_batch in G_data_loader:
+                    g_batch.to(device)
+                    g1_batch = copy.deepcopy(g_batch)
+                    g2_batch = copy.deepcopy(g_batch)
+                    g1_batch.x = masked_features_data.x[g_batch.n_id]
+                    edges_mask = ~torch.isin(g2_batch.e_id, removed_edge_indices.to(device))
+                    g2_batch.edge_index = g2_batch.edge_index[:,edges_mask]
+                    g2_batch.e_id = g2_batch.e_id[edges_mask]
+                    g2_batch.edge_type = g2_batch.edge_type[edges_mask]
+                    ################################## Verification ###############################
+                    # mask2 = torch.isin(removed_edge_indices, g2_batch.e_id)
+                    # # print(removed_edge_types.shape)
+                    # # print(mask2.shape, removed_edge_indices.shape)
+                    # print(removed_edge_types[mask2].shape)
+                    # sorted_g2_batch, i_batch = torch.sort(g2_batch.e_id)
+                    # sorted_g2_, i = torch.sort(removed_edge_indices[mask2])
+                    # print(g2_batch.edge_type[i_batch] == removed_edge_types[mask2][i])
+                    # print(sorted_g2_batch == sorted_g2_)
+                    #################################################################################
+                    h1_batch = model.encode(g1_batch)
+                    h2_batch = model.encode(g2_batch)
+
+                    loss = model.contrastive_loss(h1_batch, h2_batch)
                     loss.backward()
                     optimizer.step()
                     total_loss += loss.item()
                     batch_pbar.set_postfix(batch_loss=loss.item())
                     batch_pbar.update(1)
-                    # loss = model.contrastive_loss(H1_batch[mask_G1], H2_batch[mask_G2])
+                    # H1_projected = model.projector_fc1(H1_batch)[mask_G1]
+                    # H2_projected = model.projector_fc2(H2_batch)[mask_G2]
+
+                    # G1_batch.to(device)
+                    # G2_batch.to(device)
+                    # n_id_1 = G1_batch.n_id  ## The global node index for every sampled node
+                    # mask_G1 = torch.isin(n_id_1, G1_batch.input_id) ## mask to get only the embedding of input_id nodes
+                    # n_id_2 = G2_batch.n_id
+                    # mask_G2 = torch.isin(n_id_2, G2_batch.input_id)
+                    # H1_batch = model.encode(G1_batch)
+                    # H2_batch = model.encode(G2_batch)
+                    # H1_projected = model.projector_fc1(H1_batch)[mask_G1]
+                    # H2_projected = model.projector_fc2(H2_batch)[mask_G2]
+                    # # Compute contrastive loss
+                    # loss = model.contrastive_loss(H1_projected, H2_projected)
                     # loss.backward()
                     # optimizer.step()
                     # total_loss += loss.item()
                     # batch_pbar.set_postfix(batch_loss=loss.item())
                     # batch_pbar.update(1)
 
+
         elif "reconstruct_r" in training_options:
 
-            with tqdm(total=len(G2_data_loader), desc=f"Epoch {epoch + 1}/{num_epochs}", unit="batch") as main_pbar:
+            with tqdm(total=len(G_data_loader), desc=f"Epoch {epoch + 1}/{num_epochs}", unit="batch") as main_pbar:
                 nb_intersections = 0
                 matching_e_ids = []
                 all_preds = []
                 all_labels = []
 
-                for G2_batch in G2_data_loader:
+                for G2_batch in G_data_loader:
 
                     G2_batch = G2_batch.to(device)
                     removed_batch = copy.copy(G2_batch)
@@ -415,10 +447,7 @@ def train_with_hyperparams(model, data, optimizer, num_epochs, num_bases, out_ch
                     # print(batch)
                     reconstructed_x = model.decode_x(batch, embeddings)
                     reconstructed_x = reconstructed_x[mask]
-
-                    # Calcul de la perte avec conservation de la similarité
                     sce_loss = model.sce_loss(data.x[n_id[mask]], reconstructed_x)
-
                     loss = sce_loss
                     loss.backward()
                     optimizer.step()
@@ -427,11 +456,20 @@ def train_with_hyperparams(model, data, optimizer, num_epochs, num_bases, out_ch
                     batch_pbar.update(1)
 
                 avg_loss = total_loss / len(G1_data_loader)
+                print("Evaluation\n")
+                metrics = evaluate(model, data, config["Gs_path"], config["core_concepts"], gdp)
 
 
                 # Loguer la perte de chaque époque dans wandb
-                if "Reconstruct_X" in training_options and len(training_options) == 1:
-                    wandb.log({"epoch": epoch + 1, "sce loss": avg_loss})
+                if "SCE_Recons_X" in training_options and len(training_options) == 1:
+                    wandb.log({"epoch": epoch + 1, "sce loss": avg_loss,
+                               "accuracy": metrics["accuracy"], "f1-score": metrics["f1"],
+                               "recall": metrics["recall"], "precision": metrics["precision"],})
+                if metrics["accuracy"] > best_accuracy:
+                    best_accuracy = metrics["accuracy"]
+                    save_model_with_hyperparams(model, optimizer, epoch, num_bases, out_channels, save_dir=save_dir,is_best=False)
+                    print(f'Model saved with Accuracy: {best_accuracy:.4f}')
+
                 if avg_loss < best_loss:
                     best_loss = avg_loss
                     save_model_with_hyperparams(model, optimizer, epoch, num_bases, out_channels, save_dir=save_dir,
@@ -474,7 +512,7 @@ for num_bases in hyperparams_grid["num_bases"]:
         optimizer = optim.Adam(autoencoder.parameters(), lr=config["learning_rate"])
 
         # Lancer l'entraînement avec les hyperparamètres actuels
-        train_with_hyperparams(autoencoder, data, optimizer, config["num_epochs"], num_bases, out_channels)
+        train_with_hyperparams(autoencoder, data, optimizer, config["num_epochs"], num_bases, out_channels,gdp)
 
         # Finir le run dans wandb
         wandb.finish()

@@ -28,9 +28,15 @@ class ContrastiveLoss(torch.nn.Module):
             between_sim.diag() / (refl_sim.sum(1) + between_sim.sum(1) - refl_sim.diag())
         ).mean()
 
+
+
+
+
     def contrastive_loss(self, H_1: torch.Tensor, H_2: torch.Tensor):
         # Calcul de la perte semi-contrastive entre H_1 et H_2
         l1 = self.semi_loss(H_1, H_2)
         l2 = self.semi_loss(H_2, H_1)
         # Moyenne des deux pertes pour la symétrie
         return (l1 + l2) / 2
+
+
