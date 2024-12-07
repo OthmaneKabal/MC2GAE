@@ -39,7 +39,11 @@ config = {
                     'label_smoothing': 0.1,
                     'use_bias': True,
                     },
-    "coresp_hidden_sizes":{768 : 43648, 512: 27776, 256: 11904, 128: 3968, 64:27776}
+    "coresp_hidden_sizes":{768 : 43648, 512: 27776, 256: 11904, 128: 3968, 64:27776},
+    "training_options" : ["SCE_Recons_X"],
+     "hyperparams_grid" : {"num_bases": [10], "out_channels": [[640,512] , [256, 128], [768,768], [100,50]]},
+    "save_dir":"ckpt_exp_",
+    "wandb_project_name": "MC2GAE_SCE_Recons_X_v22"
 }
 
 

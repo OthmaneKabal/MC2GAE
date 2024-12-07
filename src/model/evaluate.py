@@ -129,14 +129,15 @@ def generate_gs_embeddings(graph_path, checkpoint_path, gs_path, core_concepts, 
 
             # embeddings = model.encoder(data.x, data.edge_index, data.edge_type)
             # print(embeddings[0])
-    elif not emb_file:
+    elif embedding_model == "Bert":#:not emb_file:
         embeddings = data.x
         # print(embeddings, print(embeddings.shape))
         # print(embeddings[0])
     else:
-        print("load_emb_from_file")
-        embeddings = u.read_pickle_file( "embeddings_DGI.pkl")
-        print(embeddings, print(embeddings.shape))
+        embeddings = data.x
+        # print("load_emb_from_file")
+        # embeddings = u.read_pickle_file( "embeddings_DGI.pkl")
+        # print(embeddings, print(embeddings.shape))
 
     # Charger le fichier GS
     gs_df = pd.read_excel(gs_path, sheet_name='Sheet1')
@@ -185,7 +186,6 @@ def generate_gs_embeddgs_from_model(model, data,gs_path, core_concepts, gdp):
 def evaluate(model, data,gs_path, core_concepts, gdp):
     gs_embeddings, core_concepts_embeddings = generate_gs_embeddgs_from_model(model, data,gs_path, core_concepts, gdp)
     classifications = classify_terms_by_cosine_similarity(gs_embeddings, core_concepts_embeddings, with_other = False, threshold = 0.5)
-    print('\n--------------------\n')
     metrics_df = evaluate_classification(gs_path, classifications)
     print('\n--------------------\n')
     metrics = {
@@ -194,6 +194,8 @@ def evaluate(model, data,gs_path, core_concepts, gdp):
         'precision': metrics_df.loc['Metrics', 'precision'],
         'recall': metrics_df.loc['Metrics', 'recall']
     }
+    print('\n--------------------\n')
+
     print(metrics)
     return metrics
 
@@ -306,7 +308,7 @@ def evaluate_all(KG_path, GS_path, ckpt_dir, config, embedding_model = "GNN", wi
                     embeddings_dict, cc_embd = generate_gs_embeddings(KG_path,
                                                                       str(filename),
                                                                       GS_path, config["core_concepts"], config,
-                                                                      embedding_model="bert", emb_file = True)
+                                                                      embedding_model="bert", emb_file = None)
 
                     if with_other:
                         for threshold in thresholds_list:
@@ -447,14 +449,15 @@ def evaluate_all_save_best(KG_path, GS_path, ckpt_dir, config, embedding_model =
 
 
 
-#
+
 # KG_path = config["KG_path"]
 # Gs_path = config["Gs_path_no_other"]
 # thresholds_list = [0.6,0.7,0.8]
 #
 #
+# # evaluate_all(KG_path, Gs_path, "checkpoints/checkpoints_Recons_X_vf_75", config, embedding_model = "bert", with_other = False, thresholds_list = thresholds_list)
 # evaluate_all(KG_path, Gs_path, "checkpoints/checkpoints_SCE_Recons_X", config, embedding_model = "GNN", with_other = False, thresholds_list = thresholds_list)
-#
+
 # rows = []
 # for model_name, metrics in res.items():
 #     for metric_type, values in metrics.items():

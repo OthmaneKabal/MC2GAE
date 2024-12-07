@@ -1,5 +1,7 @@
 import os
+import random
 
+import numpy as np
 import pandas as pd
 import torch
 from sklearn.model_selection import train_test_split
@@ -192,31 +194,30 @@ def removed_edges_train_test_split(indices: torch.Tensor, labels: torch.Tensor, 
     return train_indices, test_indices, train_labels, test_labels
 
 
-#
-# def count_valid_elements(batch, removed):
-#     """
-#     Compte le nombre d'arêtes dans batch.e_id qui sont dans `removed` et dont
-#     le nœud de destination est présent dans batch.input_id.
-#
-#     Args:
-#         batch (dict): Contient les clés 'e_id', 'edge_index', et 'input_id'.
-#                       - e_id: Tensor des identifiants des arêtes.
-#                       - edge_index: Tensor [2, num_edges] représentant les arêtes du graphe.
-#                       - input_id: Tensor des nœuds cibles du batch.
-#         removed (Tensor): Tensor des indices d'arêtes à vérifier.
-#
-#     Returns:
-#         int: Nombre d'éléments qui satisfont la condition.
-#     """
-#     # Trouver les indices des arêtes dans removed
-#     mask = torch.isin(batch["e_id"], removed)
-#     indices = torch.nonzero(mask, as_tuple=True)[0]
-#
-#     # Obtenir les nœuds de destination des arêtes correspondantes
-#     dest_nodes = batch["edge_index"][1][indices]
-#
-#     # Vérifier si ces nœuds de destination sont dans batch.input_id
-#     is_in_input_id = torch.isin(dest_nodes, batch["input_id"])
-#
-#     # Retourner le nombre d'éléments qui satisfont la condition
-#     return is_in_input_id.sum().item()
+def save_model_with_hyperparams(model, optimizer, epoch, num_bases, out_channels, save_dir="ckpt",
+                                is_best_acc=False):
+    os.makedirs(save_dir, exist_ok=True)
+    base_filename = f"best_model_bases{num_bases}_channels{'-'.join(map(str, out_channels))}"
+    checkpoint_path = os.path.join(save_dir,
+                                    f"{base_filename}_best_acc.pth") if is_best_acc else f"{base_filename}_best_loss.pth"
+
+
+    torch.save({
+        'epoch': epoch + 1,
+        'model_state_dict': model.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+        'num_bases': num_bases,
+        'out_channels': out_channels
+    }, checkpoint_path)
+    print(f"Model saved at '{checkpoint_path}'")
+
+
+def set_seed(seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False

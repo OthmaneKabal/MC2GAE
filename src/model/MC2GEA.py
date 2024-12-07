@@ -2,7 +2,7 @@ import torch
 from torch import nn, cosine_similarity
 from transformers.models.cvt.convert_cvt_original_pytorch_checkpoint_to_pytorch import embeddings
 import torch.nn.functional as F
-import ContrastiveLoss
+import loss_func
 
 
 class MC2GEA(nn.Module):
@@ -50,113 +50,10 @@ class MC2GEA(nn.Module):
         reconstructed_x = self.x_decoder(data, embeddings)
         return reconstructed_x
 
-    # def recon_x_loss(self, x, reconstructed_x, embeddings, k = 256):
-    #     """
-    #     Calcule la perte de reconstruction et minimise l'écart des similarités cosinus entre X et Z.
-    #
-    #     Args:
-    #         x: Les vraies caractéristiques des nœuds.
-    #         reconstructed_x: Les caractéristiques reconstruites des nœuds.
-    #         embeddings: Les embeddings des nœuds.
-    #         k: Nombre de paires les plus similaires à considérer.
-    #
-    #     Returns:
-    #         mse_loss: La perte de reconstruction.
-    #         similarity_loss: La perte liée à l'écart de similarités.
-    #     """
-    #     # Perte MSE standard
-    #     loss_fn = nn.MSELoss()
-    #     mse_loss = loss_fn(reconstructed_x, x)
-    #
-    #     # Calcul de la similarité cosinus dans X (caractéristiques originales)
-    #     similarity_matrix_x = cosine_similarity(x.unsqueeze(1), x.unsqueeze(0), dim=-1)
-    #
-    #     # Sélectionner les k paires les plus similaires dans X
-    #     indices = torch.triu_indices(similarity_matrix_x.size(0), similarity_matrix_x.size(1), 1)
-    #     values_x = similarity_matrix_x[indices[0], indices[1]]
-    #     # topk_values_x, topk_indices_x = torch.topk(values_x, k=min(k, len(values_x)), largest=True)
-    #
-    #     # topk_values_x = values_x
-    #     topk_indices_x = torch.arange(len(values_x))
-    #
-    #
-    #     # Embeddings des paires les plus similaires (dans Z)
-    #     similar_pairs_x = [(indices[0][idx], indices[1][idx]) for idx in topk_indices_x]
-    #     similarity_loss = 0
-    #     for i, j in similar_pairs_x:
-    #         # Similarité cosinus dans Z
-    #
-    #         sim_z = cosine_similarity(embeddings[i].unsqueeze(0), embeddings[j].unsqueeze(0), dim=-1)
-    #
-    #         # Différence entre similarités dans X et Z
-    #         similarity_loss += (sim_z - similarity_matrix_x[i, j]).abs()
-    #
-    #     # Moyenne sur toutes les paires
-    #     similarity_loss /= len(similar_pairs_x)
-    #
-    #     # Retourner les pertes MSE et similarité
-    #     return mse_loss, similarity_loss
 
-    def recon_x_loss(self, x, reconstructed_x, embeddings, k=None):
-        """
-        Calcule la perte de reconstruction et minimise l'écart des similarités cosinus entre X et Z.
-
-        Args:
-            x: Les vraies caractéristiques des nœuds.
-            reconstructed_x: Les caractéristiques reconstruites des nœuds.
-            embeddings: Les embeddings des nœuds.
-            k: Nombre de paires les plus similaires à considérer.
-
-        Returns:
-            mse_loss: La perte de reconstruction.
-            similarity_loss: La perte liée à l'écart de similarités.
-        """
-        # Perte MSE standard
-        loss_fn = nn.MSELoss()
-        mse_loss = loss_fn(reconstructed_x, x)
-
-        # Calcul de la similarité cosinus dans X (caractéristiques originales)
-        similarity_matrix_x = cosine_similarity(x.unsqueeze(1), x.unsqueeze(0), dim=-1)
-
-        # Calcul de la similarité cosinus dans les embeddings
-        similarity_matrix_z = cosine_similarity(embeddings.unsqueeze(1), embeddings.unsqueeze(0), dim=-1)
-
-        # Sélectionner les k paires les plus similaires dans X (au-dessus de la diagonale uniquement)
-        indices = torch.triu_indices(similarity_matrix_x.size(0), similarity_matrix_x.size(1), 1)
-        values_x = similarity_matrix_x[indices[0], indices[1]]
-
-        # Si k est inférieur au nombre de paires, sélectionne les k plus grandes similarités
-        if k:
-            topk_values_x, topk_indices = torch.topk(values_x, k=k, largest=True)
-            selected_indices = (indices[0][topk_indices], indices[1][topk_indices])
-        else:
-            selected_indices = indices
-
-        # Récupérer les similarités cosinus correspondantes dans Z
-        sim_x = similarity_matrix_x[selected_indices[0], selected_indices[1]]
-        sim_z = similarity_matrix_z[selected_indices[0], selected_indices[1]]
-
-        # Calcul de la perte : différence absolue entre similarités dans X et Z
-        similarity_loss = torch.mean(torch.abs(sim_z - sim_x))
-
-        # Retourner les pertes MSE et similarité
-        return mse_loss, similarity_loss
-
-    def sce_loss(self,x, y, alpha=3):
-        print(type(x))
-        x = F.normalize(x, p=2, dim=-1)
-        y = F.normalize(y, p=2, dim=-1)
-        loss = (1 - (x * y).sum(dim=-1)).pow_(alpha)
-        loss = loss.mean()
-        return loss
+    def recon_r(self,e1,rel,e2):
 
 
-    def contrastive_loss(self, H_1, H_2):
-        c_l = ContrastiveLoss.ContrastiveLoss()
-        cl_loss = c_l.contrastive_loss(H_1, H_2)
-        return cl_loss
-
-    def recon_r(self, e1,rel,e2):
         """
 
         :param e1: head entity
@@ -165,13 +62,3 @@ class MC2GEA(nn.Module):
         :return: score of triplet correctness
         """
         return self.r_decoder.forward(e1,rel,e2)
-
-    def recon_r_loss(self, preds, labels):
-        """
-        :param preds: a tensor of prediction (triplet's score)
-        :param labels: true labels
-        :return: BCE loss
-        """
-
-        R_recons_loss =  F.binary_cross_entropy(preds, labels)
-        return R_recons_loss
