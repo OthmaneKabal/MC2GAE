@@ -22,14 +22,15 @@ class MC2GEA(nn.Module):
         # self.reset_parameters()
         self.r_decoder = r_decoder
         # self.options = options
-        # self.projector_fc1 = nn.Sequential(nn.Linear(encoder.out_channels, projections[0], bias=True),
-        #                                    nn.PReLU(),
-        #                                    nn.Linear(projections[0], projections[1], bias=True)
-        #                                    )
-        # self.projector_fc2 = nn.Sequential(nn.Linear(encoder.out_channels, projections[0], bias=True),
-        #                                    nn.PReLU(),
-        #                                    nn.Linear(projections[0], projections[1], bias=True)
-        #                                    )
+        self.projector_fc1 = nn.Sequential(nn.Linear(encoder.out_channels, projections[0], bias=True),
+                                           nn.PReLU(),
+                                           nn.Linear(projections[0], projections[1], bias=True)
+                                           )
+        self.projector_fc2 = nn.Sequential(nn.Linear(encoder.out_channels, projections[0], bias=True),
+                                           nn.PReLU(),
+                                           nn.Linear(projections[0], projections[1], bias=True)
+                                           )
+
 
     def reset_parameters(self):
         """Réinitialise tous les paramètres apprenables du module."""

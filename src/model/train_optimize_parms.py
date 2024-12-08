@@ -1,7 +1,7 @@
 import sys
 import os
 
-from loss_func import recon_r_loss, sce_loss_fnc, similarity_pair_loss, mse_loss_fnc
+from loss_func import recon_r_loss, sce_loss_fnc, similarity_pair_loss, mse_loss_fnc, contrastive_loss
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'layers')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..', 'data')))
@@ -147,6 +147,7 @@ def train_model(model, data, optimizer, num_epochs, num_bases, out_channels, gdp
         total_mse_loss = 0
         total_cos_loss = 0
         if "contrastive" in training_options and len(training_options)==1:
+            print("\nContrastive\n")
             with tqdm(total=len(G_data_loader), desc=f"Epoch {epoch + 1}/{num_epochs}", unit="batch") as batch_pbar:
                 for g_batch in G_data_loader:
                     g_batch.to(device)
@@ -167,17 +168,36 @@ def train_model(model, data, optimizer, num_epochs, num_bases, out_channels, gdp
                     # print(g2_batch.edge_type[i_batch] == removed_edge_types[mask2][i])
                     # print(sorted_g2_batch == sorted_g2_)
                     #################################################################################
-                    h1_batch = model.encode(g1_batch)
-                    h2_batch = model.encode(g2_batch)
-
-                    loss = model.contrastive_loss(h1_batch, h2_batch)
+                    nodes_mask = torch.isin(g_batch.n_id, g_batch.input_id)
+                    h1_batch = model.encode(g1_batch)[nodes_mask]
+                    h2_batch = model.encode(g2_batch)[nodes_mask]
+                    # mask = torch.isin(n_id, batch.input_id) ## select only input_nodes
+                    # h1_projected = model.projector_fc1(h1_batch)[mask]
+                    # h2_projected = model.projector_fc2(h1_batch)[mask]
+                    loss = contrastive_loss(h1_batch, h2_batch)
                     loss.backward()
                     optimizer.step()
                     total_loss += loss.item()
                     batch_pbar.set_postfix(batch_loss=loss.item())
                     batch_pbar.update(1)
-                    # H1_projected = model.projector_fc1(H1_batch)[mask_G1]
-                    # H2_projected = model.projector_fc2(H2_batch)[mask_G2]
+                avg_loss = total_loss / len(G1_data_loader)
+                print("Evaluation\n")
+                metrics = evaluate(model, data, config["Gs_path"], config["core_concepts"], gdp)
+                print("\n")
+                if avg_loss < best_loss:
+                    best_loss = avg_loss
+                    save_model_with_hyperparams(model, optimizer, epoch, num_bases, out_channels, save_dir=save_dir,
+                                                is_best_acc=False)
+                    print(f'Model saved with Avg Loss: {best_loss:.4f}\n')
+                if metrics["accuracy"] > best_accuracy:
+                    best_accuracy = metrics["accuracy"]
+                    save_model_with_hyperparams(model, optimizer, epoch, num_bases, out_channels, save_dir=save_dir,
+                                                is_best_acc=False)
+                    print(f'Model saved with Accuracy: {best_accuracy:.4f}\n')
+                wandb.log({"epoch": epoch + 1, "contrastive loss": avg_loss,
+                           "accuracy": metrics["accuracy"], "f1-score": metrics["f1_score"],
+                           "recall": metrics["recall"], "precision": metrics["precision"], })
+
 
                     # G1_batch.to(device)
                     # G2_batch.to(device)

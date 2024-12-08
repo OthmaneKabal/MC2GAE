@@ -80,7 +80,7 @@ def sce_loss_fnc(x, y, alpha=3):
 
 
 def contrastive_loss(H_1, H_2):
-    c_l = ContrastiveLoss.ContrastiveLoss()
+    c_l = ContrastiveLoss()
     cl_loss = c_l.contrastive_loss(H_1, H_2)
     return cl_loss
 

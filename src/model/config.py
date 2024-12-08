@@ -15,7 +15,7 @@ config = {
     "num_epochs": 150,
     "Entities_path": "../outputs/EntitiesBertEmbeddingAugmented.pickle",
     "Edges_path": "../outputs/PredicatesBertEmbeddingAugmented.pickle",
-    "KG_path": "../../data/graph_filtred_gpt_20.json",
+    "KG_path": "../../data/graph_filtred_gpt_20_tst.json",
     "Gs_path": "../../data/gs_vf.xlsx",
     "Gs_path_no_other": "../../data/gs_vf_no_other.xlsx",
     "core_concepts" : [  'data structure',
@@ -40,10 +40,10 @@ config = {
                     'use_bias': True,
                     },
     "coresp_hidden_sizes":{768 : 43648, 512: 27776, 256: 11904, 128: 3968, 64:27776},
-    "training_options" : ["SCE_Recons_X"],
+    "training_options" : ["contrastive"],
      "hyperparams_grid" : {"num_bases": [10], "out_channels": [[640,512] , [256, 128], [768,768], [100,50]]},
     "save_dir":"ckpt_exp_",
-    "wandb_project_name": "MC2GAE_SCE_Recons_X_v22"
+    "wandb_project_name": "Mcontrastive_tst"
 }
 
 
