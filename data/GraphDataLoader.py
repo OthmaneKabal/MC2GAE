@@ -3,7 +3,7 @@ from torch_geometric.loader import NeighborLoader
 import numpy as np
 import random
 class GraphDataLoader:
-    def __init__(self, data, num_neighbors=[100, 100], batch_size=256, shuffle=True, seed = 42):
+    def __init__(self, data, num_neighbors=[100, 100], batch_size=256, shuffle=True, seed = 42, input_nodes = 0 ):
         """
         Initialise le DataLoader pour un graphe avec NeighborLoader.
 
@@ -18,7 +18,10 @@ class GraphDataLoader:
         self.batch_size = batch_size
         self.shuffle = shuffle
         self.seed = seed
-
+        if input_nodes == 0:
+            self.input_nodes = torch.arange(self.data.x.size(0), dtype=torch.long)
+        else:
+            self.input_nodes = input_nodes
     def get_loader(self):
         """
         Retourne le NeighborLoader configuré pour l'échantillonnage.
@@ -33,7 +36,7 @@ class GraphDataLoader:
         self.data,
         num_neighbors=self.num_neighbors,
         batch_size=self.batch_size,
-        input_nodes=torch.arange(self.data.x.size(0), dtype=torch.long),  # Entiers pour input_nodes
+        input_nodes= self.input_nodes,  # Entiers pour input_nodes
         shuffle=self.shuffle
         )
         return loader

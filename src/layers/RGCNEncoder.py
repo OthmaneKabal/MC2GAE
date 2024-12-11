@@ -56,3 +56,89 @@ class RGCNEncoder(nn.Module):
             x = self.relu(x)
 
         return x
+
+
+
+
+
+
+
+
+
+
+# from torch import nn
+# from torch_geometric.data import Data
+# from torch_geometric.nn import RGCNConv
+#
+#
+# class RGCNEncoder(nn.Module):
+#     def __init__(self, data: Data, out_channels, num_layers=2, num_bases=30, dropout=0.5):
+#         """
+#         Initialize the RGCN encoder with ReLU, BatchNorm, Dropout, and a final linear layer.
+#
+#         Parameters:
+#         - data: Data object to extract input features and relations.
+#         - out_channels: List of output feature dimensions for each layer.
+#         - num_layers: Number of stacked RGCN layers (must match the length of out_channels).
+#         - num_bases: Number of bases to use in each RGCN layer to reduce parameters.
+#         - dropout: Dropout probability for regularization.
+#         """
+#         super(RGCNEncoder, self).__init__()
+#
+#         # Ensure the number of layers matches the size of out_channels
+#         assert len(out_channels) == num_layers, "The length of out_channels must equal num_layers"
+#         self.out_channels = out_channels[-1]
+#
+#         # Extract input dimensions and the number of relations from the data object
+#         in_channels = data.x.shape[1]
+#         num_relations = data.edge_type.max().item() + 1
+#
+#         # Create a list of RGCN layers with varying output sizes
+#         self.convs = nn.ModuleList()
+#         self.bns = nn.ModuleList()  # Batch normalization layers
+#         for i in range(num_layers):
+#             input_dim = in_channels if i == 0 else out_channels[i - 1]
+#             self.convs.append(RGCNConv(input_dim, out_channels[i], num_relations, num_bases=num_bases))
+#             self.bns.append(nn.BatchNorm1d(out_channels[i]))
+#
+#         # Dropout layer
+#         self.dropout = nn.Dropout(p=dropout)
+#
+#         # Final linear layer to produce embeddings
+#         self.final_layer = nn.Linear(out_channels[-1], self.out_channels)
+#
+#         # Activation function
+#         self.relu = nn.ReLU()
+#
+#     def reset_parameters(self):
+#         """Reset the parameters of the encoder layers."""
+#         for conv in self.convs:
+#             conv.reset_parameters()
+#         for bn in self.bns:
+#             bn.reset_parameters()
+#         self.final_layer.reset_parameters()
+#
+#     def forward(self, data: Data):
+#         """
+#         Forward pass through the network with a Data object as input.
+#
+#         Parameters:
+#         - data: Data object containing x (node features), edge_index (edge indices), and edge_type (edge types).
+#
+#         Returns:
+#         - Node embeddings after passing through the RGCN encoder.
+#         """
+#         # Extract attributes from the Data object
+#         x, edge_index, edge_type = data.x, data.edge_index, data.edge_type
+#
+#         # Apply each RGCN layer with BatchNorm, ReLU, and Dropout in between
+#         for conv, bn in zip(self.convs, self.bns):
+#             x = conv(x, edge_index, edge_type)
+#             x = bn(x)
+#             x = self.relu(x)
+#             x = self.dropout(x)
+#
+#         # Apply the final linear layer to produce embeddings
+#         x = self.final_layer(x)
+#
+#         return x

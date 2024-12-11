@@ -30,6 +30,48 @@ class ContrastiveLoss(torch.nn.Module):
             between_sim.diag() / (refl_sim.sum(1) + between_sim.sum(1) - refl_sim.diag())
         ).mean()
 
+    def semi_loss_exclude(self, z1: torch.Tensor, z2: torch.Tensor, edge_index: torch.Tensor, excluded: torch.Tensor):
+        """
+        Calcul de la perte semi-contrastive en excluant les paires définies par un masque, sans boucle.
+
+        Args:
+            z1: Embeddings de la première vue.
+            z2: Embeddings de la seconde vue.
+            edge_index: Tenseur (2, nb_links) contenant les indices des arêtes.
+            excluded: Masque binaire (nb_links), 1 pour exclure une arête, 0 sinon.
+
+        Returns:
+            torch.Tensor: Perte semi-contrastive.
+        """
+        # Fonction exponentielle avec la température
+        f = lambda x: torch.exp(x / self.tau)
+
+        # Similarités cosinus intra-vue et inter-vue
+        refl_sim = f(self.sim(z1, z1))
+        between_sim = f(self.sim(z1, z2))
+
+        # Construction du masque global
+        num_nodes = z1.size(0)
+        mask = torch.ones((num_nodes, num_nodes), device=z1.device)  # Initialise un masque complet
+
+        # Masque binaire pour les indices dans edge_index
+        excluded_indices = edge_index[:, excluded.bool()]  # Sélectionne les arêtes à exclure
+        mask[excluded_indices[0], excluded_indices[1]] = 0  # Exclut les paires (source, target)
+        mask[excluded_indices[1], excluded_indices[0]] = 0  # Symétrie pour un graphe non orienté
+        print(mask.shape)
+        # Application du masque sur les similarités
+        refl_sim = refl_sim * mask
+        between_sim = between_sim * mask
+
+        # Calcul de la perte InfoNCE avec le dénominateur masqué
+        return -torch.log(
+            between_sim.diag() / (refl_sim.sum(1) + between_sim.sum(1) - refl_sim.diag())
+        ).mean()
+
+    def contrastive_loss_exclude(self, H_1: torch.Tensor, H_2: torch.Tensor, edge_index: torch.Tensor, excluded: torch.Tensor):
+        l1 = self.semi_loss_exclude(H_1, H_2, edge_index, excluded)
+        l2 = self.semi_loss_exclude(H_2, H_1, edge_index, excluded)
+        return l1 + l2 / 2
     def contrastive_loss(self, H_1: torch.Tensor, H_2: torch.Tensor):
         # Calcul de la perte semi-contrastive entre H_1 et H_2
         l1 = self.semi_loss(H_1, H_2)
@@ -84,6 +126,14 @@ def contrastive_loss(H_1, H_2):
     cl_loss = c_l.contrastive_loss(H_1, H_2)
     return cl_loss
 
+
+def contrastive_loss_exclude_is(H_1, H_2, edge_index, excluded):
+    c_l = ContrastiveLoss()
+    cl_loss = c_l.contrastive_loss_exclude(H_1, H_2, edge_index, excluded)
+    return cl_loss
+
+
+
 def mse_loss_fnc(x, reconstructed_x):
     # Perte MSE standard
     loss_fn = nn.MSELoss()
@@ -100,3 +150,78 @@ def recon_r_loss(preds, labels):
 
     R_recons_loss =  F.binary_cross_entropy(preds, labels)
     return R_recons_loss
+
+
+import torch
+import torch.nn.functional as F
+
+
+def calculate_cluster_assignments(node_embeddings, core_concepts):
+    """
+    Calcule les assignations de clusters pour chaque nœud en fonction de la similarité cosinus.
+
+    Arguments:
+    - node_embeddings (torch.Tensor): Les embeddings des nœuds, de dimension [N, d], où N est le nombre de nœuds et d est la dimension des embeddings.
+    - core_concepts (torch.Tensor): Les embeddings des concepts centraux des clusters, de dimension [num_clusters, d].
+
+    Retourne:
+    - cluster_assignments (torch.Tensor): Les indices des clusters associés aux nœuds, de dimension [N].
+    """
+    # Calculer la similarité cosinus entre chaque nœud et tous les concepts centraux
+    # Résultat : [N, num_clusters]
+    cosine_similarities = F.cosine_similarity(
+        node_embeddings.unsqueeze(1),  # Ajout d'une dimension pour comparer avec chaque core concept
+        core_concepts.unsqueeze(0),  # Alignement des dimensions pour le calcul
+        dim=-1
+    )
+
+    # Trouver l'indice du cluster ayant la similarité maximale pour chaque nœud
+    cluster_assignments = cosine_similarities.argmax(dim=1)
+
+    return cluster_assignments
+
+
+def inter_cluster_loss(node_embeddings, cluster_assignments, core_concepts):
+    cluster_core_embeddings = core_concepts[cluster_assignments]
+    print(cluster_core_embeddings.shape)
+    cosine_similarities = F.cosine_similarity(node_embeddings, cluster_core_embeddings, dim=-1)
+    losses = 1 - cosine_similarities
+    inter_cluster_loss = losses.mean()
+    print(inter_cluster_loss)
+    return inter_cluster_loss
+
+def intra_cluster_loss(core_concepts_embeddings, scale_factor=1.0):
+    """
+    Calcule la perte intra-cluster pour renforcer la séparation entre les clusters.
+
+    Arguments:
+    - core_concepts (torch.Tensor): Les embeddings des concepts centraux, de dimension [num_clusters, d].
+    - scale_factor (float): Un facteur d'échelle (par défaut 1.0).
+
+    Retourne:
+    - intra_cluster_loss (torch.Tensor): La perte intra-cluster moyenne.
+    """
+    num_clusters = core_concepts_embeddings.size(0)  # Nombre de core concepts
+
+    if num_clusters < 2:
+        # Aucun calcul à effectuer si moins de 2 clusters
+        return torch.tensor(0.0, device=core_concepts_embeddings.device)
+
+    # Calculer toutes les similarités cosinus entre les core concepts
+    cosine_similarities = F.cosine_similarity(
+        core_concepts_embeddings.unsqueeze(1),  # [num_clusters, 1, d]
+        core_concepts_embeddings.unsqueeze(0),  # [1, num_clusters, d]
+        dim=-1
+    )  # Résultat : [num_clusters, num_clusters]
+
+    # Masquer les diagonales (similarités entre le même core concept)
+    mask = torch.eye(num_clusters, device=core_concepts_embeddings.device).bool()
+    cosine_similarities = cosine_similarities.masked_fill(mask, 0)
+
+    # Somme des similarités cosinus entre les différents core concepts
+    total_similarity = cosine_similarities.sum()
+
+    # Calcul de la perte normalisée
+    loss = scale_factor * total_similarity / (num_clusters * (num_clusters - 1))
+
+    return loss

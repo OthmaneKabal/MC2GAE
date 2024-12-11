@@ -11,7 +11,6 @@ from data.GraphDataPreparation import GraphDataPreparation
 from src.layers.ConvE import ConvE
 from src.layers.RGCNDecoder import RGCNDecoder
 from src.layers.RGCNEncoder import RGCNEncoder
-from src.layers.RGCNEncoder1 import RGCNEncoder1
 from src.model.MC2GEA import MC2GEA
 from src.model.utils.utils import save_model, load_model_checkpoint, load_gold_standard_labels
 from config import config
@@ -32,7 +31,8 @@ import torch
 import random
 import numpy as np
 
-
+import torch
+import torch.nn.functional as F
 
 import os
 
@@ -96,9 +96,9 @@ def generate_gs_embeddings(graph_path, checkpoint_path, gs_path, core_concepts, 
         RGCN_decoder = RGCNDecoder(RGCN_encoder, data, config["num_bases"], config["alpha"]).to(config["device"])
         config["convE_config"]["embedding_dim"] = config["out_channels"][1]
         config["convE_config"]["hidden_size"] = config["coresp_hidden_sizes"][config["out_channels"][1]]
-        # r_decoder = ConvE(config["convE_config"])
+        r_decoder = ConvE(config["convE_config"])
 
-        autoencoder = MC2GEA(RGCN_encoder, RGCN_decoder).to(config["device"])
+        autoencoder = MC2GEA(RGCN_encoder, RGCN_decoder, r_decoder = r_decoder).to(config["device"])
 
         # RGCN_encoder = RGCNEncoder1(data, config["out_channels"], config["num_layers"], config["num_bases"]).to(
         #     config["device"])
@@ -120,11 +120,21 @@ def generate_gs_embeddings(graph_path, checkpoint_path, gs_path, core_concepts, 
         model.eval()
         # Encoder le graphe
         with torch.no_grad():
+             print("\n-----GNN---------\n")
              embeddings = model.encode(data)
-             # embeddings_decode = model.decode_x(data,embeddings)
+             embeddings_DGI = u.read_pickle_file("results/embeddings_DGI.pkl")
+
+             concatenated = torch.cat((embeddings *0.9, embeddings_DGI*0.2), dim=1)  # Résultat : [52689, 1112]
+
+             # Normalisation L2 pour chaque ligne
+             normalized = F.normalize(concatenated, p=2, dim=1)
+             embeddings = normalized
+             #embeddings = model.encoder(data.x, data.edge_index)
+
+            # embeddings_decode = model.decode_x(data,embeddings)
              # #    # checkpoint_path
-             # u.save_to_pickle("Hidden.pickle", embeddings)
-             # u.save_to_pickle("Recons_X.pickle", embeddings_decode)
+             # u.save_to_pickle("Hidden_MSE_sim.pickle", embeddings)
+             # u.save_to_pickle("Recons_X_MSE_sim.pickle", embeddings_decode)
              # u.save_to_pickle("X.pickle", data.x)
 
             # embeddings = model.encoder(data.x, data.edge_index, data.edge_type)
@@ -133,12 +143,13 @@ def generate_gs_embeddings(graph_path, checkpoint_path, gs_path, core_concepts, 
         embeddings = data.x
         # print(embeddings, print(embeddings.shape))
         # print(embeddings[0])
-    else:
-        embeddings = data.x
-        # print("load_emb_from_file")
-        # embeddings = u.read_pickle_file( "embeddings_DGI.pkl")
-        # print(embeddings, print(embeddings.shape))
-
+    elif emb_file:
+        #embeddings = data.x
+        #emb_file
+        print("load_emb_from_file")
+        embeddings = u.read_pickle_file( "results/embeddings_DGI.pkl")
+        #print(embeddings, print(embeddings.shape))
+        print(embeddings.shape)
     # Charger le fichier GS
     gs_df = pd.read_excel(gs_path, sheet_name='Sheet1')
     gs_terms = set(gs_df['term'].str.lower().unique())  # Termes du GS en minuscules pour uniformiser
@@ -163,13 +174,15 @@ def generate_gs_embeddings(graph_path, checkpoint_path, gs_path, core_concepts, 
     #
     # print(f"Nombre de termes du GS avec embeddings : {len(gs_embeddings)}")
     # print(f"Nombre de core concepts avec embeddings : {len(core_concepts_embeddings)}")
-
     return gs_embeddings, core_concepts_embeddings
 
 def generate_gs_embeddgs_from_model(model, data,gs_path, core_concepts, gdp):
     model.eval()
     with torch.no_grad():
         embeddings = model.encode(data)
+        # embeddings = model.encoder(data.x, data.edge_index)
+
+
     gs_df = pd.read_excel(gs_path, sheet_name='Sheet1')
     gs_terms = set(gs_df['term'].str.lower().unique())  # Termes du GS en minuscules pour uniformiser
     node_index_to_text = gdp.decode_indexes()
@@ -185,18 +198,16 @@ def generate_gs_embeddgs_from_model(model, data,gs_path, core_concepts, gdp):
 
 def evaluate(model, data,gs_path, core_concepts, gdp):
     gs_embeddings, core_concepts_embeddings = generate_gs_embeddgs_from_model(model, data,gs_path, core_concepts, gdp)
-    classifications = classify_terms_by_cosine_similarity(gs_embeddings, core_concepts_embeddings, with_other = False, threshold = 0.5)
+    # print(core_concepts_embeddings["operating system"])
+    classifications = classify_terms_by_cosine_similarity(gs_embeddings, core_concepts_embeddings, with_other = False)
     metrics_df = evaluate_classification(gs_path, classifications)
-    print('\n--------------------\n')
     metrics = {
         'accuracy': metrics_df.loc['Metrics', 'accuracy'],
         'f1_score': metrics_df.loc['Metrics', 'f1_score'],
         'precision': metrics_df.loc['Metrics', 'precision'],
         'recall': metrics_df.loc['Metrics', 'recall']
     }
-    print('\n--------------------\n')
 
-    print(metrics)
     return metrics
 
 def classify_terms_by_cosine_similarity(gs_embeddings, core_concepts_embeddings, with_other = False, threshold = 0.5):
@@ -263,22 +274,22 @@ def evaluate_classification(gs_path, classifications):
     # print("\n+++++++++++ Benchmark +++++++++++\n",count_b ,"\n++++++++++++++++\n")
     # print(type(predicted_labels), "\n", type(true_labels),"\n")
     #
-    # data__ = pd.DataFrame({
-    #     "Predictions": predicted_labels,
-    #     "Labels": true_labels
-    # })
-    #
-    # # Saving to an Excel file
-    #
-    # file_path = "Recons_x_vf.xlsx"
-    # data__.to_excel(file_path, index=False)
+    data__ = pd.DataFrame({
+        "Predictions": predicted_labels,
+        "Labels": true_labels
+    })
+
+    # Saving to an Excel file
+
+    file_path = "DGI.xlsx"
+    data__.to_excel(file_path, index=False)
 
 
 
     accuracy = accuracy_score(true_labels, predicted_labels)
-    f1 = f1_score(true_labels, predicted_labels, average='weighted', zero_division=0)
-    precision = precision_score(true_labels, predicted_labels, average='weighted', zero_division=0)
-    recall = recall_score(true_labels, predicted_labels, average='weighted', zero_division=0)
+    f1 = f1_score(true_labels, predicted_labels, average='macro', zero_division=0)
+    precision = precision_score(true_labels, predicted_labels, average='macro', zero_division=0)
+    recall = recall_score(true_labels, predicted_labels, average='macro', zero_division=0)
 
     metrics = {
         'accuracy': accuracy,
@@ -301,14 +312,14 @@ def extract_params(filename):
 
 
 
-def evaluate_all(KG_path, GS_path, ckpt_dir, config, embedding_model = "GNN", with_other = True, thresholds_list = [0.5]):
+def evaluate_all(KG_path, GS_path, ckpt_dir, config, embedding_model = "GNN", with_other = True, thresholds_list = [0.5], emb_file = None):
     for filename in os.listdir(ckpt_dir):
             if filename.endswith(".pth"):
                 if embedding_model != "GNN":
                     embeddings_dict, cc_embd = generate_gs_embeddings(KG_path,
                                                                       str(filename),
                                                                       GS_path, config["core_concepts"], config,
-                                                                      embedding_model="bert", emb_file = None)
+                                                                      embedding_model="bert", emb_file = emb_file)
 
                     if with_other:
                         for threshold in thresholds_list:
@@ -343,6 +354,7 @@ def evaluate_all(KG_path, GS_path, ckpt_dir, config, embedding_model = "GNN", wi
                                     print(metrics_df)
                             else:
                                 classifications = classify_terms_by_cosine_similarity(embeddings_dict, cc_embd, with_other=with_other)
+                                print(classifications)
                                 metrics_df = evaluate_classification(Gs_path, classifications)
                                 print(metrics_df)
 
@@ -445,18 +457,104 @@ def evaluate_all_save_best(KG_path, GS_path, ckpt_dir, config, embedding_model =
                                     'recall': metrics_df.loc['Metrics', 'recall']
                                 }
                                 best_results[filename] = {'best_result': metrics}
+
     return best_results
 
 
 
 
-# KG_path = config["KG_path"]
-# Gs_path = config["Gs_path_no_other"]
-# thresholds_list = [0.6,0.7,0.8]
+KG_path = config["KG_path"]
+Gs_path = config["Gs_path_no_other"]
+thresholds_list = [0.6,0.7,0.8]
+
+
+# evaluate_all(KG_path, Gs_path, "checkpoints/checkpoints_Recons_X_vf_75", config, embedding_model = "bert", with_other = False, thresholds_list = thresholds_list)
+# evaluate_all(KG_path, Gs_path, "checkpoints/Best_models/Reconstruct_X/ckpt_expriments_MSE", config, embedding_model = "GNN", with_other = False, thresholds_list = thresholds_list, emb_file = None)
+# #
+# #
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# gdp = GraphDataPreparation(config["Entities_path"], KG_path,
+#                                edges_embd_path=config["Edges_path"], is_directed=True)
+#
+# data = gdp.prepare_graph_with_type()
+# data = Data(x=data.x, edge_index=data.edge_index, edge_type=data.edge_type).to(config["device"])
+# print(data)
 #
 #
-# # evaluate_all(KG_path, Gs_path, "checkpoints/checkpoints_Recons_X_vf_75", config, embedding_model = "bert", with_other = False, thresholds_list = thresholds_list)
-# evaluate_all(KG_path, Gs_path, "checkpoints/checkpoints_SCE_Recons_X", config, embedding_model = "GNN", with_other = False, thresholds_list = thresholds_list)
+# # Initialisation du modèle
+# RGCN_encoder = RGCNEncoder(data, config["out_channels"], config["num_layers"], config["num_bases"]).to(
+#     config["device"])
+# RGCN_decoder = RGCNDecoder(RGCN_encoder, data, config["num_bases"], config["alpha"]).to(config["device"])
+# # config["convE_config"]["embedding_dim"] = config["out_channels"][1]
+# # config["convE_config"]["hidden_size"] = config["coresp_hidden_sizes"][config["out_channels"][1]]
+# # r_decoder = ConvE(config["convE_config"])
+# config['num_bases'] = 10
+# config["out_channels"] = [640,512]
+#
+# config["convE_config"]["embedding_dim"] = config["out_channels"][1]
+# config["convE_config"]["hidden_size"] = config["coresp_hidden_sizes"][config["out_channels"][1]]
+# r_decoder = ConvE(config["convE_config"])
+#
+#
+# autoencoder = MC2GEA(RGCN_encoder, RGCN_decoder, r_decoder = r_decoder).to(config["device"])
+#
+#
+# optimizer = optim.Adam(autoencoder.parameters(), lr=config["learning_rate"])
+#
+#
+# # Charger le modèle et l'optimiseur à partir du checkpoint
+# model_, optimizer, start_epoch = load_model_checkpoint(autoencoder, optimizer, "checkpoints/ckpt_expriments_MSE/best_model_bases10_channels640-512.pth")
+#
+
+# model.eval()
+
+#
+# torch.manual_seed(42)
+#
+# gs_embeddings, core_concepts_embeddings =  generate_gs_embeddings(KG_path, "checkpoints/ckpt_expriments_MSE/best_model_bases10_channels640-512.pth", Gs_path, config["core_concepts"], config, embedding_model = "GNN", emb_file = None)
+# gs_embeddings_m, core_concepts_embeddings_m =generate_gs_embeddgs_from_model(model, data,Gs_path, config["core_concepts"], gdp)
+# clss = classify_terms_by_cosine_similarity(gs_embeddings, core_concepts_embeddings, with_other = False, threshold = 0.5)
+# calss_m = classify_terms_by_cosine_similarity(gs_embeddings_m, core_concepts_embeddings_m, with_other = False, threshold = 0.5)
+#
+# print(evaluate_classification(Gs_path, calss_m))
+#
+# print(evaluate(model_, data,Gs_path, config["core_concepts"], gdp))
+#
+# metrics = evaluate(model_, data, config["Gs_path_no_other"], config["core_concepts"], gdp)
+# print(metrics)
+# print(clss)
+# print(calss_m)
+# for k in clss.keys():
+#     if clss[k]["class"] !=  calss_m[k]["class"]:
+#         print("!!!!!!!!")
+
+# for cc in config["core_concepts"]:
+#     #print(torch.tensor(core_concepts_embeddings[cc]) == torch.tensor(core_concepts_embeddings_m[cc]))
+#     print(torch.equal(torch.tensor(core_concepts_embeddings[cc]), torch.tensor(core_concepts_embeddings_m[cc])))
+# # evaluate(model, data, config["Gs_path"], config["core_concepts"], gdp)
+
+# for k in gs_embeddings.keys():
+#     if not torch.equal(torch.tensor(gs_embeddings[k]), torch.tensor(gs_embeddings[k])):
+#         print("!!!")
 
 # rows = []
 # for model_name, metrics in res.items():

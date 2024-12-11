@@ -198,8 +198,13 @@ def save_model_with_hyperparams(model, optimizer, epoch, num_bases, out_channels
                                 is_best_acc=False):
     os.makedirs(save_dir, exist_ok=True)
     base_filename = f"best_model_bases{num_bases}_channels{'-'.join(map(str, out_channels))}"
-    checkpoint_path = os.path.join(save_dir,
-                                    f"{base_filename}_best_acc.pth") if is_best_acc else f"{base_filename}_best_loss.pth"
+    file_name = ""
+    if is_best_acc:
+        file_name = f"{base_filename}_best_acc.pth"
+    else:
+        file_name = f"{base_filename}_best_loss.pth"
+
+    checkpoint_path = os.path.join(save_dir, file_name)
 
 
     torch.save({

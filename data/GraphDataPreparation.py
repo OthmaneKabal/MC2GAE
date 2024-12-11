@@ -351,3 +351,11 @@ class GraphDataPreparation:
     def prepare_graph_with_type(self):
         self.build_networkx_graph_type()
         return self.build_torch_geometric_data_with_types()
+
+    def get_CC_indexes(self, CC_list):
+        """
+        gdp:
+        CC_list:
+        """
+        CC_indexes = [self.nodes_index[cc] for cc in CC_list]
+        return CC_indexes

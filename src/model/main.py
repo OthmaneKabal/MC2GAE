@@ -1,6 +1,8 @@
 import sys
 import os
 
+from src.layers.GCNDecoder import GCNDecoder
+from src.layers.GCNEncoder import GCNEncoder
 from train_optimize_parms import train_model
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'layers')))
@@ -44,40 +46,48 @@ wandb.require("legacy-service")
 wandb.login(key="c278e62d2025b60ff8b984a40f7b62b697f9b4fd", relogin=True)
 
 
+def main():
 
-wandb_project_name = config["wandb_project_name"]
+    wandb_project_name = config["wandb_project_name"]
 
-save_dir = config["save_dir"]
-Entities_path = config["Entities_path"]
-KG_path = config["KG_path"]
-Edges_path = config["Edges_path"]
-device = config["device"]
+    save_dir = config["save_dir"]
+    Entities_path = config["Entities_path"]
+    KG_path = config["KG_path"]
+    Edges_path = config["Edges_path"]
+    device = config["device"]
 
-gdp = GraphDataPreparation(Entities_path, KG_path, edges_embd_path=Edges_path, is_directed=True)
-data = gdp.prepare_graph_with_type()
-data = Data(x=data.x, edge_index=data.edge_index, edge_type=data.edge_type).to(device)
+    gdp = GraphDataPreparation(Entities_path, KG_path, edges_embd_path=Edges_path, is_directed=True)
+    data = gdp.prepare_graph_with_type()
+    data = Data(x=data.x, edge_index=data.edge_index, edge_type=data.edge_type).to(device)
 
+    for num_bases in config["hyperparams_grid"]["num_bases"]:
+        for out_channels in config["hyperparams_grid"]["out_channels"]:
+            # config["convE_config"]["embedding_dim"] = out_channels[1]
+            # config["convE_config"]["hidden_size"] = config["coresp_hidden_sizes"][out_channels[1]]
 
-for num_bases in config["hyperparams_grid"]["num_bases"]:
-    for out_channels in config["hyperparams_grid"]["out_channels"]:
-        config["convE_config"]["embedding_dim"] = out_channels[1]
-        config["convE_config"]["hidden_size"] = config["coresp_hidden_sizes"][out_channels[1]]
+            # Nom unique pour chaque run, incluant les hyperparamètres
+            run_name = f"bases_{num_bases}_channels_{'-'.join(map(str, out_channels))}"
+            # Initialisation de wandb pour chaque combinaison d'hyperparamètres
+            wandb.init(
+                project=wandb_project_name,
+                name=run_name,
+                config= config,
+                settings=wandb.Settings(start_method="thread")
+            )
+            # print(f"\nTraining with num_bases={num_bases} and out_channels={out_channels}...\n")
+            # # Initialiser le modèle avec les hyperparamètres actuels
+            # RGCN_encoder = RGCNEncoder(data, out_channels, config["num_layers"], num_bases).to(device)
+            # RGCN_decoder = RGCNDecoder(RGCN_encoder, data, num_bases, config["alpha"]).to(device)
+            # r_decoder = ConvE(config["convE_config"])
+            # autoencoder = MC2GEA(RGCN_encoder, RGCN_decoder, r_decoder = r_decoder).to(device)
 
-        # Nom unique pour chaque run, incluant les hyperparamètres
-        run_name = f"bases_{num_bases}_channels_{'-'.join(map(str, out_channels))}"
-        # Initialisation de wandb pour chaque combinaison d'hyperparamètres
-        wandb.init(
-            project=wandb_project_name,
-            name=run_name,
-            config= config,
-            settings=wandb.Settings(start_method="thread")
-        )
-        print(f"\nTraining with num_bases={num_bases} and out_channels={out_channels}...\n")
-        # Initialiser le modèle avec les hyperparamètres actuels
-        RGCN_encoder = RGCNEncoder(data, out_channels, config["num_layers"], num_bases).to(device)
-        RGCN_decoder = RGCNDecoder(RGCN_encoder, data, num_bases, config["alpha"]).to(device)
-        r_decoder = ConvE(config["convE_config"])
-        autoencoder = MC2GEA(RGCN_encoder, RGCN_decoder, r_decoder = r_decoder).to(device)
-        optimizer = optim.Adam(autoencoder.parameters(), lr=config["learning_rate"])
-        train_model(autoencoder, data, optimizer, config["num_epochs"], num_bases, out_channels, gdp, training_options= config["training_options"],save_dir=config["save_dir"], wandb = wandb)
-        wandb.finish()
+            GCN_encoder = GCNEncoder(data, out_channels, config["num_layers"]).to(device)
+            GCN_decoder = GCNDecoder(GCN_encoder, data, config["alpha"]).to(device)
+            # r_decoder = ConvE(config["convE_config"])  # Supposons que ConvE reste inchangé
+            autoencoder = MC2GEA(GCN_encoder, GCN_decoder, projections = [out_channels[1], out_channels[1]]).to(device)
+            optimizer = optim.Adam(autoencoder.parameters(), lr=config["learning_rate"])
+            train_model(autoencoder, data, optimizer, config["num_epochs"], num_bases, out_channels, gdp, training_options= config["training_options"],save_dir=config["save_dir"], wandb = wandb)
+            wandb.finish()
+
+if __name__ == "__main__":
+    main()

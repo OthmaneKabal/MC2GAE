@@ -1,7 +1,8 @@
 import sys
 import os
 
-from loss_func import recon_r_loss, sce_loss_fnc, similarity_pair_loss, mse_loss_fnc, contrastive_loss
+from loss_func import recon_r_loss, sce_loss_fnc, similarity_pair_loss, mse_loss_fnc, contrastive_loss, \
+    contrastive_loss_exclude_is, calculate_cluster_assignments, inter_cluster_loss
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'layers')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..', 'data')))
@@ -120,7 +121,7 @@ def train_model(model, data, optimizer, num_epochs, num_bases, out_channels, gdp
     best_accuracy = 0
     # Application du masque de features
     print("\nmask_features...\n")
-    masked_features_data= view_partial_features_masking(data)
+    masked_features_data= view_partial_features_masking(data, max_masking_percentage = config["max_masking_percentage"])
     print("\nRelations_dripping (Masking)...\n")
     masked_edges_data, removed_edge_indices, removed_edge_types  = relation_based_edge_dropping_balanced(data, config["total_drop_rate"], max_drop_fraction_per_node=0.3, random_seed=42)
     removed_edge_indices = removed_edge_indices.to(device)
@@ -136,16 +137,32 @@ def train_model(model, data, optimizer, num_epochs, num_bases, out_channels, gdp
     set_seed(seed)
     G1_data_loader = GraphDataLoader(masked_features_data, num_neighbors=config["num_neighbors"],
                                      batch_size=config["batch_size"], shuffle=config["shuffle"]).get_loader()
+
+    set_seed(seed)
     G_data_loader = GraphDataLoader(data, num_neighbors=config["num_neighbors"],
                                      batch_size=config["batch_size"], shuffle=config["shuffle"]).get_loader()
+    set_seed(seed)
     G2_data_loader = GraphDataLoader(masked_edges_data, num_neighbors=config["num_neighbors"],
-                                    batch_size=config["batch_size"], shuffle=config["shuffle"]).get_loader()
+                                     batch_size=config["batch_size"], shuffle=config["shuffle"]).get_loader()
+    set_seed(seed)
+    cc_indexes = gdp.get_CC_indexes(config["core_concepts"])
+    cc_data_loader = GraphDataLoader(data, num_neighbors=config["num_neighbors"],batch_size = len(cc_indexes), shuffle=config["shuffle"]).get_loader()
+    cc_data_loader_2 = GraphDataLoader(data, num_neighbors=config["num_neighbors"],batch_size = len(cc_indexes), shuffle=config["shuffle"]).get_loader()
+
+    cc_graph = next(iter(cc_data_loader))
+    cc_graph_2 = next(iter(cc_data_loader_2))
+
+    cc_clusters = calculate_cluster_assignments(cc_graph.x[cc_graph.input_id], cc_graph_2.x[cc_graph_2.input_id])
+    print(cc_clusters)
+    inter_cluster_loss(cc_graph.x[range(9,18)], cc_clusters,cc_graph_2.x[cc_graph_2.input_id] )
+    exit(55)
 
     for epoch in range(num_epochs):
         model.train()
         total_loss = 0
         total_mse_loss = 0
         total_cos_loss = 0
+        total_sce_loss = 0
         if "contrastive" in training_options and len(training_options)==1:
             print("\nContrastive\n")
             with tqdm(total=len(G_data_loader), desc=f"Epoch {epoch + 1}/{num_epochs}", unit="batch") as batch_pbar:
@@ -158,6 +175,8 @@ def train_model(model, data, optimizer, num_epochs, num_bases, out_channels, gdp
                     g2_batch.edge_index = g2_batch.edge_index[:,edges_mask]
                     g2_batch.e_id = g2_batch.e_id[edges_mask]
                     g2_batch.edge_type = g2_batch.edge_type[edges_mask]
+
+
                     ################################## Verification ###############################
                     # mask2 = torch.isin(removed_edge_indices, g2_batch.e_id)
                     # # print(removed_edge_types.shape)
@@ -169,20 +188,36 @@ def train_model(model, data, optimizer, num_epochs, num_bases, out_channels, gdp
                     # print(sorted_g2_batch == sorted_g2_)
                     #################################################################################
                     nodes_mask = torch.isin(g_batch.n_id, g_batch.input_id)
-                    h1_batch = model.encode(g1_batch)[nodes_mask]
-                    h2_batch = model.encode(g2_batch)[nodes_mask]
+                    h1_batch = model.encode(g1_batch)
+                    h2_batch = model.encode(g2_batch)
                     # mask = torch.isin(n_id, batch.input_id) ## select only input_nodes
                     # h1_projected = model.projector_fc1(h1_batch)[mask]
                     # h2_projected = model.projector_fc2(h1_batch)[mask]
-                    loss = contrastive_loss(h1_batch, h2_batch)
+
+                    mask_is = g1_batch.edge_type == gdp.predicate_to_id["is"]
+                    c_loss = contrastive_loss_exclude_is(h1_batch,h2_batch,g1_batch.edge_index,mask_is)
+
+
+                    # exit(12354)
+
+                    # n_id = g1_batch.n_id  ## The global node index for every sampled node
+                    # mask_1 = torch.isin(n_id, g1_batch.input_id)
+                    # c_loss = contrastive_loss(h1_batch, h2_batch)
+                    # reconstructed_x = model.decode_x(g1_batch, h1_batch)
+                    # reconstructed_x = reconstructed_x[mask_1]
+                    # mce_loss = mse_loss_fnc(data.x[n_id[mask_1]], reconstructed_x)
+                    loss = c_loss
                     loss.backward()
                     optimizer.step()
                     total_loss += loss.item()
                     batch_pbar.set_postfix(batch_loss=loss.item())
                     batch_pbar.update(1)
                 avg_loss = total_loss / len(G1_data_loader)
-                print("Evaluation\n")
-                metrics = evaluate(model, data, config["Gs_path"], config["core_concepts"], gdp)
+                print("\nEvaluation\n")
+                print(data)
+                metrics = evaluate(model, data, config["Gs_path_no_other"], config["core_concepts"], gdp)
+                print("\n")
+                print(metrics)
                 print("\n")
                 if avg_loss < best_loss:
                     best_loss = avg_loss
@@ -192,7 +227,7 @@ def train_model(model, data, optimizer, num_epochs, num_bases, out_channels, gdp
                 if metrics["accuracy"] > best_accuracy:
                     best_accuracy = metrics["accuracy"]
                     save_model_with_hyperparams(model, optimizer, epoch, num_bases, out_channels, save_dir=save_dir,
-                                                is_best_acc=False)
+                                                is_best_acc=True)
                     print(f'Model saved with Accuracy: {best_accuracy:.4f}\n')
                 wandb.log({"epoch": epoch + 1, "contrastive loss": avg_loss,
                            "accuracy": metrics["accuracy"], "f1-score": metrics["f1_score"],
@@ -352,7 +387,7 @@ def train_model(model, data, optimizer, num_epochs, num_bases, out_channels, gdp
                 avg_loss = total_loss / len(G1_data_loader)
                 avg_mse_loss = total_mse_loss / len(G1_data_loader)
                 avg_cos_loss = total_cos_loss / len(G1_data_loader)
-                metrics = evaluate(model, data, config["Gs_path"], config["core_concepts"], gdp)
+                metrics = evaluate(model, data, config["Gs_path_no_other"], config["core_concepts"], gdp)
             # Sauvegarde du modèle si la perte est la plus faible
                 if avg_loss < best_loss:
                     best_loss = avg_loss
@@ -390,7 +425,7 @@ def train_model(model, data, optimizer, num_epochs, num_bases, out_channels, gdp
                     batch_pbar.update(1)
                 avg_loss = total_loss / len(G1_data_loader)
                 print("Evaluation\n")
-                metrics = evaluate(model, data, config["Gs_path"], config["core_concepts"], gdp)
+                metrics = evaluate(model, data, config["Gs_path_no_other"], config["core_concepts"], gdp)
                 print("\n")
                 if avg_loss < best_loss:
                     best_loss = avg_loss
@@ -400,14 +435,14 @@ def train_model(model, data, optimizer, num_epochs, num_bases, out_channels, gdp
                 if metrics["accuracy"] > best_accuracy:
                     best_accuracy = metrics["accuracy"]
                     save_model_with_hyperparams(model, optimizer, epoch, num_bases, out_channels, save_dir=save_dir,
-                                                is_best_acc=False)
+                                                is_best_acc=True)
                     print(f'Model saved with Accuracy: {best_accuracy:.4f}\n')
                 wandb.log({"epoch": epoch + 1, "sce loss": avg_loss,
                            "accuracy": metrics["accuracy"], "f1-score": metrics["f1_score"],
                            "recall": metrics["recall"], "precision": metrics["precision"], })
 
         elif "MSE_Recons_X" in training_options and len(training_options) == 1:
-            print("MSE_Recons_X\n")
+            print("\nMSE_Recons_X\n")
             with tqdm(total=len(G1_data_loader), desc=f"Epoch {epoch + 1}/{num_epochs}",
                       unit="batch") as batch_pbar:
                 for batch in G1_data_loader:
@@ -428,8 +463,9 @@ def train_model(model, data, optimizer, num_epochs, num_bases, out_channels, gdp
                 avg_loss = total_loss / len(G1_data_loader)
 
                 print("Evaluation\n")
-                metrics = evaluate(model, data, config["Gs_path"], config["core_concepts"], gdp)
+                metrics = evaluate(model, data, config["Gs_path_no_other"], config["core_concepts"], gdp)
                 print("\n")
+                print(metrics)
                 if avg_loss < best_loss:
                     best_loss = avg_loss
                     save_model_with_hyperparams(model, optimizer, epoch, num_bases, out_channels, save_dir=save_dir,
@@ -438,13 +474,53 @@ def train_model(model, data, optimizer, num_epochs, num_bases, out_channels, gdp
                 if metrics["accuracy"] > best_accuracy:
                     best_accuracy = metrics["accuracy"]
                     save_model_with_hyperparams(model, optimizer, epoch, num_bases, out_channels, save_dir=save_dir,
-                                                is_best_acc=False)
+                                                is_best_acc=True)
                     print(f'Model saved with Accuracy: {best_accuracy:.4f}\n')
                 wandb.log({"epoch": epoch + 1, "mce loss": avg_loss,
                            "accuracy": metrics["accuracy"], "f1-score": metrics["f1_score"],
                            "recall": metrics["recall"], "precision": metrics["precision"], })
 
 
+        elif "MSE_Recons_X"  in training_options and "SCE_Recons_X" in training_options:
 
+            print("\nMSE_Recons_X + SCE_Recons_X\n")
+            with tqdm(total=len(G1_data_loader), desc=f"Epoch {epoch + 1}/{num_epochs}", unit="batch") as batch_pbar:
+                for batch in G1_data_loader:
+                    batch = batch.to(device)
+                    n_id = batch.n_id  ## The global node index for every sampled node
+                    mask = torch.isin(n_id, batch.input_id)  ## mask to get only the embedding of input_id nodes
+                    optimizer.zero_grad()
+                    embeddings = model.encode(batch)
+                    reconstructed_x = model.decode_x(batch, embeddings)
+                    reconstructed_x = reconstructed_x[mask]
+                    sce_loss = sce_loss_fnc(data.x[n_id[mask]], reconstructed_x)
+                    mse_loss = mse_loss_fnc(data.x[n_id[mask]], reconstructed_x)
+                    loss = mse_loss + sce_loss
+                    loss.backward()
+                    optimizer.step()
+                    total_loss += loss.item()
+                    total_mse_loss += mse_loss.item()
+                    total_sce_loss += sce_loss.item()
+                    batch_pbar.set_postfix(batch_loss=loss.item())
+                    batch_pbar.update(1)
 
-
+                avg_loss = total_loss / len(G1_data_loader)
+                avg_mse_loss = total_mse_loss / len(G1_data_loader)
+                avg_sce_loss = total_sce_loss / len(G1_data_loader)
+                metrics = evaluate(model, data, config["Gs_path_no_other"], config["core_concepts"], gdp)
+                # Sauvegarde du modèle si la perte est la plus faible
+                if avg_loss < best_loss:
+                    best_loss = avg_loss
+                    save_model_with_hyperparams(model, optimizer, epoch, num_bases, out_channels, save_dir=save_dir,
+                                                is_best_acc=False)
+                    print(f'Model saved with Avg Loss: {best_loss:.4f}\n')
+                if metrics["accuracy"] > best_accuracy:
+                    best_accuracy = metrics["accuracy"]
+                    save_model_with_hyperparams(model, optimizer, epoch, num_bases, out_channels, save_dir=save_dir,
+                                                is_best_acc=True)
+                    print(f'Model saved with Accuracy: {best_accuracy:.4f}\n')
+                wandb.log(
+                    {"epoch": epoch + 1, "global loss": avg_loss, "mse_loss": avg_mse_loss, "sce_loss": total_sce_loss,
+                     "accuracy": metrics["accuracy"], "f1-score": metrics["f1_score"],
+                     "recall": metrics["recall"], "precision": metrics["precision"],
+                     })

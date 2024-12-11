@@ -61,3 +61,92 @@ class RGCNDecoder(nn.Module):
         return x
 
 
+
+
+
+
+
+
+
+
+
+
+# from torch import nn
+# from torch_geometric.nn import RGCNConv
+#
+#
+# class RGCNDecoder(nn.Module):
+#     def __init__(self, encoder: nn.Module, data, num_bases=30, alpha=0.01, dropout=0.5):
+#         """
+#         Initialize the symmetric RGCN decoder based on the given encoder.
+#
+#         Parameters:
+#         - encoder: The RGCN encoder used to obtain embeddings,
+#                    from which we extract the dimensions of each layer.
+#         - data: Data object to access the original features (data.x) and relations.
+#         - num_bases: Number of bases to use in each RGCN layer to reduce parameters.
+#         - alpha: Leaky ReLU coefficient to preserve negative values.
+#         - dropout: Dropout probability for regularization.
+#         """
+#         super(RGCNDecoder, self).__init__()
+#
+#         # Get the dimensions of the encoder layers to reverse them for the decoder
+#         encoder_out_channels = [layer.out_channels for layer in encoder.convs]
+#         encoder_in_channels = encoder.convs[0].in_channels  # Initial node feature dimension
+#
+#         # Reverse encoder dimensions for the decoder
+#         decoder_out_channels = list(reversed(encoder_out_channels)) + [encoder_in_channels]
+#
+#         # Create RGCN layers for the decoder with reversed dimensions
+#         self.convs = nn.ModuleList()
+#         self.bns = nn.ModuleList()  # Batch normalization layers
+#         num_relations = data.edge_type.max().item() + 1
+#         for i in range(len(decoder_out_channels) - 1):
+#             input_dim = decoder_out_channels[i]
+#             output_dim = decoder_out_channels[i + 1]
+#             self.convs.append(RGCNConv(input_dim, output_dim, num_relations, num_bases=num_bases))
+#             self.bns.append(nn.BatchNorm1d(output_dim))
+#
+#         # Dropout layer
+#         self.dropout = nn.Dropout(p=dropout)
+#
+#         # Final linear layer to reconstruct node features
+#         self.final_layer = nn.Linear(decoder_out_channels[-1], data.num_features)
+#
+#         # Activation function
+#         self.leaky_relu = nn.LeakyReLU(negative_slope=alpha)
+#
+#     def reset_parameters(self):
+#         """Reset the parameters of the decoder layers."""
+#         for conv in self.convs:
+#             conv.reset_parameters()
+#         for bn in self.bns:
+#             bn.reset_parameters()
+#         self.final_layer.reset_parameters()
+#
+#     def forward(self, data, embeddings):
+#         """
+#         Forward pass in the decoder to reconstruct node features.
+#
+#         Parameters:
+#         - data: Data object containing original features (data.x),
+#                 edge_index (edge indices), and edge_type (edge types).
+#         - embeddings: The embeddings produced by the encoder (input to the decoder).
+#
+#         Returns:
+#         - Reconstructed node features.
+#         """
+#         x = embeddings
+#         edge_index, edge_type = data.edge_index, data.edge_type
+#
+#         # Apply each RGCN layer with BatchNorm, LeakyReLU, and Dropout in between
+#         for conv, bn in zip(self.convs, self.bns):
+#             x = conv(x, edge_index, edge_type)
+#             x = bn(x)
+#             x = self.leaky_relu(x)
+#             x = self.dropout(x)
+#
+#         # Apply the final linear layer to reconstruct the original features
+#         x = self.final_layer(x)
+#
+#         return x
