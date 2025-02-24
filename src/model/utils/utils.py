@@ -216,6 +216,28 @@ def save_model_with_hyperparams(model, optimizer, epoch, num_bases, out_channels
     }, checkpoint_path)
     print(f"Model saved at '{checkpoint_path}'")
 
+def save_model(model, optimizer, epoch, save_dir="ckpt",file_name = "_",
+                                is_best_acc=False):
+    os.makedirs(save_dir, exist_ok=True)
+    if is_best_acc:
+        file_name = f"{file_name}_best_acc.pth"
+    else:
+        file_name = f"{file_name}_best_loss.pth"
+
+    checkpoint_path = os.path.join(save_dir, file_name)
+
+
+    torch.save({
+        'epoch': epoch + 1,
+        'model_state_dict': model.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+    }, checkpoint_path)
+    print(f"Model saved at '{checkpoint_path}'")
+
+
+
+
+
 
 def set_seed(seed):
     random.seed(seed)

@@ -1,7 +1,7 @@
 # Import necessary libraries
 import random
 import torch
-from transformers import BertTokenizer, BertModel
+from transformers import BertTokenizer, BertModel, AutoTokenizer, AutoModel
 from sklearn.metrics.pairwise import cosine_similarity
 
 # Define a class BertEmbedder for text embedding using BERT model
@@ -18,8 +18,10 @@ class BertEmbedder:
             torch.cuda.manual_seed_all(random_seed)
 
         # Initialize the tokenizer and model with the specified pretrained BERT model
-        self.tokenizer = BertTokenizer.from_pretrained(pretrained_model_name_or_path)
-        self.model = BertModel.from_pretrained(pretrained_model_name_or_path)
+        # self.tokenizer = BertTokenizer.from_pretrained(pretrained_model_name_or_path)
+        # self.model = BertModel.from_pretrained(pretrained_model_name_or_path)
+        self.tokenizer = AutoTokenizer.from_pretrained(pretrained_model_name_or_path)
+        self.model = AutoModel.from_pretrained(pretrained_model_name_or_path)
         # Move model to GPU if available
         self.model.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
 

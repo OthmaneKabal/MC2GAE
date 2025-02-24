@@ -2,7 +2,7 @@ import sys
 import os
 
 from loss_func import recon_r_loss, sce_loss_fnc, similarity_pair_loss, mse_loss_fnc, contrastive_loss, \
-    contrastive_loss_exclude_is, calculate_cluster_assignments, inter_cluster_loss
+    contrastive_loss_exclude_is, calculate_cluster_assignments, inter_cluster_loss, intra_cluster_loss
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'layers')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..', 'data')))
@@ -14,16 +14,16 @@ from ConvE import ConvE
 from utils.ConvENegativeSampling import generate_negatives, get_positives
 from utils.ConvEDataLoader import create_data_loader
 from utils.utils import generate_relation_embeddings_tensor, removed_edges_train_test_split, \
-    save_model_with_hyperparams, set_seed
+    save_model_with_hyperparams, set_seed, save_model
 from data_augmentation import relation_based_edge_dropping_balanced
 from data_augmentation import view_partial_features_masking
 from GraphDataLoader import GraphDataLoader
 import torch.optim as optim
 from RGCNEncoder import RGCNEncoder
 from RGCNDecoder import RGCNDecoder
-
+import pandas as pd
 from config import config
-from MC2GEA import  MC2GEA
+from MRGAE import  MRGAE
 from tqdm import tqdm
 import wandb
 import torch
@@ -39,6 +39,7 @@ import copy
 set_seed(42)
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
+import torch_geometric.transforms as T
 
 
 
@@ -105,6 +106,148 @@ def evaluate_ConvE(model, data, data_loader, test_removed_index, device, relatio
 
     return avg_loss, accuracy, recall, precision, f1
 
+def train_GAE(model, data, optimizer, num_epochs, num_bases, out_channels, gdp,
+                           save_dir="GAE", device = "cuda", wandb = None, split = False, seed = 42):
+    best_loss = float('inf')
+    best_accuracy = 0
+    set_seed(seed)
+    G_data_loader = GraphDataLoader(data, num_neighbors=config["num_neighbors"],
+                                    batch_size=config["batch_size"], shuffle=config["shuffle"]).get_loader()
+    total_loss = 0
+    transform_directed_without_split = T.Compose([
+        T.ToDevice(device),
+        T.RandomLinkSplit(num_val=0, num_test=0, is_undirected=False,
+                          split_labels=True, add_negative_train_samples=True),
+    ])
+    print("Negative_sampling ....\n")
+    train_data_directed_without_split, val_data_directed_without_split, test_data_directed_without_split = transform_directed_without_split(
+        data)
+
+    for epoch in range(num_epochs):
+        model.train()
+
+        with tqdm(total=len(G_data_loader), desc=f"Epoch {epoch + 1}/{num_epochs}", unit="batch") as batch_pbar:
+
+
+
+            z = model.encode(data)
+            loss = model.recon_loss(z, train_data_directed_without_split.pos_edge_label_index)
+            loss.backward()
+            optimizer.step()
+            total_loss += loss.item()
+            batch_pbar.set_postfix(batch_loss=loss.item())
+            batch_pbar.update(1)
+            avg_loss = total_loss / len(G_data_loader)
+            print("\nEvaluation\n")
+            print(data)
+            metrics = evaluate(model, data, config["Gs_path_no_other"], config["core_concepts"], gdp)
+            print("\n")
+            print(metrics)
+            print("\n")
+            if avg_loss < best_loss:
+                best_loss = avg_loss
+                save_model_with_hyperparams(model, optimizer, epoch, num_bases, out_channels, save_dir=save_dir,
+                                            is_best_acc=False)
+                print(f'Model saved with Avg Loss: {best_loss:.4f}\n')
+            if metrics["accuracy"] > best_accuracy:
+                best_accuracy = metrics["accuracy"]
+                save_model_with_hyperparams(model, optimizer, epoch, num_bases, out_channels, save_dir=save_dir,
+                                            is_best_acc=True)
+                print(f'Model saved with Accuracy: {best_accuracy:.4f}\n')
+            wandb.log({"epoch": epoch + 1, "contrastive loss": avg_loss,
+                       "accuracy": metrics["accuracy"], "f1-score": metrics["f1_score"],
+                       "recall": metrics["recall"], "precision": metrics["precision"], })
+
+
+
+
+def train_X_reconstruction(model, data ,optimizer, num_epochs, num_bases, out_channels, gdp, save_file,device, loss_fct = ["MSE"],
+                           save_dir="train_X_reconstruction", wandb = None, seed = 42):
+
+
+    best_loss = float('inf')
+    best_F1 = 0
+    best_accuracy = 0
+    best_metrics = {}
+    best_epoch = 0
+    print("\nmask_features...\n")
+    masked_features_data = view_partial_features_masking(data, max_masking_percentage=config["max_masking_percentage"])
+    set_seed(seed)
+    G1_data_loader = GraphDataLoader(masked_features_data, num_neighbors=config["num_neighbors"],
+                                     batch_size=config["batch_size"], shuffle=config["shuffle"]).get_loader()
+
+    set_seed(seed)
+    for epoch in range(num_epochs):
+        model.train()
+        total_loss = 0
+        if "MSE" in loss_fct:
+            total_mse_loss = 0
+        if "PCSE" in loss_fct:
+            total_cos_loss = 0
+        if "SCE" in loss_fct:
+            total_sce_loss = 0
+
+        print("\nMSE_Recons_X\n")
+        with tqdm(total=len(G1_data_loader), desc=f"Epoch {epoch + 1}/{num_epochs}",
+                  unit="batch") as batch_pbar:
+            for batch in G1_data_loader:
+                batch = batch.to(device)
+                n_id = batch.n_id  ## The global node index for every sampled node
+                mask = torch.isin(n_id, batch.input_id)  ## mask to get only the embedding of input_id nodes
+                optimizer.zero_grad()
+                embeddings = model.encode(batch)
+                reconstructed_x = model.decode_x(batch, embeddings)
+                reconstructed_x = reconstructed_x[mask]
+
+                total_loss = 0.0
+
+                # Vérifier chaque terme et ajouter le loss correspondant au total
+                if "MSE" in loss_fct:
+                    mse_loss = mse_loss_fnc(data.x[n_id[mask]], reconstructed_x)
+                    total_loss += mse_loss
+
+                if "PCSE" in loss_fct:
+                    pcse_loss = similarity_pair_loss(data.x[n_id[mask]], reconstructed_x, embeddings[mask])
+                    total_loss += pcse_loss
+
+                if "SCE" in loss_fct:
+                    sce_loss = sce_loss_fnc(data.x[n_id[mask]], reconstructed_x)
+                    total_loss += sce_loss
+
+                loss = total_loss
+
+                loss.backward()
+                optimizer.step()
+                total_loss += loss.item()
+                batch_pbar.set_postfix(batch_loss=loss.item())
+                batch_pbar.update(1)
+            avg_loss = total_loss / len(G1_data_loader)
+
+            print("Evaluation\n")
+            metrics = evaluate(model, data, config["Gs_path_no_other"], config["core_concepts"], gdp)
+            print("\n")
+            print(metrics)
+            if avg_loss < best_loss:
+                best_loss = avg_loss
+                save_model(model, optimizer, epoch, save_dir = save_dir, file_name = save_file, is_best_acc=False)
+
+                print(f'Model saved with Avg Loss: {best_loss:.4f}\n')
+            if metrics["accuracy"] > best_accuracy:
+                best_accuracy = metrics["accuracy"]
+                best_metrics = metrics
+                # best_epoch = epoch
+                # save_model_with_hyperparams(model, optimizer, epoch, num_bases, out_channels, save_dir=save_dir,
+                #                             is_best_acc=True)
+                save_model(model, optimizer, epoch, save_dir=save_dir,file_name= save_file , is_best_acc=True)
+                print(f'Model saved with Accuracy: {best_accuracy:.4f}\n')
+            wandb.log({"epoch": epoch + 1, "mce loss": avg_loss,
+                       "accuracy": metrics["accuracy"], "f1-score": metrics["f1_score"],
+                       "recall": metrics["recall"], "precision": metrics["precision"], })
+
+    best_metrics["exp_name"] = save_file
+    return best_metrics
+
+
 
 
 
@@ -113,7 +256,7 @@ def train_model(model, data, optimizer, num_epochs, num_bases, out_channels, gdp
                            save_dir="ckpt_", training_options = "Reconstruct_X_MSE", device = "cuda", wandb = None, split = False, seed = 42):
 
     unique_relations = list(set([i.item() for i in data.edge_type]))
-    relation_embeddings = generate_relation_embeddings_tensor(unique_relations, out_channels[1], device,
+    relation_embeddings = generate_relation_embeddings_tensor(unique_relations, out_channels[-1], device,
                                                               seed=42)
 
     best_loss = float('inf')
@@ -145,17 +288,21 @@ def train_model(model, data, optimizer, num_epochs, num_bases, out_channels, gdp
     G2_data_loader = GraphDataLoader(masked_edges_data, num_neighbors=config["num_neighbors"],
                                      batch_size=config["batch_size"], shuffle=config["shuffle"]).get_loader()
     set_seed(seed)
-    cc_indexes = gdp.get_CC_indexes(config["core_concepts"])
-    cc_data_loader = GraphDataLoader(data, num_neighbors=config["num_neighbors"],batch_size = len(cc_indexes), shuffle=config["shuffle"]).get_loader()
-    cc_data_loader_2 = GraphDataLoader(data, num_neighbors=config["num_neighbors"],batch_size = len(cc_indexes), shuffle=config["shuffle"]).get_loader()
+    cc_indexes = gdp.get_list_indexes(config["core_concepts"])
+    cc_data_loader = GraphDataLoader(data, num_neighbors=config["num_neighbors"], batch_size=len(cc_indexes),
+                                     shuffle=config["shuffle"], input_nodes = cc_indexes).get_loader()
+    gs_terms = pd.read_excel(config["Gs_path_no_other"], sheet_name='Sheet1')
+    gs_terms_indexes = gdp.get_list_indexes(list(gs_terms['term']))
 
-    cc_graph = next(iter(cc_data_loader))
-    cc_graph_2 = next(iter(cc_data_loader_2))
-
-    cc_clusters = calculate_cluster_assignments(cc_graph.x[cc_graph.input_id], cc_graph_2.x[cc_graph_2.input_id])
-    print(cc_clusters)
-    inter_cluster_loss(cc_graph.x[range(9,18)], cc_clusters,cc_graph_2.x[cc_graph_2.input_id] )
-    exit(55)
+    # cc_data_loader_2 = GraphDataLoader(data, num_neighbors=config["num_neighbors"],batch_size = len(cc_indexes), shuffle=config["shuffle"]).get_loader()
+    #
+    # cc_graph = next(iter(cc_data_loader))
+    # cc_graph_2 = next(iter(cc_data_loader_2))
+    #
+    # cc_clusters = calculate_cluster_assignments(cc_graph.x[cc_graph.input_id], cc_graph_2.x[cc_graph_2.input_id])
+    # print(cc_clusters)
+    # inter_cluster_loss(cc_graph.x[range(9,18)], cc_clusters,cc_graph_2.x[cc_graph_2.input_id] )
+    # exit(55)
 
     for epoch in range(num_epochs):
         model.train()
@@ -163,6 +310,8 @@ def train_model(model, data, optimizer, num_epochs, num_bases, out_channels, gdp
         total_mse_loss = 0
         total_cos_loss = 0
         total_sce_loss = 0
+        total_inter_cluster_loss_ = 0
+        total_intra_cluster_loss_ = 0
         if "contrastive" in training_options and len(training_options)==1:
             print("\nContrastive\n")
             with tqdm(total=len(G_data_loader), desc=f"Epoch {epoch + 1}/{num_epochs}", unit="batch") as batch_pbar:
@@ -453,8 +602,8 @@ def train_model(model, data, optimizer, num_epochs, num_bases, out_channels, gdp
                     embeddings = model.encode(batch)
                     reconstructed_x = model.decode_x(batch, embeddings)
                     reconstructed_x = reconstructed_x[mask]
-                    mce_loss = mse_loss_fnc(data.x[n_id[mask]], reconstructed_x)
-                    loss = mce_loss
+                    mse_loss = mse_loss_fnc(data.x[n_id[mask]], reconstructed_x)
+                    loss = mse_loss
                     loss.backward()
                     optimizer.step()
                     total_loss += loss.item()
@@ -482,7 +631,6 @@ def train_model(model, data, optimizer, num_epochs, num_bases, out_channels, gdp
 
 
         elif "MSE_Recons_X"  in training_options and "SCE_Recons_X" in training_options:
-
             print("\nMSE_Recons_X + SCE_Recons_X\n")
             with tqdm(total=len(G1_data_loader), desc=f"Epoch {epoch + 1}/{num_epochs}", unit="batch") as batch_pbar:
                 for batch in G1_data_loader:
@@ -524,3 +672,93 @@ def train_model(model, data, optimizer, num_epochs, num_bases, out_channels, gdp
                      "accuracy": metrics["accuracy"], "f1-score": metrics["f1_score"],
                      "recall": metrics["recall"], "precision": metrics["precision"],
                      })
+
+        elif "MSE_Recons_X"  in training_options and "clustering_obj" in training_options:
+            warm_up_epochs = 15
+            gradual_introduction_epochs = 50
+            print("\nMSE_Recons_X + clustering_obj\n")
+            intra_drap = True
+            with tqdm(total=len(G1_data_loader), desc=f"Epoch {epoch + 1}/{num_epochs}", unit="batch") as batch_pbar:
+                for batch in G1_data_loader:
+                    batch = batch.to(device)
+                    cc_graph = next(iter(cc_data_loader)).to(device)
+                    n_id = batch.n_id  ## The global node index for every sampled node
+                    mask = torch.isin(n_id, batch.input_id) ## mask to get only the embedding of input_id nodes
+                    optimizer.zero_grad()
+                    cc_embeddings = model.encode(cc_graph)[cc_graph.input_id]
+                    embeddings = model.encode(batch)
+                    reconstructed_x = model.decode_x(batch, embeddings)
+                    reconstructed_x = reconstructed_x[mask]
+                    mse_loss = mse_loss_fnc(data.x[n_id[mask]], reconstructed_x)
+                    ####### clustering loss ######"
+                    if epoch < warm_up_epochs:
+                        # Pendant la période de warm-up, seule la reconstruction MSE est optimisée
+                        loss = mse_loss
+                        total_inter_cluster_loss_ = 0
+                        total_intra_cluster_loss_ = 0
+
+                    else:
+                        # Calcul du coefficient d'introduction progressive
+                        clustering_weight = min(1.0, (epoch - warm_up_epochs) / gradual_introduction_epochs)
+                        # Calcul des losses de clustering
+                        mse_loss = torch.tensor(0)
+                        gs_mask = torch.isin(batch.input_id, torch.tensor(gs_terms_indexes).to(device))
+                        if sum(gs_mask) == 0:
+                            inter_cluster_loss_ = torch.tensor(0)
+                        else:
+                            gs_batch_indexes = batch.input_id[gs_mask]
+                            gs_mask_embd = torch.isin(batch.n_id, gs_batch_indexes)
+                            cluster_assignments = calculate_cluster_assignments(embeddings[gs_mask_embd], cc_embeddings)
+
+                            inter_cluster_loss_ = inter_cluster_loss(embeddings[gs_mask_embd], cluster_assignments, cc_embeddings)
+                        if intra_drap:
+                            intra_cluster_loss_ = intra_cluster_loss(cc_embeddings)
+                            intra_drap = False
+                        else:
+                            intra_cluster_loss_ = torch.tensor(0.0, device=device, requires_grad=True)
+                        # Combinaison des losses avec un poids progressif
+                        loss = mse_loss + clustering_weight * (intra_cluster_loss_ + inter_cluster_loss_)
+
+                    loss.backward()
+                    optimizer.step()
+
+                    total_loss += loss.item()
+                    total_mse_loss += mse_loss.item()
+
+                    # Gestion des pertes de clustering (uniquement après la période de warm-up)
+                    if epoch >= warm_up_epochs:
+                        total_inter_cluster_loss_ += inter_cluster_loss_.item()
+                        total_intra_cluster_loss_ += intra_cluster_loss_.item()
+
+                    batch_pbar.set_postfix(batch_loss=loss.item())
+                    batch_pbar.update(1)
+
+                avg_loss = total_loss / len(G1_data_loader)
+
+                avg_mse_loss = total_mse_loss / len(G1_data_loader)
+                avg_inter_cluster_loss = total_inter_cluster_loss_ / len(G1_data_loader)
+                avg_intra_cluster_loss = total_intra_cluster_loss_ / len(G1_data_loader)
+                print("\nEvaluation:")
+                metrics = evaluate(model, data, config["Gs_path_no_other"], config["core_concepts"], gdp)
+                print("\n", metrics,"\n")
+                print(f"\n Loss: total:{avg_loss}, mse:{avg_mse_loss},inter:{avg_inter_cluster_loss},intra:{avg_intra_cluster_loss} \n")
+                # Sauvegarde du modèle si la perte est la plus faible
+                if avg_loss < best_loss:
+                    best_loss = avg_loss
+                    save_model_with_hyperparams(model, optimizer, epoch, num_bases, out_channels, save_dir=save_dir,
+                                                is_best_acc=False)
+                    print(f'Model saved with Avg Loss: {best_loss:.4f}\n')
+                if metrics["accuracy"] > best_accuracy:
+                    best_accuracy = metrics["accuracy"]
+                    save_model_with_hyperparams(model, optimizer, epoch, num_bases, out_channels, save_dir=save_dir,
+                                                is_best_acc=True)
+                    print(f'Model saved with Accuracy: {best_accuracy:.4f}\n')
+                wandb.log(
+                    {"epoch": epoch + 1, "global loss": avg_loss, "mse_loss": avg_mse_loss, "intra_cluster_loss": avg_intra_cluster_loss,
+                     "inter_cluster_loss": avg_inter_cluster_loss, "accuracy": metrics["accuracy"], "f1-score": metrics["f1_score"],
+                     "Recall": metrics["recall"], "precision": metrics["precision"],
+                     })
+
+
+
+

@@ -177,17 +177,20 @@ def calculate_cluster_assignments(node_embeddings, core_concepts):
 
     # Trouver l'indice du cluster ayant la similarité maximale pour chaque nœud
     cluster_assignments = cosine_similarities.argmax(dim=1)
+    max_similarities = cosine_similarities.max(dim=1).values
 
-    return cluster_assignments
+    return cluster_assignments, max_similarities
+    # return cluster_assignments
 
 
 def inter_cluster_loss(node_embeddings, cluster_assignments, core_concepts):
+
     cluster_core_embeddings = core_concepts[cluster_assignments]
-    print(cluster_core_embeddings.shape)
     cosine_similarities = F.cosine_similarity(node_embeddings, cluster_core_embeddings, dim=-1)
     losses = 1 - cosine_similarities
     inter_cluster_loss = losses.mean()
-    print(inter_cluster_loss)
+    if (inter_cluster_loss<0):
+        print("********interloss*****")
     return inter_cluster_loss
 
 def intra_cluster_loss(core_concepts_embeddings, scale_factor=1.0):
@@ -217,7 +220,6 @@ def intra_cluster_loss(core_concepts_embeddings, scale_factor=1.0):
     # Masquer les diagonales (similarités entre le même core concept)
     mask = torch.eye(num_clusters, device=core_concepts_embeddings.device).bool()
     cosine_similarities = cosine_similarities.masked_fill(mask, 0)
-
     # Somme des similarités cosinus entre les différents core concepts
     total_similarity = cosine_similarities.sum()
 
