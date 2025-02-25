@@ -1,6 +1,7 @@
 import sys
 import os
 
+import pandas as pd
 from torch_geometric.nn import GAE
 from win32comext.shell.demos.servers.folder_view import tasks
 
@@ -50,7 +51,7 @@ wandb.login(key="c278e62d2025b60ff8b984a40f7b62b697f9b4fd", relogin=True)
 
 
 def main():
-
+    results = []
     wandb_project_name = config["wandb_project_name"]
     # save_dir = config["save_dir"]
     Entities_path = config["Entities_path"]
@@ -117,9 +118,14 @@ def main():
 
                             autoencoder = MRGAE(encoder, decoder, projections=config["projections"]).to(device)
                             optimizer = optim.Adam(autoencoder.parameters(), lr=config["learning_rate"])
-                            train_X_reconstruction(autoencoder, data, optimizer, config["num_epochs"], num_bases, out_channels,
+                            performances = train_X_reconstruction(autoencoder, data, optimizer, config["num_epochs"], num_bases, out_channels,
                                         gdp, file_name,device, loss_fct=["MSE"], save_dir = save_dir,
                                         wandb=wandb)
+                            results.append(performances)
+                            # df = pd.DataFrame(data)
+                            #
+                            # # Sauvegarde en fichier Excel
+                            # df.to_excel("results.xlsx", index=False)
 
                             wandb.finish()
 
@@ -164,11 +170,16 @@ def main():
 
                         autoencoder = MRGAE(encoder, decoder, projections=config["projections"]).to(device)
                         optimizer = optim.Adam(autoencoder.parameters(), lr=config["learning_rate"])
-                        train_X_reconstruction(autoencoder, data, optimizer, config["num_epochs"], 0, out_channels,
+                        performances = train_X_reconstruction(autoencoder, data, optimizer, config["num_epochs"], 0, out_channels,
                                     gdp, file_name, device, save_dir=save_dir, loss_fct=["MSE"],
                                     wandb=wandb)
+                        results.append(performances)
 
                         wandb.finish()
+    df = pd.DataFrame(results)
+
+    # Sauvegarde en fichier Excel
+    df.to_excel("results.xlsx", index=False)
 #
 # def main():
 #     print(44)
