@@ -34,6 +34,9 @@ class MRGAE(nn.Module):
                                                )
 
 
+
+
+
     def reset_parameters(self):
         """Réinitialise tous les paramètres apprenables du module."""
         self.encoder.reset_parameters()

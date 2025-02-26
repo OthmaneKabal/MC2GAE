@@ -106,13 +106,15 @@ def evaluate_ConvE(model, data, data_loader, test_removed_index, device, relatio
 
     return avg_loss, accuracy, recall, precision, f1
 
-def train_GAE(model, data, optimizer, num_epochs, num_bases, out_channels, gdp,
-                           save_dir="GAE", device = "cuda", wandb = None, split = False, seed = 42):
+def train_GAE(model, data, optimizer, num_epochs, gdp,save_file,
+                           save_dir="GAE", device = "cuda", wandb = None, seed = 42):
     best_loss = float('inf')
     best_accuracy = 0
+    best_metrics = {}
     set_seed(seed)
     G_data_loader = GraphDataLoader(data, num_neighbors=config["num_neighbors"],
                                     batch_size=config["batch_size"], shuffle=config["shuffle"]).get_loader()
+
     total_loss = 0
     transform_directed_without_split = T.Compose([
         T.ToDevice(device),
@@ -127,9 +129,6 @@ def train_GAE(model, data, optimizer, num_epochs, num_bases, out_channels, gdp,
         model.train()
 
         with tqdm(total=len(G_data_loader), desc=f"Epoch {epoch + 1}/{num_epochs}", unit="batch") as batch_pbar:
-
-
-
             z = model.encode(data)
             loss = model.recon_loss(z, train_data_directed_without_split.pos_edge_label_index)
             loss.backward()
@@ -146,22 +145,24 @@ def train_GAE(model, data, optimizer, num_epochs, num_bases, out_channels, gdp,
             print("\n")
             if avg_loss < best_loss:
                 best_loss = avg_loss
-                save_model_with_hyperparams(model, optimizer, epoch, num_bases, out_channels, save_dir=save_dir,
-                                            is_best_acc=False)
+                save_model(model, optimizer, epoch, save_dir=save_dir, file_name = save_file, is_best_acc=False)
+
+
                 print(f'Model saved with Avg Loss: {best_loss:.4f}\n')
             if metrics["accuracy"] > best_accuracy:
                 best_accuracy = metrics["accuracy"]
-                save_model_with_hyperparams(model, optimizer, epoch, num_bases, out_channels, save_dir=save_dir,
-                                            is_best_acc=True)
+                save_model(model, optimizer, epoch, save_dir=save_dir, file_name=save_file, is_best_acc=False)
+
                 print(f'Model saved with Accuracy: {best_accuracy:.4f}\n')
+                best_metrics = metrics
             wandb.log({"epoch": epoch + 1, "contrastive loss": avg_loss,
                        "accuracy": metrics["accuracy"], "f1-score": metrics["f1_score"],
                        "recall": metrics["recall"], "precision": metrics["precision"], })
+    best_metrics["exp_name"] = save_file
+    return best_metrics
 
 
-
-
-def train_X_reconstruction(model, data ,optimizer, num_epochs, num_bases, out_channels, gdp, save_file,device, loss_fct = ["MSE"],
+def train_X_reconstruction(model, data ,optimizer, num_epochs, gdp, save_file,device, loss_fct = ["MSE"],
                            save_dir="train_X_reconstruction", wandb = None, seed = 42):
 
 

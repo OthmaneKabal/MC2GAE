@@ -3,7 +3,6 @@ import os
 
 import pandas as pd
 from torch_geometric.nn import GAE
-from win32comext.shell.demos.servers.folder_view import tasks
 
 from src.layers.GCNDecoder import GCNDecoder
 from src.layers.GCNEncoder import GCNEncoder
@@ -64,33 +63,83 @@ def main():
 
     for task in config["training_task"]:
         save_dir = config["root_save_dir"] + f"/{task}"
-
         msg_sens = config["message_sens"][0]
+        if task == "Recons_X":
 
-        for out_channels in config["hyperparams_grid"]["out_channels"]:
-            for encoder_ in config["encoders"]:
-                for decoder_ in config["decoders"]:
-                    use_num_bases = (encoder_ == "RGCN") or (decoder_ == "RGCN")
-                    if use_num_bases:
-                        for num_bases in config["hyperparams_grid"]["num_bases"]:
-                            if encoder_ == "GCN":
-                                encoder = GCNEncoder(data, out_channels, config["num_layers"],
-                                                     message_sens=msg_sens).to(device)
-                            elif encoder_ == "RGCN":
-                                encoder = RGCNEncoder(data, out_channels, config["num_layers"], num_bases,
-                                                      message_sens=msg_sens).to(device)
+
+            for out_channels in config["hyperparams_grid"]["out_channels"]:
+                for encoder_ in config["encoders"]:
+                    for decoder_ in config["decoders"]:
+                        use_num_bases = (encoder_ == "RGCN") or (decoder_ == "RGCN")
+                        if use_num_bases:
+                            for num_bases in config["hyperparams_grid"]["num_bases"]:
+                                if encoder_ == "GCN":
+                                    encoder = GCNEncoder(data, out_channels, config["num_layers"],
+                                                         message_sens=msg_sens).to(device)
+                                elif encoder_ == "RGCN":
+                                    encoder = RGCNEncoder(data, out_channels, config["num_layers"], num_bases,
+                                                          message_sens=msg_sens).to(device)
+
+                                if decoder_ == "GCN":
+                                    decoder = GCNDecoder(encoder, data, config["alpha"], message_sens=msg_sens).to(device)
+                                elif decoder_ == "RGCN":
+                                    decoder = RGCNDecoder(encoder, data, num_bases, config["alpha"],
+                                                          message_sens=msg_sens).to(device)
+                                elif decoder_ == "MLP":
+                                    decoder = MLPDecoder(encoder, data, config["alpha"]).to(device)
+                                else:
+                                    print('invalid decoder !')
+                                    exit(-1)
+
+
+                                run_name = f"{task}_bases-{num_bases}_channels_{'-'.join(map(str, out_channels))}_enc-{encoder_}_dec-{decoder_}"
+                                file_name = f"{task}_bases-{num_bases}_channels_{'-'.join(map(str, out_channels))}_enc-{encoder_}_dec-{decoder_}"
+                                run_config = {
+                                    "device": config["device"],
+                                    "num_layers": 2,
+                                    "alpha": config["alpha"],
+                                    "max_masking_percentage": config["max_masking_percentage"],
+                                    "total_drop_rate": config["total_drop_rate"],
+                                    "learning_rate": config["learning_rate"],
+                                    "batch_size": config["batch_size"],
+                                    "num_neighbors": [500, 500],
+                                    "num_epochs": 100,
+                                    "bases": num_bases,
+                                    "out_channels": out_channels,
+                                    "training_task": config["training_task"],
+                                    "encoders": encoder_,
+                                    "decoders": decoder_,
+                                    "message_sens": msg_sens
+                                }
+
+                                wandb.init(
+                                    project=config["wandb_project_name"],
+                                    name=run_name,
+                                    config=run_config,
+                                    settings=wandb.Settings(start_method="thread")
+                                )
+
+                                autoencoder = MRGAE(encoder, decoder, projections=config["projections"]).to(device)
+                                optimizer = optim.Adam(autoencoder.parameters(), lr=config["learning_rate"])
+                                performances = train_X_reconstruction(autoencoder, data, optimizer, config["num_epochs"],
+                                            gdp, file_name,device, loss_fct=["MSE"], save_dir = save_dir,
+                                            wandb=wandb)
+                                results.append(performances)
+                                wandb.finish()
+
+                        else:  # Si num_bases n'est pas utilisé
+                            encoder = GCNEncoder(data, out_channels, config["num_layers"], message_sens=msg_sens).to(device)
 
                             if decoder_ == "GCN":
                                 decoder = GCNDecoder(encoder, data, config["alpha"], message_sens=msg_sens).to(device)
-                            elif decoder_ == "RGCN":
-                                decoder = RGCNDecoder(encoder, data, num_bases, config["alpha"],
-                                                      message_sens=msg_sens).to(device)
                             elif decoder_ == "MLP":
                                 decoder = MLPDecoder(encoder, data, config["alpha"]).to(device)
+                            else:
+                                print("Error: RGCN decoder requires num_bases but is not defined!")
+                                exit(-1)
 
-
-                            run_name = f"{task}_bases-{num_bases}_channels_{'-'.join(map(str, out_channels))}_enc-{encoder_}_dec-{decoder_}"
-                            file_name = f"{task}_bases-{num_bases}_channels_{'-'.join(map(str, out_channels))}_enc-{encoder_}_dec-{decoder_}"
+                            run_name = f"{task}_channels_{'-'.join(map(str, out_channels))}_enc-{encoder_}_dec-{decoder_}"
+                            file_name = f"{task}_channels_{'-'.join(map(str, out_channels))}_enc-{encoder_}_dec-{decoder_}"
                             run_config = {
                                 "device": config["device"],
                                 "num_layers": 2,
@@ -101,7 +150,6 @@ def main():
                                 "batch_size": config["batch_size"],
                                 "num_neighbors": [500, 500],
                                 "num_epochs": 100,
-                                "bases": num_bases,
                                 "out_channels": out_channels,
                                 "training_task": config["training_task"],
                                 "encoders": encoder_,
@@ -118,32 +166,62 @@ def main():
 
                             autoencoder = MRGAE(encoder, decoder, projections=config["projections"]).to(device)
                             optimizer = optim.Adam(autoencoder.parameters(), lr=config["learning_rate"])
-                            performances = train_X_reconstruction(autoencoder, data, optimizer, config["num_epochs"], num_bases, out_channels,
-                                        gdp, file_name,device, loss_fct=["MSE"], save_dir = save_dir,
+                            performances = train_X_reconstruction(autoencoder, data, optimizer, config["num_epochs"],
+                                        gdp, file_name, device, save_dir=save_dir, loss_fct=["MSE"],
                                         wandb=wandb)
                             results.append(performances)
-                            # df = pd.DataFrame(data)
-                            #
-                            # # Sauvegarde en fichier Excel
-                            # df.to_excel("results.xlsx", index=False)
 
                             wandb.finish()
 
+        elif task == "Recons_A":
+
+            for out_channels in config["hyperparams_grid"]["out_channels"]:
+                for encoder_ in config["encoders"]:
+                    if encoder_ == "RGCN":
+                        for num_bases in config["hyperparams_grid"]["num_bases"]:
+                            encoder = RGCNEncoder(data, out_channels, config["num_layers"], num_bases,
+                                              message_sens=msg_sens).to(device)
+                            run_name = f"{task}_bases-{num_bases}_channels_{'-'.join(map(str, out_channels))}_enc-{encoder_}_GAE"
+                            file_name = f"{task}_bases-{num_bases}_channels_{'-'.join(map(str, out_channels))}_enc-{encoder_}_GAE"
+                            run_config = {
+                                "device": config["device"],
+                                "num_layers": 2,
+                                "alpha": config["alpha"],
+                                "max_masking_percentage": config["max_masking_percentage"],
+                                "total_drop_rate": config["total_drop_rate"],
+                                "learning_rate": config["learning_rate"],
+                                "batch_size": config["batch_size"],
+                                "num_neighbors": [500, 500],
+                                "num_epochs": 100,
+                                "bases": num_bases,
+                                "out_channels": out_channels,
+                                "training_task": task,
+                                "encoders": encoder_,
+                                "decoders": "Dot Product",
+                                "message_sens": msg_sens
+                            }
+
+                            wandb.init(
+                                project=config["wandb_project_name"],
+                                name=run_name,
+                                config=run_config,
+                                settings=wandb.Settings(start_method="thread")
+                            )
+
+                            autoencoder = GAE(encoder).to(device)
+                            optimizer = optim.Adam(autoencoder.parameters(), lr=config["learning_rate"])
+                            performances = train_GAE(autoencoder, data, optimizer, config["num_epochs"], gdp,save_file = file_name,
+                                         save_dir=config["root_save_dir"],device = device, wandb=wandb)
 
 
-                    else:  # Si num_bases n'est pas utilisé
-                        encoder = GCNEncoder(data, out_channels, config["num_layers"], message_sens=msg_sens).to(device)
+                            results.append(performances)
 
-                        if decoder_ == "GCN":
-                            decoder = GCNDecoder(encoder, data, config["alpha"], message_sens=msg_sens).to(device)
-                        elif decoder_ == "MLP":
-                            decoder = MLPDecoder(encoder, data, config["alpha"]).to(device)
-                        else:
-                            print("Error: RGCN decoder requires num_bases but is not defined!")
-                            exit(-1)
-
-                        run_name = f"{task}_channels_{'-'.join(map(str, out_channels))}_enc-{encoder_}_dec-{decoder_}"
-                        file_name = f"{task}_channels_{'-'.join(map(str, out_channels))}_enc-{encoder_}_dec-{decoder_}"
+                            wandb.finish()
+                    elif encoder_ == "GCN":
+                        encoder = GCNEncoder(data, out_channels, config["num_layers"],
+                                             message_sens=msg_sens).to(device)
+                        run_name = f"{task}_channels_{'-'.join(map(str, out_channels))}_enc-{encoder_}_GAE"
+                        file_name = f"{task}_channels_{'-'.join(map(str, out_channels))}_enc-{encoder_}_GAE"
                         run_config = {
                             "device": config["device"],
                             "num_layers": 2,
@@ -155,9 +233,9 @@ def main():
                             "num_neighbors": [500, 500],
                             "num_epochs": 100,
                             "out_channels": out_channels,
-                            "training_task": config["training_task"],
+                            "training_task": task,
                             "encoders": encoder_,
-                            "decoders": decoder_,
+                            "decoders": "Dot Product",
                             "message_sens": msg_sens
                         }
 
@@ -167,19 +245,23 @@ def main():
                             config=run_config,
                             settings=wandb.Settings(start_method="thread")
                         )
-
-                        autoencoder = MRGAE(encoder, decoder, projections=config["projections"]).to(device)
+                        autoencoder = GAE(encoder).to(device)
                         optimizer = optim.Adam(autoencoder.parameters(), lr=config["learning_rate"])
-                        performances = train_X_reconstruction(autoencoder, data, optimizer, config["num_epochs"], 0, out_channels,
-                                    gdp, file_name, device, save_dir=save_dir, loss_fct=["MSE"],
-                                    wandb=wandb)
-                        results.append(performances)
+                        performances = train_GAE(autoencoder, data, optimizer, config["num_epochs"], gdp,
+                                                 save_file=file_name,
+                                                 save_dir=config["root_save_dir"], device=device, wandb=wandb)
 
+                        results.append(performances)
                         wandb.finish()
+                    else:
+                        print("invalid encoder type!")
+                        exit(-1)
+
+
     df = pd.DataFrame(results)
 
     # Sauvegarde en fichier Excel
-    df.to_excel("results.xlsx", index=False)
+    df.to_excel("results_GAE.xlsx", index=False)
 #
 # def main():
 #     print(44)
