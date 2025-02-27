@@ -4,33 +4,23 @@ import os
 import pandas as pd
 from torch_geometric.nn import GAE
 
-from src.layers.GCNDecoder import GCNDecoder
-from src.layers.GCNEncoder import GCNEncoder
-from src.layers.MLPDecoder import MLPDecoder
-from src.model.train_optimize_parms import train_GAE, train_X_reconstruction
-from train_optimize_parms import train_model
+from src.layers.Dismult import DistMultDecoder
+from src.model.train_optimize_parms import train_GAE, train_X_reconstruction, train_DisMult
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'layers')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..', 'data')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..', 'utils')))
-from sklearn.metrics import f1_score, accuracy_score, recall_score, precision_score
-from torch_geometric.loader import NeighborLoader
-from src.model.evaluate import evaluate, evaluate_all
-from utils.ConvENegativeSampling import generate_negatives, get_positives
-from utils.ConvEDataLoader import create_data_loader
-from utils.utils import generate_relation_embeddings_tensor, removed_edges_train_test_split, \
-    save_model_with_hyperparams, set_seed
-from data_augmentation import relation_based_edge_dropping_balanced
-from data_augmentation import view_partial_features_masking
-from GraphDataLoader import GraphDataLoader
+from utils.utils import  set_seed
+from src.layers.GCNDecoder import GCNDecoder
+from src.layers.GCNEncoder import GCNEncoder
+from src.layers.MLPDecoder import MLPDecoder
 import torch.optim as optim
 from RGCNEncoder import RGCNEncoder
 from RGCNDecoder import RGCNDecoder
-from torch.nn import MSELoss
 from torch_geometric.data import Data
 from config import config
 from GraphDataPreparation import GraphDataPreparation
 from MRGAE import  MRGAE
-from tqdm import tqdm
 import wandb
 import torch
 import random
@@ -41,13 +31,11 @@ torch.cuda.manual_seed(seed)
 np.random.seed(seed)
 random.seed(seed)
 import torch
-import copy
 set_seed(42)
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 wandb.require("legacy-service")
 wandb.login(key="c278e62d2025b60ff8b984a40f7b62b697f9b4fd", relogin=True)
-
 
 def main():
     results = []
@@ -256,12 +244,98 @@ def main():
                     else:
                         print("invalid encoder type!")
                         exit(-1)
+        elif task == "Recons_R":
+            for out_channels in config["hyperparams_grid"]["out_channels"]:
+                for encoder_ in config["encoders"]:
+                    if encoder_ == "RGCN":
+                        for num_bases in config["hyperparams_grid"]["num_bases"]:
+                            encoder = RGCNEncoder(data, out_channels, config["num_layers"], num_bases,
+                                              message_sens=msg_sens).to(device)
+                            run_name = f"{task}_bases-{num_bases}_channels_{'-'.join(map(str, out_channels))}_enc-{encoder_}_Dismult"
+                            file_name = f"{task}_bases-{num_bases}_channels_{'-'.join(map(str, out_channels))}_enc-{encoder_}_Dismult"
+                            run_config = {
+                                "device": config["device"],
+                                "num_layers": 2,
+                                "alpha": config["alpha"],
+                                "max_masking_percentage": config["max_masking_percentage"],
+                                "total_drop_rate": config["total_drop_rate"],
+                                "learning_rate": config["learning_rate"],
+                                "batch_size": config["batch_size"],
+                                "num_neighbors": config["num_neighbors"],
+                                "num_epochs": config["num_epochs"],
+                                "bases": num_bases,
+                                "out_channels": out_channels,
+                                "training_task": task,
+                                "encoders": encoder_,
+                                "decoders": "DisMult",
+                                "message_sens": msg_sens
+                            }
 
+                            wandb.init(
+                                project=config["wandb_project_name"],
+                                name=run_name,
+                                config=run_config,
+                                settings=wandb.Settings(start_method="thread")
+                            )
+                            r_decoder = DistMultDecoder(data.num_edge_types, out_channels[-1])
+                            autoencoder = MRGAE(encoder,x_decoder = None, r_decoder= r_decoder).to(device)
+                            optimizer = optim.Adam(autoencoder.parameters(), lr=config["learning_rate"])
+
+
+                            performances = train_DisMult(autoencoder, data, optimizer, config["num_epochs"],gdp,file_name,device,save_dir=config["root_save_dir"]+"/"+task, wandb=wandb)
+                            # performances = train_GAE(autoencoder, data, optimizer, config["num_epochs"], gdp,save_file = file_name,
+                            #              save_dir=config["root_save_dir"],device = device, wandb=wandb)
+                            #
+                            #
+                            results.append(performances)
+
+                            wandb.finish()
+
+                    elif encoder_ == "GCN":
+                        encoder = GCNEncoder(data, out_channels, config["num_layers"],
+                                             message_sens=msg_sens).to(device)
+                        run_name = f"{task}_channels_{'-'.join(map(str, out_channels))}_enc-{encoder_}_Dismult"
+                        file_name = f"{task}_channels_{'-'.join(map(str, out_channels))}_enc-{encoder_}_Dismult"
+                        run_config = {
+                            "device": config["device"],
+                            "num_layers": 2,
+                            "alpha": config["alpha"],
+                            "max_masking_percentage": config["max_masking_percentage"],
+                            "total_drop_rate": config["total_drop_rate"],
+                            "learning_rate": config["learning_rate"],
+                            "batch_size": config["batch_size"],
+                            "num_neighbors": config["num_neighbors"],
+                            "num_epochs": config["num_epochs"],
+                            "out_channels": out_channels,
+                            "training_task": task,
+                            "encoders": encoder_,
+                            "decoders": "DisMult",
+                            "message_sens": msg_sens
+                        }
+
+                        wandb.init(
+                            project=config["wandb_project_name"],
+                            name=run_name,
+                            config=run_config,
+                            settings=wandb.Settings(start_method="thread")
+                        )
+                        r_decoder = DistMultDecoder(data.num_edge_types, out_channels[-1])
+                        autoencoder = MRGAE(encoder, x_decoder=None, r_decoder=r_decoder).to(device)
+                        optimizer = optim.Adam(autoencoder.parameters(), lr=config["learning_rate"])
+
+                        performances = train_DisMult(autoencoder, data, optimizer, config["num_epochs"], gdp, file_name,
+                                                     device, save_dir=config["root_save_dir"]+"/"+task, wandb=wandb)
+                        results.append(performances)
+
+                        wandb.finish()
+                    else:
+                        print("invalid encoder type!")
+                        exit(-1)
 
     df = pd.DataFrame(results)
 
     # Sauvegarde en fichier Excel
-    df.to_excel("results_GAE.xlsx", index=False)
+    df.to_excel("results_Dismult.xlsx", index=False)
 #
 # def main():
 #     print(44)

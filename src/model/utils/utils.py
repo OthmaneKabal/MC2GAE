@@ -4,6 +4,7 @@ import random
 import numpy as np
 import pandas as pd
 import torch
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 from sklearn.model_selection import train_test_split
 import torch
 from sklearn.model_selection import StratifiedShuffleSplit
@@ -235,7 +236,15 @@ def save_model(model, optimizer, epoch, save_dir="ckpt",file_name = "_",
     print(f"Model saved at '{checkpoint_path}'")
 
 
-
+def calculate_metrics(predictions, true_labels):
+    """
+    Calculate accuracy, precision, recall, and F1 score.
+    """
+    accuracy = accuracy_score(true_labels, predictions)
+    precision = precision_score(true_labels, predictions)
+    recall = recall_score(true_labels, predictions)
+    f1 = f1_score(true_labels, predictions)
+    return accuracy, precision, recall, f1
 
 
 

@@ -9,18 +9,16 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..',
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..', 'utils')))
 from sklearn.metrics import f1_score, accuracy_score, recall_score, precision_score
 from torch_geometric.loader import NeighborLoader
-from evaluate import evaluate, evaluate_all
-from ConvE import ConvE
+from evaluate import evaluate
 from utils.ConvENegativeSampling import generate_negatives, get_positives
 from utils.ConvEDataLoader import create_data_loader
 from utils.utils import generate_relation_embeddings_tensor, removed_edges_train_test_split, \
-    save_model_with_hyperparams, set_seed, save_model
+    save_model_with_hyperparams, set_seed, save_model, calculate_metrics
 from data_augmentation import relation_based_edge_dropping_balanced
 from data_augmentation import view_partial_features_masking
 from GraphDataLoader import GraphDataLoader
-import torch.optim as optim
-from RGCNEncoder import RGCNEncoder
-from RGCNDecoder import RGCNDecoder
+import torch.nn.functional as F
+
 import pandas as pd
 from config import config
 from MRGAE import  MRGAE
@@ -155,11 +153,132 @@ def train_GAE(model, data, optimizer, num_epochs, gdp,save_file,
 
                 print(f'Model saved with Accuracy: {best_accuracy:.4f}\n')
                 best_metrics = metrics
-            wandb.log({"epoch": epoch + 1, "contrastive loss": avg_loss,
+            wandb.log({"epoch": epoch + 1, "loss": avg_loss,
                        "accuracy": metrics["accuracy"], "f1-score": metrics["f1_score"],
                        "recall": metrics["recall"], "precision": metrics["precision"], })
     best_metrics["exp_name"] = save_file
     return best_metrics
+
+def train_DisMult(model, data, optimizer,num_epochs,gdp, save_file,device,
+                           save_dir="train_R_reconstruction", wandb = None, seed = 42):
+    best_loss = float('inf')
+    best_F1 = 0
+    best_accuracy = 0
+    best_metrics = {}
+    best_epoch = 0
+    print("\nRelations_dripping (Masking)...\n")
+    masked_edges_data, removed_edge_indices, removed_edge_types = relation_based_edge_dropping_balanced(data, config[
+        "total_drop_rate"], max_drop_fraction_per_node=0.3, random_seed=42)
+    removed_edge_indices = removed_edge_indices.to(device)
+    removed_edge_types = removed_edge_types.to(device)
+
+    set_seed(seed)
+    G_data_loader = GraphDataLoader(data, num_neighbors=config["num_neighbors"],
+                                    batch_size=config["batch_size"], shuffle=config["shuffle"]).get_loader()
+    set_seed(seed)
+
+    for epoch in range(num_epochs):
+        model.train()
+        total_loss = 0
+        all_preds = []
+        all_true_labels = []
+        with tqdm(total=len(G_data_loader), desc=f"Epoch {epoch + 1}/{num_epochs}", unit="batch") as main_pbar:
+
+            for G2_batch in G_data_loader:
+
+                G2_batch = G2_batch.to(device)
+                removed_batch = copy.copy(G2_batch)
+
+                removed_edge_indices = removed_edge_indices.to(device)
+                mask = torch.isin(removed_edge_indices, G2_batch.e_id)
+                intersections = removed_edge_indices[mask]
+                # Obtenir les nœuds cibles des arêtes intersectantes avec le batch graph
+                intersection_targets = data.edge_index[1][intersections]
+                # Trouver les intersections qui vérifient la condition
+                # (les nœuds cibles sont dans input_id)
+                matching_mask = torch.isin(intersection_targets, G2_batch.input_id)
+                # Récupérer les e_id correspondants
+                batch_matching_e_ids = intersections[matching_mask]
+                edges_mask = torch.isin(G2_batch.e_id,batch_matching_e_ids) ## mask pour les edges à supprimer dans le batch
+
+                ## the final masked batch
+                G2_batch.edge_index = G2_batch.edge_index[:,~edges_mask]
+                G2_batch.edge_type = G2_batch.edge_type[~edges_mask]
+                G2_batch.e_id = G2_batch.e_id[~edges_mask]
+
+                removed_batch.edge_index = removed_batch.edge_index[:, edges_mask]
+                removed_batch.edge_type = removed_batch.edge_type[edges_mask]
+                removed_batch.e_id = removed_batch.e_id[edges_mask]
+                optimizer.zero_grad()
+                H_2 = model.encode(G2_batch)
+
+                # Générer les triplets négatifs et positifs
+                negative_triplets = generate_negatives(data, G2_batch, negative_ratio=1)
+                positive_triplets = get_positives(G2_batch)
+                ## Generate negative examples from removed edges:
+                negative_triplets_removed = generate_negatives(data, removed_batch, negative_ratio=1)
+                positive_triplets_removed = get_positives(removed_batch)
+
+                all_positive_triplets = torch.cat((positive_triplets, positive_triplets_removed), dim=0)
+                all_negative_triplets = torch.cat((negative_triplets, negative_triplets_removed), dim=0)
+                pos_edge_index = torch.stack((all_positive_triplets[:, 0], all_positive_triplets[:, 2]))  # (2, num_edges)
+                pos_edge_type = all_positive_triplets[:, 1]
+                neg_edge_index = torch.stack((all_negative_triplets[:, 0], all_negative_triplets[:, 2]))  # (2, num_edges)
+                neg_edge_type = all_negative_triplets[:, 1]
+                # Scores pour les triplets positifs et négatifs
+                pos_scores = model.recon_r_(H_2, pos_edge_index, pos_edge_type)
+                neg_scores = model.recon_r_(H_2, neg_edge_index, neg_edge_type)
+                # Fonction de perte : Binary Cross Entropy
+
+                pos_preds = (torch.sigmoid(pos_scores) > 0.55).int()
+                neg_preds = (torch.sigmoid(neg_scores) > 0.55).int()
+
+                # True labels
+                pos_labels = torch.ones_like(pos_preds)
+                neg_labels = torch.zeros_like(neg_preds)
+
+                # Collect predictions and true labels
+                all_preds.extend(pos_preds.cpu().numpy())
+                all_preds.extend(neg_preds.cpu().numpy())
+                all_true_labels.extend(pos_labels.cpu().numpy())
+                all_true_labels.extend(neg_labels.cpu().numpy())
+                loss = F.binary_cross_entropy_with_logits(pos_scores, torch.ones_like(pos_scores)) + \
+                       F.binary_cross_entropy_with_logits(neg_scores, torch.zeros_like(neg_scores))
+                loss.backward()
+                optimizer.step()
+                total_loss += loss.item()
+                main_pbar.update(1)
+
+
+            avg_loss = total_loss / len(G_data_loader)
+            print("Evaluation\n")
+            metrics = evaluate(model, data, config["Gs_path_no_other"], config["core_concepts"], gdp)
+            print("\n")
+            print(metrics)
+
+            R_accuracy, R_precision, R_recall, R_f1 = calculate_metrics(all_preds, all_true_labels)
+            print(f"R_accuracy: {R_accuracy}, R_precision: {R_precision}, R_recall: {R_recall},R_f1: {R_f1}")
+
+            if avg_loss < best_loss:
+                best_loss = avg_loss
+                save_model(model, optimizer, epoch, save_dir = save_dir, file_name = save_file, is_best_acc=False)
+                print(f'Model saved with Avg Loss: {best_loss:.4f}\n')
+            if metrics["accuracy"] > best_accuracy:
+                best_accuracy = metrics["accuracy"]
+                best_metrics = metrics
+                save_model(model, optimizer, epoch, save_dir=save_dir,file_name= save_file , is_best_acc=True)
+                print(f'Model saved with Accuracy: {best_accuracy:.4f}\n')
+            wandb.log({"epoch": epoch + 1, "loss": avg_loss,
+                       "accuracy": metrics["accuracy"], "f1-score": metrics["f1_score"],
+                       "recall": metrics["recall"], "precision": metrics["precision"],
+                       "R_accuracy": R_accuracy, "R_precision": R_precision,
+                       "R_recall": R_recall, "R_f1": R_f1
+                       })
+
+    best_metrics["exp_name"] = save_file
+    return best_metrics
+
+
 
 
 def train_X_reconstruction(model, data ,optimizer, num_epochs, gdp, save_file,device, loss_fct = ["MSE"],
@@ -216,7 +335,6 @@ def train_X_reconstruction(model, data ,optimizer, num_epochs, gdp, save_file,de
                     total_loss += sce_loss
 
                 loss = total_loss
-
                 loss.backward()
                 optimizer.step()
                 total_loss += loss.item()
@@ -419,7 +537,7 @@ def train_model(model, data, optimizer, num_epochs, num_bases, out_channels, gdp
                     removed_edge_indices = removed_edge_indices.to(device)
                     mask = torch.isin(removed_edge_indices, G2_batch.e_id)
                     intersections = removed_edge_indices[mask]
-                    # Obtenir les nœuds cibles des arêtes intersectantes
+                    # Obtenir les nœuds cibles des arêtes intersectantes avec le batch graph
                     intersection_targets = data.edge_index[1][intersections]
                     # Trouver les intersections qui vérifient la condition
                     # (les nœuds cibles sont dans input_id)

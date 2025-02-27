@@ -1,6 +1,5 @@
 import torch
 from torch import nn, cosine_similarity
-from transformers.models.cvt.convert_cvt_original_pytorch_checkpoint_to_pytorch import embeddings
 import torch.nn.functional as F
 import loss_func
 
@@ -66,3 +65,14 @@ class MRGAE(nn.Module):
         :return: score of triplet correctness
         """
         return self.r_decoder.forward(e1,rel,e2)
+
+
+    def recon_r_(self,z, edge_index, edge_type):
+        """
+
+        :param e1: head entity
+        :param rel: relation between e1 and e2
+        :param e2: tail entity
+        :return: score of triplet correctness
+        """
+        return self.r_decoder.forward(z, edge_index, edge_type)
