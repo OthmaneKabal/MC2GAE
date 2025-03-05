@@ -12,7 +12,7 @@ config = {
     # "cosine_loss_weight": 0.5,
     "shuffle": False,
     "num_neighbors": [500, 500],
-    "num_epochs": 1,
+    "num_epochs": 120,
     "Entities_path": "../outputs/EntitiesBertEmbeddingAugmented.pickle",
     "Edges_path": "../outputs/PredicatesBertEmbeddingAugmented.pickle",
     "KG_path": "../../data/original_graph_vf.json",
@@ -40,15 +40,20 @@ config = {
                     'use_bias': True,
                     },
     "coresp_hidden_sizes":{768 : 43648, 512: 27776, 256: 11904, 128: 3968, 64:27776},
-    "training_task" : ["Recons_R"],
+    "training_task" : ["Double_reconstruction"],
     "hyperparams_grid" : {"num_bases": [10], "out_channels": [ [640,512],[512,256],[256,128] ,[128,64], [64,32]]},
-    "wandb_project_name": "last_Experiments_Dismult",
+    "wandb_project_name": "last_Experiments_double_recons",
     "encoders": ["GCN", "RGCN"],
     "decoders": ["GCN","RGCN","MLP"],
 
     "message_sens": ["source_to_target"],
     "projections": None,
     "root_save_dir": "checkpoints",
+    "param_combinations": [{"encoder": "GCN","decoder":"GCN","out_channels":[640,512]},
+                           {"encoder": "RGCN","decoder":"RGCN","out_channels":[640,512]},
+                           {"encoder": "RGCN","decoder":"MLP","out_channels":[640,512]}
+
+                           ]
 }
 
 

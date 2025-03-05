@@ -3,6 +3,8 @@ import pickle
 import re
 import sys
 
+from transformers import BeitModel
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'layers')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..', 'data')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..', 'utils')))
@@ -312,6 +314,35 @@ def extract_params(filename):
 
 
 def evaluate_all(KG_path, GS_path, ckpt_dir, config, embedding_model = "GNN", with_other = True, thresholds_list = [0.5], emb_file = None):
+
+    if embedding_model ==  "Bert":
+        embeddings_dict, cc_embd = generate_gs_embeddings(KG_path,
+                                                          "",
+                                                          GS_path, config["core_concepts"], config,
+                                                          embedding_model="Bert", emb_file=emb_file)
+
+        if with_other:
+            for threshold in thresholds_list:
+                print(f'\n************* {threshold} *****************\n')
+                classifications = classify_terms_by_cosine_similarity(embeddings_dict, cc_embd, threshold=threshold,
+                                                                      with_other=with_other)
+                metrics_df = evaluate_classification(Gs_path, classifications)
+                print(metrics_df)
+            return
+
+        else:
+            classifications = classify_terms_by_cosine_similarity(embeddings_dict, cc_embd, with_other=with_other)
+            metrics_df = evaluate_classification(Gs_path, classifications)
+            print(metrics_df)
+            return
+
+
+
+
+
+
+
+
 
     for filename in os.listdir(ckpt_dir):
             if filename.endswith(".pth"):

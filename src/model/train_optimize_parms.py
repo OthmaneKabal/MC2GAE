@@ -159,6 +159,9 @@ def train_GAE(model, data, optimizer, num_epochs, gdp,save_file,
     best_metrics["exp_name"] = save_file
     return best_metrics
 
+
+
+
 def train_DisMult(model, data, optimizer,num_epochs,gdp, save_file,device,
                            save_dir="train_R_reconstruction", wandb = None, seed = 42):
     best_loss = float('inf')
@@ -272,12 +275,10 @@ def train_DisMult(model, data, optimizer,num_epochs,gdp, save_file,device,
                        "accuracy": metrics["accuracy"], "f1-score": metrics["f1_score"],
                        "recall": metrics["recall"], "precision": metrics["precision"],
                        "R_accuracy": R_accuracy, "R_precision": R_precision,
-                       "R_recall": R_recall, "R_f1": R_f1
-                       })
+                       "R_recall": R_recall, "R_f1": R_f1,})
 
     best_metrics["exp_name"] = save_file
     return best_metrics
-
 
 
 
@@ -365,6 +366,166 @@ def train_X_reconstruction(model, data ,optimizer, num_epochs, gdp, save_file,de
 
     best_metrics["exp_name"] = save_file
     return best_metrics
+
+
+
+
+def train_Double_Reconstruction(model, data, optimizer,num_epochs,gdp, save_file,device, loss_fct = ["MSE"],
+                           save_dir="train_R_reconstruction", wandb = None, seed = 42):
+    best_loss = float('inf')
+    best_F1 = 0
+    best_accuracy = 0
+    best_metrics = {}
+    best_epoch = 0
+    print("\nRelations_dripping (Masking)...\n")
+    masked_features_data = view_partial_features_masking(data, max_masking_percentage=config["max_masking_percentage"])
+    masked_edges_data, removed_edge_indices, removed_edge_types = relation_based_edge_dropping_balanced(data, config[
+        "total_drop_rate"], max_drop_fraction_per_node=0.3, random_seed=42)
+    removed_edge_indices = removed_edge_indices.to(device)
+    removed_edge_types = removed_edge_types.to(device)
+
+    set_seed(seed)
+    G_data_loader = GraphDataLoader(masked_features_data, num_neighbors=config["num_neighbors"],
+                                    batch_size=config["batch_size"], shuffle=config["shuffle"]).get_loader()
+
+    for epoch in range(num_epochs):
+        model.train()
+        total_loss = 0
+        total_Recons_X_loss = 0
+        total_R_loss = 0
+        all_preds = []
+        all_true_labels = []
+        with tqdm(total=len(G_data_loader), desc=f"Epoch {epoch + 1}/{num_epochs}", unit="batch") as main_pbar:
+
+            for G2_batch in G_data_loader:
+
+                G2_batch = G2_batch.to(device)
+                removed_batch = copy.copy(G2_batch)
+
+                removed_edge_indices = removed_edge_indices.to(device)
+                mask = torch.isin(removed_edge_indices, G2_batch.e_id)
+                intersections = removed_edge_indices[mask]
+                # Obtenir les nœuds cibles des arêtes intersectantes avec le batch graph
+                intersection_targets = data.edge_index[1][intersections]
+                # Trouver les intersections qui vérifient la condition
+                # (les nœuds cibles sont dans input_id)
+                matching_mask = torch.isin(intersection_targets, G2_batch.input_id)
+                # Récupérer les e_id correspondants
+                batch_matching_e_ids = intersections[matching_mask]
+                edges_mask = torch.isin(G2_batch.e_id,batch_matching_e_ids) ## mask pour les edges à supprimer dans le batch
+
+                ## the final masked batch
+                G2_batch.edge_index = G2_batch.edge_index[:,~edges_mask]
+                G2_batch.edge_type = G2_batch.edge_type[~edges_mask]
+                G2_batch.e_id = G2_batch.e_id[~edges_mask]
+
+                removed_batch.edge_index = removed_batch.edge_index[:, edges_mask]
+                removed_batch.edge_type = removed_batch.edge_type[edges_mask]
+                removed_batch.e_id = removed_batch.e_id[edges_mask]
+
+                #### Features reconstruction
+                n_id_fm = G2_batch.n_id  ## The global node index for every sampled node
+                mask_fm = torch.isin(n_id_fm, G2_batch.input_id)  ## mask to get only the embedding of input_id nodes
+                optimizer.zero_grad()
+                H_2 = model.encode(G2_batch)
+                reconstructed_x = model.decode_x(G2_batch, H_2)
+                reconstructed_x = reconstructed_x[mask_fm]
+                ##############################
+                Recons_X_loss = 0.0
+
+                # Vérifier chaque terme et ajouter le loss correspondant au total
+                if "MSE" in loss_fct:
+                    mse_loss = mse_loss_fnc(data.x[G2_batch.n_id[mask_fm]], reconstructed_x)
+                    Recons_X_loss += mse_loss
+
+                if "PCSE" in loss_fct:
+                    pcse_loss = similarity_pair_loss(data.x[G2_batch.n_id[mask_fm]], reconstructed_x)
+                    Recons_X_loss += pcse_loss
+
+                if "SCE" in loss_fct:
+                    sce_loss = sce_loss_fnc(data.x[G2_batch.n_id[mask_fm]], reconstructed_x)
+                    Recons_X_loss += sce_loss
+
+
+
+
+                # Générer les triplets négatifs et positifs
+                negative_triplets = generate_negatives(data, G2_batch, negative_ratio=1)
+                positive_triplets = get_positives(G2_batch)
+                ## Generate negative examples from removed edges:
+                negative_triplets_removed = generate_negatives(data, removed_batch, negative_ratio=1)
+                positive_triplets_removed = get_positives(removed_batch)
+
+                all_positive_triplets = torch.cat((positive_triplets, positive_triplets_removed), dim=0)
+                all_negative_triplets = torch.cat((negative_triplets, negative_triplets_removed), dim=0)
+                pos_edge_index = torch.stack((all_positive_triplets[:, 0], all_positive_triplets[:, 2]))  # (2, num_edges)
+                pos_edge_type = all_positive_triplets[:, 1]
+                neg_edge_index = torch.stack((all_negative_triplets[:, 0], all_negative_triplets[:, 2]))  # (2, num_edges)
+                neg_edge_type = all_negative_triplets[:, 1]
+                # Scores pour les triplets positifs et négatifs
+                pos_scores = model.recon_r_(H_2, pos_edge_index, pos_edge_type)
+                neg_scores = model.recon_r_(H_2, neg_edge_index, neg_edge_type)
+                # Fonction de perte : Binary Cross Entropy
+
+                pos_preds = (torch.sigmoid(pos_scores) > 0.55).int()
+                neg_preds = (torch.sigmoid(neg_scores) > 0.55).int()
+
+                # True labels
+                pos_labels = torch.ones_like(pos_preds)
+                neg_labels = torch.zeros_like(neg_preds)
+
+                # Collect predictions and true labels
+                all_preds.extend(pos_preds.cpu().numpy())
+                all_preds.extend(neg_preds.cpu().numpy())
+                all_true_labels.extend(pos_labels.cpu().numpy())
+                all_true_labels.extend(neg_labels.cpu().numpy())
+                loss_R = F.binary_cross_entropy_with_logits(pos_scores, torch.ones_like(pos_scores)) + \
+                       F.binary_cross_entropy_with_logits(neg_scores, torch.zeros_like(neg_scores))
+
+                loss = Recons_X_loss + loss_R
+
+                loss.backward()
+                optimizer.step()
+                total_loss += loss.item()
+                total_R_loss += loss_R.item()
+                total_Recons_X_loss += Recons_X_loss
+                main_pbar.update(1)
+
+            avg_R_loss = total_R_loss / len(G_data_loader)
+            avg_Recons_X_loss = total_Recons_X_loss / len(G_data_loader)
+            avg_loss = total_loss / len(G_data_loader)
+            print("Evaluation\n")
+            metrics = evaluate(model, data, config["Gs_path_no_other"], config["core_concepts"], gdp)
+            print("\n")
+            print(metrics)
+
+            R_accuracy, R_precision, R_recall, R_f1 = calculate_metrics(all_preds, all_true_labels)
+            print(f"R_accuracy: {R_accuracy}, R_precision: {R_precision}, R_recall: {R_recall},R_f1: {R_f1}")
+
+            if avg_loss < best_loss:
+                best_loss = avg_loss
+                save_model(model, optimizer, epoch, save_dir = save_dir, file_name = save_file, is_best_acc=False)
+                print(f'Model saved with Avg Loss: {best_loss:.4f}\n')
+            if metrics["accuracy"] > best_accuracy:
+                best_accuracy = metrics["accuracy"]
+                best_metrics = metrics
+                save_model(model, optimizer, epoch, save_dir=save_dir,file_name= save_file , is_best_acc=True)
+                print(f'Model saved with Accuracy: {best_accuracy:.4f}\n')
+            wandb.log({"epoch": epoch + 1, "total_loss": avg_loss,
+                       "accuracy": metrics["accuracy"], "f1-score": metrics["f1_score"],
+                       "recall": metrics["recall"], "precision": metrics["precision"],
+                       "R_accuracy": R_accuracy, "R_precision": R_precision,
+                       "R_recall": R_recall, "R_f1": R_f1, "R_loss": avg_R_loss, "X_loss" : avg_Recons_X_loss})
+
+    best_metrics["exp_name"] = save_file
+    return best_metrics
+
+
+
+
+
+
+
 
 
 
