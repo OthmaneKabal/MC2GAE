@@ -49,12 +49,13 @@ def main():
     data = gdp.prepare_graph_with_type()
     print(data)
 
+
+
     data = Data(x=data.x, edge_index=data.edge_index, edge_type=data.edge_type).to(device)
     for task in config["training_task"]:
         save_dir = config["root_save_dir"] + f"/{task}"
         msg_sens = config["message_sens"][0]
         if task == "Recons_X":
-
 
             for out_channels in config["hyperparams_grid"]["out_channels"]:
                 for encoder_ in config["encoders"]:
@@ -107,11 +108,13 @@ def main():
                                     config=run_config,
                                     settings=wandb.Settings(start_method="thread")
                                 )
-
+                                # print(encoder)
+                                # print(decoder)
+                                # exit(-1)
                                 autoencoder = MRGAE(encoder, decoder, projections=config["projections"]).to(device)
                                 optimizer = optim.Adam(autoencoder.parameters(), lr=config["learning_rate"])
                                 performances = train_X_reconstruction(autoencoder, data, optimizer, config["num_epochs"],
-                                            gdp, file_name,device, loss_fct=["MSE"], save_dir = save_dir,
+                                            gdp, file_name,device, config,loss_fct=["MSE"], save_dir = save_dir,
                                             wandb=wandb)
                                 results.append(performances)
                                 wandb.finish()
@@ -156,7 +159,7 @@ def main():
                             autoencoder = MRGAE(encoder, decoder, projections=config["projections"]).to(device)
                             optimizer = optim.Adam(autoencoder.parameters(), lr=config["learning_rate"])
                             performances = train_X_reconstruction(autoencoder, data, optimizer, config["num_epochs"],
-                                        gdp, file_name, device, save_dir=save_dir, loss_fct=["MSE"],
+                                            gdp, file_name, device, config,save_dir=save_dir, loss_fct=["MSE"],
                                         wandb=wandb)
                             results.append(performances)
 
@@ -404,7 +407,6 @@ def main():
 
 
     df = pd.DataFrame(results)
-
     # Sauvegarde en fichier Excel
     df.to_excel("results_Double_recons.xlsx", index=False)
 #

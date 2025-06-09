@@ -28,6 +28,7 @@ import torch
 import random
 import numpy as np
 seed = 42
+torch.backends.cudnn.benchmark = False
 torch.manual_seed(seed)
 torch.cuda.manual_seed(seed)
 np.random.seed(seed)
@@ -36,7 +37,6 @@ import torch
 import copy
 set_seed(42)
 torch.backends.cudnn.deterministic = True
-torch.backends.cudnn.benchmark = False
 import torch_geometric.transforms as T
 
 
@@ -137,7 +137,9 @@ def train_GAE(model, data, optimizer, num_epochs, gdp,save_file,
             avg_loss = total_loss / len(G_data_loader)
             print("\nEvaluation\n")
             print(data)
-            metrics = evaluate(model, data, config["Gs_path_no_other"], config["core_concepts"], gdp)
+            # metrics = evaluate(model, data, config["Gs_path_no_other"], config["core_concepts"], gdp)
+            metrics = evaluate(model, data, config["Gs_path_no_other"], config["core_concepts"], gdp, config)
+
             print("\n")
             print(metrics)
             print("\n")
@@ -255,7 +257,9 @@ def train_DisMult(model, data, optimizer,num_epochs,gdp, save_file,device,
 
             avg_loss = total_loss / len(G_data_loader)
             print("Evaluation\n")
-            metrics = evaluate(model, data, config["Gs_path_no_other"], config["core_concepts"], gdp)
+            # metrics = evaluate(model, data, config["Gs_path_no_other"], config["core_concepts"], gdp)
+            metrics = evaluate(model, data, config["Gs_path_no_other"], config["core_concepts"], gdp, config)
+
             print("\n")
             print(metrics)
 
@@ -282,7 +286,7 @@ def train_DisMult(model, data, optimizer,num_epochs,gdp, save_file,device,
 
 
 
-def train_X_reconstruction(model, data ,optimizer, num_epochs, gdp, save_file,device, loss_fct = ["MSE"],
+def train_X_reconstruction(model, data ,optimizer, num_epochs, gdp, save_file,device, config,loss_fct = ["MSE"],
                            save_dir="train_X_reconstruction", wandb = None, seed = 42):
 
 
@@ -344,7 +348,7 @@ def train_X_reconstruction(model, data ,optimizer, num_epochs, gdp, save_file,de
             avg_loss = total_loss / len(G1_data_loader)
 
             print("Evaluation\n")
-            metrics = evaluate(model, data, config["Gs_path_no_other"], config["core_concepts"], gdp)
+            metrics = evaluate(model, data, config["Gs_path_no_other"], config["core_concepts"], gdp, config)
             print("\n")
             print(metrics)
             if avg_loss < best_loss:
@@ -495,7 +499,9 @@ def train_Double_Reconstruction(model, data, optimizer,num_epochs,gdp, save_file
             avg_Recons_X_loss = total_Recons_X_loss / len(G_data_loader)
             avg_loss = total_loss / len(G_data_loader)
             print("Evaluation\n")
-            metrics = evaluate(model, data, config["Gs_path_no_other"], config["core_concepts"], gdp)
+            # metrics = evaluate(model, data, config["Gs_path_no_other"], config["core_concepts"], gdp)
+            metrics = evaluate(model, data, config["Gs_path_no_other"], config["core_concepts"], gdp, config)
+
             print("\n")
             print(metrics)
 
