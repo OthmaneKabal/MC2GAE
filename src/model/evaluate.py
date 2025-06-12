@@ -20,6 +20,8 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'l
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..', 'data')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..', 'utils')))
 from GraphDataPreparation import GraphDataPreparation
+from src.layers.TransGCNEncoder import TransGCNEncoder
+
 from ConvE import ConvE
 from RGCNDecoder import RGCNDecoder
 from RGCNEncoder import RGCNEncoder
@@ -352,7 +354,11 @@ def generate_batch_term_embeddings(model, graph, gdp, terms, batch_size, num_nei
         ).get_loader()
         embeddings_dict = {}
         for batch in tqdm(data_loader):
-            batch_embeddings = model(batch)  # shape: [num_nodes_in_batch, dim]
+            if isinstance(model.encoder, TransGCNEncoder):
+                batch_embeddings, _ = model.encode(batch)
+            else:
+                batch_embeddings = model.encode(batch)
+            # batch_embeddings = model(batch)  # shape: [num_nodes_in_batch, dim]
             mask = torch.isin(batch.n_id, input_tensor[batch.input_id])
 
             input_embeddings = batch_embeddings[mask]

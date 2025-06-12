@@ -51,8 +51,12 @@ class MRGAE(nn.Module):
         return embeddings
 
 
-    def decode_x(self, data, embeddings):
-        reconstructed_x = self.x_decoder(data, embeddings)
+    def decode_x(self, data, embeddings, r_embeddings = None):
+        if r_embeddings is None:
+            reconstructed_x = self.x_decoder(data, embeddings)
+        else:
+            reconstructed_x = self.x_decoder(data, embeddings, r_embeddings)
+
         return reconstructed_x
 
 

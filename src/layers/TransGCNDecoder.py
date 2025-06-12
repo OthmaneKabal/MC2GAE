@@ -56,7 +56,7 @@ class TransGCNDecoder(nn.Module):
                 layer.reset_parameters()
         self.final_layer.reset_parameters()
 
-    def forward(self, data: Data, embeddings):
+    def forward(self, data: Data, embeddings, new_edge_attr = None):
         """
         Passe avant du décodeur pour reconstruire les features à partir des embeddings.
 
@@ -66,7 +66,10 @@ class TransGCNDecoder(nn.Module):
         """
         x = embeddings
         edge_index = data.edge_index
-        edge_attr = data.edge_attr
+        if new_edge_attr is None:
+            edge_attr = data.edge_attr
+        else:
+            edge_attr = new_edge_attr
         for layer in self.layers:
             x, edge_attr = layer(x, edge_index, edge_attr)
             x = self.dropout(x)

@@ -3,10 +3,10 @@ import os
 
 from loss_func import recon_r_loss, sce_loss_fnc, similarity_pair_loss, mse_loss_fnc, contrastive_loss, \
     contrastive_loss_exclude_is, calculate_cluster_assignments, inter_cluster_loss, intra_cluster_loss
-
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'layers')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..', 'data')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..', 'utils')))
+from src.layers.TransGCNDecoder import TransGCNDecoder
 from sklearn.metrics import f1_score, accuracy_score, recall_score, precision_score
 from torch_geometric.loader import NeighborLoader
 from evaluate import evaluate
@@ -18,6 +18,7 @@ from data_augmentation import relation_based_edge_dropping_balanced
 from data_augmentation import view_partial_features_masking
 from GraphDataLoader import GraphDataLoader
 import torch.nn.functional as F
+from src.layers.TransGCNEncoder import TransGCNEncoder
 
 import pandas as pd
 from config import config
@@ -106,6 +107,7 @@ def evaluate_ConvE(model, data, data_loader, test_removed_index, device, relatio
 
 def train_GAE(model, data, optimizer, num_epochs, gdp,save_file,
                            save_dir="GAE", device = "cuda", wandb = None, seed = 42):
+
     best_loss = float('inf')
     best_accuracy = 0
     best_metrics = {}
@@ -127,7 +129,10 @@ def train_GAE(model, data, optimizer, num_epochs, gdp,save_file,
         model.train()
 
         with tqdm(total=len(G_data_loader), desc=f"Epoch {epoch + 1}/{num_epochs}", unit="batch") as batch_pbar:
-            z = model.encode(data)
+            if  isinstance(model.encoder, TransGCNEncoder):
+                z,_ = model.encode(data)
+            else:
+                z = model.encode(data)
             loss = model.recon_loss(z, train_data_directed_without_split.pos_edge_label_index)
             loss.backward()
             optimizer.step()
@@ -216,6 +221,7 @@ def train_DisMult(model, data, optimizer,num_epochs,gdp, save_file,device,
                 removed_batch.edge_type = removed_batch.edge_type[edges_mask]
                 removed_batch.e_id = removed_batch.e_id[edges_mask]
                 optimizer.zero_grad()
+
                 H_2 = model.encode(G2_batch)
 
                 # Générer les triplets négatifs et positifs
@@ -322,8 +328,20 @@ def train_X_reconstruction(model, data ,optimizer, num_epochs, gdp, save_file,de
                 n_id = batch.n_id  ## The global node index for every sampled node
                 mask = torch.isin(n_id, batch.input_id)  ## mask to get only the embedding of input_id nodes
                 optimizer.zero_grad()
-                embeddings = model.encode(batch)
-                reconstructed_x = model.decode_x(batch, embeddings)
+                r_embd = None
+                if isinstance(model.encoder, TransGCNEncoder):
+                    embeddings, r_embd = model.encode(batch)
+
+                else:
+                    embeddings = model.encode(batch)
+
+                # embeddings = model.encode(batch)
+                if isinstance(model.x_decoder, TransGCNDecoder):
+
+                    reconstructed_x = model.decode_x(batch, embeddings, r_embd)
+                else:
+                    reconstructed_x = model.decode_x(batch, embeddings)
+
                 reconstructed_x = reconstructed_x[mask]
 
                 total_loss = 0.0

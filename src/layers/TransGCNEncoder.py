@@ -55,6 +55,5 @@ class TransGCNEncoder(nn.Module):
 
         for layer in self.layers:
             x, edge_attr = layer(x, edge_index, edge_attr)
-            data.edge_attr = edge_attr
             x = self.dropout(x)
-        return x
+        return x, edge_attr

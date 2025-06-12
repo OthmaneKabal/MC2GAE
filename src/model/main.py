@@ -6,11 +6,14 @@ import pandas as pd
 from torch_geometric.nn import GAE
 
 from src.layers.Dismult import DistMultDecoder
+from src.layers.GATDecoder import GATDecoder
 from src.model.train_optimize_parms import train_GAE, train_X_reconstruction, train_DisMult, train_Double_Reconstruction
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'layers')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..', 'data')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..', 'utils')))
+from src.layers.GATEncoder import GATEncoder
+
 from utils.utils import  set_seed
 from src.layers.GCNDecoder import GCNDecoder
 from src.layers.GCNEncoder import GCNEncoder
@@ -73,14 +76,35 @@ def main():
                                 elif encoder_ == "RGCN":
                                     encoder = RGCNEncoder(data, out_channels, config["num_layers"], num_bases,
                                                           message_sens=msg_sens).to(device)
-                                elif encoder_ == "TransGCN":
+                                elif encoder_ == "TransGCN_conv":
                                     encoder = TransGCNEncoder(data, out_channels, config["num_layers"], dropout=0.2,
-                                                              kg_score_fn = config["kg_score_fn"],variant=config["variant"],
+                                                              kg_score_fn = 'TransE',variant = 'conv',
+                                                              use_edges_info = config["use_edges_info"], activation = 'relu',
+                                                              bias = False ).to(device)
+
+                                elif encoder_ == "TransGCN_attn":
+                                    encoder = TransGCNEncoder(data, out_channels, config["num_layers"], dropout=0.2,
+                                                              kg_score_fn = 'TransE',variant = 'attn',
+                                                              use_edges_info = config["use_edges_info"], activation = 'relu',
+                                                              bias = False ).to(device)
+
+                                elif encoder_ == "RotatEGCN_conv":
+                                    encoder = TransGCNEncoder(data, out_channels, config["num_layers"], dropout=0.2,
+                                                              kg_score_fn = 'RotatE',variant = 'conv',
+                                                              use_edges_info = config["use_edges_info"], activation = 'relu',
+                                                              bias = False ).to(device)
+
+                                elif encoder_ == "RotatEGCN_attn":
+                                    encoder = TransGCNEncoder(data, out_channels, config["num_layers"], dropout=0.2,
+                                                              kg_score_fn = 'RotatE',variant = 'attn',
                                                               use_edges_info = config["use_edges_info"], activation = 'relu',
                                                               bias = False ).to(device)
 
 
-                                    print(encoder)
+                                elif encoder_ == "GAT":
+                                    encoder = GATEncoder(data, out_channels, config["num_layers"])
+                                    # (self, data: Data, out_channels, num_layers=2, heads=4, dropout=0.5)
+                                    # print(encoder)
                                 else:
                                     print("invalid encoder type ! ")
                                     raise ValueError("Invalid encoder type!")
@@ -93,21 +117,38 @@ def main():
                                                           message_sens=msg_sens).to(device)
                                 elif decoder_ == "MLP":
                                     decoder = MLPDecoder(encoder, data, config["alpha"]).to(device)
-                                elif decoder_ == "TransGCN":
-                                    decoder = TransGCNDecoder(encoder, data, config["alpha"], dropout=0.3, kg_score_fn = config["kg_score_fn"],variant=config["variant"],
+
+                                elif decoder_ == "TransGCN_conv":
+                                    decoder = TransGCNDecoder(encoder, data, config["alpha"], dropout=0.3, kg_score_fn = 'TransE',
+                                                              variant='conv',
                                                               use_edges_info = config["use_edges_info"]).to(device)
+
+                                elif decoder_ == "TransGCN_attn":
+                                    decoder = TransGCNDecoder(encoder, data, config["alpha"], dropout=0.3,
+                                                              kg_score_fn='TransE',variant='attn',
+                                                              use_edges_info=config["use_edges_info"]).to(device)
+                                elif decoder_ == "RotatEGCN_conv":
+                                    decoder = TransGCNDecoder(encoder, data, config["alpha"], dropout=0.3,
+                                                              kg_score_fn='RotatE',variant='conv',
+                                                              use_edges_info=config["use_edges_info"]).to(device)
+
+                                elif decoder_ == "RotatEGCN_attn":
+                                    decoder = TransGCNDecoder(encoder, data, config["alpha"], dropout=0.3,
+                                                              kg_score_fn='RotatE',variant='attn',
+                                                              use_edges_info=config["use_edges_info"]).to(device)
+
+
+                                elif decoder_ == "GAT":
+                                    decoder = GATDecoder(encoder, data, heads=4, alpha=0.01, dropout=0.3)
 
                                 else:
                                     print('invalid decoder !')
                                     raise ValueError("Invalid encoder type!")
 
 
-                                transgcn_params = ""
-                                if encoder_ == "TransGCN" or decoder_ == "TransGCN":
-                                    transgcn_params = f"_{config['kg_score_fn']}_variant{config['variant']}"
 
-                                run_name = f"{task}_bases-{num_bases}_channels_{'-'.join(map(str, out_channels))}_enc-{encoder_}_dec-{decoder_}" + transgcn_params
-                                file_name = f"{task}_bases-{num_bases}_channels_{'-'.join(map(str, out_channels))}_enc-{encoder_}_dec-{decoder_}" + transgcn_params
+                                run_name = f"{task}_bases-{num_bases}_channels_{'-'.join(map(str, out_channels))}_enc-{encoder_}_dec-{decoder_}"
+                                file_name = f"{task}_bases-{num_bases}_channels_{'-'.join(map(str, out_channels))}_enc-{encoder_}_dec-{decoder_}"
                                 run_config = {
                                     "device": config["device"],
                                     "num_layers": 2,
@@ -147,31 +188,72 @@ def main():
                         else:  # Si num_bases n'est pas utilisé
                             if encoder_ == "GCN":
                                 encoder = GCNEncoder(data, out_channels, config["num_layers"], message_sens=msg_sens).to(device)
-                            elif encoder_ == "TransGCN":
+
+                            elif encoder_ == "TransGCN_conv":
                                 encoder = TransGCNEncoder(data, out_channels, config["num_layers"], dropout=0.2,
-                                                         kg_score_fn=config["kg_score_fn"],variant=config["variant"],
-                                                         use_edges_info=config["use_edges_info"], activation='relu',
-                                                         bias=False).to(device)
+                                                          kg_score_fn='TransE', variant='conv',
+                                                          use_edges_info=config["use_edges_info"], activation='relu',
+                                                          bias=False).to(device)
+
+                            elif encoder_ == "TransGCN_attn":
+                                encoder = TransGCNEncoder(data, out_channels, config["num_layers"], dropout=0.2,
+                                                          kg_score_fn='TransE', variant='attn',
+                                                          use_edges_info=config["use_edges_info"], activation='relu',
+                                                          bias=False).to(device)
+
+                            elif encoder_ == "RotatEGCN_conv":
+                                encoder = TransGCNEncoder(data, out_channels, config["num_layers"], dropout=0.2,
+                                                          kg_score_fn='RotatE', variant='conv',
+                                                          use_edges_info=config["use_edges_info"], activation='relu',
+                                                          bias=False).to(device)
+
+                            elif encoder_ == "RotatEGCN_attn":
+                                encoder = TransGCNEncoder(data, out_channels, config["num_layers"], dropout=0.2,
+                                                          kg_score_fn='RotatE', variant='attn',
+                                                          use_edges_info=config["use_edges_info"], activation='relu',
+                                                          bias=False).to(device)
+
+                            elif encoder_ == "GAT":
+                                encoder = GATEncoder(data, out_channels, config["num_layers"])
+
 
                             if decoder_ == "GCN":
                                 decoder = GCNDecoder(encoder, data, config["alpha"], message_sens=msg_sens).to(device)
                             elif decoder_ == "MLP":
                                 decoder = MLPDecoder(encoder, data, config["alpha"]).to(device)
-                            elif decoder_ == "TransGCN":
+
+                            elif decoder_ == "TransGCN_conv":
                                 decoder = TransGCNDecoder(encoder, data, config["alpha"], dropout=0.3,
-                                                          kg_score_fn=config["kg_score_fn"],variant=config["variant"],
+                                                          kg_score_fn='TransE',
+                                                          variant='conv',
                                                           use_edges_info=config["use_edges_info"]).to(device)
+
+                            elif decoder_ == "TransGCN_attn":
+                                decoder = TransGCNDecoder(encoder, data, config["alpha"], dropout=0.3,
+                                                          kg_score_fn='TransE', variant='attn',
+                                                          use_edges_info=config["use_edges_info"]).to(device)
+                            elif decoder_ == "RotatEGCN_conv":
+                                decoder = TransGCNDecoder(encoder, data, config["alpha"], dropout=0.3,
+                                                          kg_score_fn='RotatE', variant='conv',
+                                                          use_edges_info=config["use_edges_info"]).to(device)
+
+                            elif decoder_ == "RotatEGCN_attn":
+                                decoder = TransGCNDecoder(encoder, data, config["alpha"], dropout=0.3,
+                                                          kg_score_fn='RotatE', variant='attn',
+                                                          use_edges_info=config["use_edges_info"]).to(device)
+
+                            elif decoder_ == "GAT":
+                                decoder = GATDecoder(encoder, data, heads=4, alpha=0.01, dropout=0.3)
+
 
 
                             else:
                                 print("Error: RGCN decoder requires num_bases but is not defined!")
                                 raise ValueError("Invalid encoder type!")
 
-                            transgcn_params = ""
-                            if encoder_ == "TransGCN" or decoder_ == "TransGCN":
-                                transgcn_params = f"_{config['kg_score_fn']}_variant{config['variant']}"
-                            run_name = f"{task}_channels_{'-'.join(map(str, out_channels))}_enc-{encoder_}_dec-{decoder_}" + transgcn_params
-                            file_name = f"{task}_channels_{'-'.join(map(str, out_channels))}_enc-{encoder_}_dec-{decoder_}" + transgcn_params
+
+                            run_name = f"{task}_channels_{'-'.join(map(str, out_channels))}_enc-{encoder_}_dec-{decoder_}"
+                            file_name = f"{task}_channels_{'-'.join(map(str, out_channels))}_enc-{encoder_}_dec-{decoder_}"
                             run_config = {
                                 "device": config["device"],
                                 "num_layers": 2,
@@ -253,21 +335,43 @@ def main():
                         if encoder_ == "GCN":
                             encoder = GCNEncoder(data, out_channels, config["num_layers"],
                                                  message_sens=msg_sens).to(device)
-                        elif encoder_ == "TransGCN":
+
+                        elif encoder_ == "TransGCN_conv":
                             encoder = TransGCNEncoder(data, out_channels, config["num_layers"], dropout=0.2,
-                                                      kg_score_fn=config["kg_score_fn"],variant=config["variant"],
+                                                      kg_score_fn='TransE', variant='conv',
                                                       use_edges_info=config["use_edges_info"], activation='relu',
                                                       bias=False).to(device)
+
+                        elif encoder_ == "TransGCN_attn":
+                            encoder = TransGCNEncoder(data, out_channels, config["num_layers"], dropout=0.2,
+                                                      kg_score_fn='TransE', variant='attn',
+                                                      use_edges_info=config["use_edges_info"], activation='relu',
+                                                      bias=False).to(device)
+
+                        elif encoder_ == "RotatEGCN_conv":
+                            encoder = TransGCNEncoder(data, out_channels, config["num_layers"], dropout=0.2,
+                                                      kg_score_fn='RotatE', variant='conv',
+                                                      use_edges_info=config["use_edges_info"], activation='relu',
+                                                      bias=False).to(device)
+
+                        elif encoder_ == "RotatEGCN_attn":
+                            encoder = TransGCNEncoder(data, out_channels, config["num_layers"], dropout=0.2,
+                                                      kg_score_fn='RotatE', variant='attn',
+                                                      use_edges_info=config["use_edges_info"], activation='relu',
+                                                      bias=False).to(device)
+
+
+
+                        elif encoder_ == "GAT":
+                            encoder = GATEncoder(data, out_channels, config["num_layers"])
                         else:
                             print("invalid encoder type!")
                             raise ValueError("Invalid encoder type!")
 
 
-                        transgcn_params = ""
-                        if encoder_ == "TransGCN":
-                            transgcn_params = f"_{config['kg_score_fn']}_variant{config['variant']}"
-                        run_name = f"{task}_channels_{'-'.join(map(str, out_channels))}_enc-{encoder_}_GAE" + transgcn_params
-                        file_name = f"{task}_channels_{'-'.join(map(str, out_channels))}_enc-{encoder_}_GAE" + transgcn_params
+
+                        run_name = f"{task}_channels_{'-'.join(map(str, out_channels))}_enc-{encoder_}_GAE"
+                        file_name = f"{task}_channels_{'-'.join(map(str, out_channels))}_enc-{encoder_}_GAE"
                         run_config = {
                             "device": config["device"],
                             "num_layers": 2,
@@ -353,18 +457,44 @@ def main():
                         if encoder_ == "GCN":
                             encoder = GCNEncoder(data, out_channels, config["num_layers"],
                                              message_sens=msg_sens).to(device)
-                        elif encoder_ == "TransGCN":
+
+
+                        elif encoder_ == "TransGCN_conv":
                             encoder = TransGCNEncoder(data, out_channels, config["num_layers"], dropout=0.2,
-                                                      kg_score_fn=config["kg_score_fn"], variant=config["variant"],
+                                                      kg_score_fn='TransE', variant='conv',
                                                       use_edges_info=config["use_edges_info"], activation='relu',
                                                       bias=False).to(device)
+
+                        elif encoder_ == "TransGCN_attn":
+                            encoder = TransGCNEncoder(data, out_channels, config["num_layers"], dropout=0.2,
+                                                      kg_score_fn='TransE', variant='attn',
+                                                      use_edges_info=config["use_edges_info"], activation='relu',
+                                                      bias=False).to(device)
+
+                        elif encoder_ == "RotatEGCN_conv":
+                            encoder = TransGCNEncoder(data, out_channels, config["num_layers"], dropout=0.2,
+                                                      kg_score_fn='RotatE', variant='conv',
+                                                      use_edges_info=config["use_edges_info"], activation='relu',
+                                                      bias=False).to(device)
+
+                        elif encoder_ == "RotatEGCN_attn":
+                            encoder = TransGCNEncoder(data, out_channels, config["num_layers"], dropout=0.2,
+                                                      kg_score_fn='RotatE', variant='attn',
+                                                      use_edges_info=config["use_edges_info"], activation='relu',
+                                                      bias=False).to(device)
+
+
+
+
+
+                        elif encoder_ == "GAT":
+                            encoder = GATEncoder(data, out_channels, config["num_layers"])
+
                         else:
                             print("invalid encoder type!")
                             raise ValueError("Invalid encoder type!")
 
-                        transgcn_params = ""
-                        if encoder_ == "TransGCN":
-                            transgcn_params = f"_{config['kg_score_fn']}_variant{config['variant']}"
+
                         run_name = f"{task}_channels_{'-'.join(map(str, out_channels))}_enc-{encoder_}_Dismult" + transgcn_params
                         file_name = f"{task}_channels_{'-'.join(map(str, out_channels))}_enc-{encoder_}_Dismult" + transgcn_params
                         run_config = {
@@ -413,6 +543,8 @@ def main():
                                               kg_score_fn=config["kg_score_fn"], variant=config["variant"],
                                               use_edges_info=config["use_edges_info"], activation='relu',
                                               bias=False).to(device)
+
+
                 else:
                     print("invalid encoder type!")
                     raise ValueError("Invalid encoder type!")
@@ -435,11 +567,9 @@ def main():
                     print("invalid decoder type!")
                     raise ValueError("Invalid encoder type!")
 
-                transgcn_params = ""
-                if cmb["encoder"] == "TransGCN" or cmb["decoder"] == "TransGCN":
-                    transgcn_params = f"_{config['kg_score_fn']}_variant{config['variant']}"
-                run_name = f"{task}_channels_{'-'.join(map(str, cmb['out_channels']))}_enc-{cmb['encoder']}_dec-{cmb['decoder']}_R_Dismult" + transgcn_params
-                file_name = f"{task}_channels_{'-'.join(map(str, cmb['out_channels']))}_enc-{cmb['encoder']}_dec-{cmb['decoder']}_R_Dismult" + transgcn_params
+
+                run_name = f"{task}_channels_{'-'.join(map(str, cmb['out_channels']))}_enc-{cmb['encoder']}_dec-{cmb['decoder']}_R_Dismult"
+                file_name = f"{task}_channels_{'-'.join(map(str, cmb['out_channels']))}_enc-{cmb['encoder']}_dec-{cmb['decoder']}_R_Dismult"
                 run_config = {
                     "device": config["device"],
                     "num_layers": 2,
@@ -478,14 +608,6 @@ def main():
                 results.append(performances)
 
                 wandb.finish()
-
-
-
-
-
-
-
-
 
     df = pd.DataFrame(results)
     # Sauvegarde en fichier Excel
