@@ -768,20 +768,42 @@ KG_path = config["KG_path"]
 Gs_path = config["Gs_path_no_other"]
 thresholds_list = [0.6,0.7,0.8]
 
-
-#
+################################## Evaluate Bert/ sentence bert Medels ########################
 # models_cs = [
+#     # Sentence-BERT
+#     "sentence-transformers/all-MiniLM-L6-v2",
+#     "sentence-transformers/paraphrase-MiniLM-L6-v2",
+#     # "sentence-transformers/paraphrase-mpnet-base-v2",
+#     # "sentence-transformers/all-distilroberta-v1",
+#     "sentence-transformers/nli-bert-base",
+#     "sentence-transformers/nli-roberta-base-v2",
+#     "sentence-transformers/msmarco-distilbert-base-v3",
+#     "sentence-transformers/multi-qa-MiniLM-L6-cos-v1",
+#     "sentence-transformers/stsb-roberta-base-v2",
+#     "sentence-transformers/stsb-bert-base",
+#
+#     # Modèles scientifiques / biomédicaux
+#     "allenai/scibert_scivocab_uncased",
+#     "allenai/specter",
+#     "pritamdeka/S-BioBert-snli-multinli-stsb",
+#     "pritamdeka/S-PubMedBert-MS-MARCO",
+#     "michiyasunaga/BioLinkBERT-base",
+#     "dmis-lab/biobert-base-cased-v1.1",
+#     "emilyalsentzer/Bio_ClinicalBERT",
+#
+#     # BERT classiques
 #     "bert-base-uncased",
 #     "bert-base-cased",
-#     "C:/Users/admin-user/Documents/GitHub/bert_output",
-#     "C:/Users/admin-user/Documents/GitHub/bert_sc_output",
-#     "sentence-transformers/paraphrase-mpnet-base-v2",
-#     "sentence-transformers/all-MiniLM-L6-v2",
-#     "sentence-transformers/all-distilroberta-v1",
-#     "allenai/scibert_scivocab_uncased",
+#     "roberta-base",
+#     "distilbert-base-uncased",
+#     "albert-base-v2",
+#     "xlm-roberta-base",
+#
+#     # Modèles orientés code
 #     "microsoft/codebert-base",
 #     "microsoft/graphcodebert-base",
-#     "allenai/specter"
+#     "Salesforce/codet5-base",
+#     "facebook/bart-large"
 # ]
 #
 # best_model = None
@@ -838,8 +860,7 @@ thresholds_list = [0.6,0.7,0.8]
 #
 #
 #
-
-
+#############################################################################################
 
 
 
@@ -848,11 +869,24 @@ thresholds_list = [0.6,0.7,0.8]
 
 #
 # #
-# metrics = evaluate_all(KG_path, Gs_path,None, config, embedding_model="Bert", with_other=False, thresholds_list=thresholds_list, bert_model= "sentence-transformers/all-MiniLM-L6-v2", export_preds_path= None)
+# # #
+# metrics = evaluate_all(KG_path, Gs_path,None, config, embedding_model="Bert", with_other=False, thresholds_list=thresholds_list, bert_model= "sentence-transformers/all-MiniLM-L6-v2", export_preds_path= "classification_SBert.xlsx")
 # print('\n----------------Bert------------------\n', metrics)
 #
-# metrics = evaluate_trained_GNN("checkpoints/umls_Recons_X/Recons_X_bases-10_channels_256-128_enc-RGCN_dec-MLP_best_acc.pth", config,"aug_classification.xlsx")
+#
+# # metrics = evaluate_trained_GNN("checkpoints/umls_Recons_X_v0/Recons_X_bases-10_channels_256-128_enc-RGCN_dec-MLP_best_acc.pth", config,"classification_clean.xlsx")
+# # metrics = evaluate_trained_GNN("checkpoints/UMLS/noisy/Recons_X_bases-5_channels_364-256_enc-RGCN_dec-MLP_best_acc.pth", config,"classification_noisy.xlsx")
+#
 # print('\n---------------RGCN-----------------\n',metrics)
+#
+
+
+
+
+
+
+
+
 
 # # evaluate_all(KG_path, Gs_path, "checkpoints/Recons_X", config, embedding_model = "GNN", with_other = False, thresholds_list = thresholds_list, emb_file = None)
 

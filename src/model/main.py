@@ -1,5 +1,6 @@
 import sys
 import os
+import copy
 
 import pandas as pd
 from torch_geometric.nn import GAE
@@ -17,6 +18,8 @@ from src.layers.MLPDecoder import MLPDecoder
 import torch.optim as optim
 from RGCNEncoder import RGCNEncoder
 from RGCNDecoder import RGCNDecoder
+from src.layers.TransGCNEncoder import TransGCNEncoder
+from src.layers.TransGCNDecoder import TransGCNDecoder
 from torch_geometric.data import Data
 from config import config
 from GraphDataPreparation import GraphDataPreparation
@@ -50,8 +53,8 @@ def main():
     print(data)
 
 
-
-    data = Data(x=data.x, edge_index=data.edge_index, edge_type=data.edge_type).to(device)
+    data = data.to(device)
+    # data = Data(x=data.x, edge_index=data.edge_index, edge_type=data.edge_type).to(device)
     for task in config["training_task"]:
         save_dir = config["root_save_dir"] + f"/{task}"
         msg_sens = config["message_sens"][0]
@@ -59,6 +62,7 @@ def main():
 
             for out_channels in config["hyperparams_grid"]["out_channels"]:
                 for encoder_ in config["encoders"]:
+                    print(encoder_)
                     for decoder_ in config["decoders"]:
                         use_num_bases = (encoder_ == "RGCN") or (decoder_ == "RGCN")
                         if use_num_bases:
@@ -69,6 +73,18 @@ def main():
                                 elif encoder_ == "RGCN":
                                     encoder = RGCNEncoder(data, out_channels, config["num_layers"], num_bases,
                                                           message_sens=msg_sens).to(device)
+                                elif encoder_ == "TransGCN":
+                                    encoder = TransGCNEncoder(data, out_channels, config["num_layers"], dropout=0.2,
+                                                              kg_score_fn = config["kg_score_fn"],variant=config["variant"],
+                                                              use_edges_info = config["use_edges_info"], activation = 'relu',
+                                                              bias = False ).to(device)
+
+
+                                    print(encoder)
+                                else:
+                                    print("invalid encoder type ! ")
+                                    raise ValueError("Invalid encoder type!")
+
 
                                 if decoder_ == "GCN":
                                     decoder = GCNDecoder(encoder, data, config["alpha"], message_sens=msg_sens).to(device)
@@ -77,13 +93,21 @@ def main():
                                                           message_sens=msg_sens).to(device)
                                 elif decoder_ == "MLP":
                                     decoder = MLPDecoder(encoder, data, config["alpha"]).to(device)
+                                elif decoder_ == "TransGCN":
+                                    decoder = TransGCNDecoder(encoder, data, config["alpha"], dropout=0.3, kg_score_fn = config["kg_score_fn"],variant=config["variant"],
+                                                              use_edges_info = config["use_edges_info"]).to(device)
+
                                 else:
                                     print('invalid decoder !')
-                                    exit(-1)
+                                    raise ValueError("Invalid encoder type!")
 
 
-                                run_name = f"{task}_bases-{num_bases}_channels_{'-'.join(map(str, out_channels))}_enc-{encoder_}_dec-{decoder_}"
-                                file_name = f"{task}_bases-{num_bases}_channels_{'-'.join(map(str, out_channels))}_enc-{encoder_}_dec-{decoder_}"
+                                transgcn_params = ""
+                                if encoder_ == "TransGCN" or decoder_ == "TransGCN":
+                                    transgcn_params = f"_{config['kg_score_fn']}_variant{config['variant']}"
+
+                                run_name = f"{task}_bases-{num_bases}_channels_{'-'.join(map(str, out_channels))}_enc-{encoder_}_dec-{decoder_}" + transgcn_params
+                                file_name = f"{task}_bases-{num_bases}_channels_{'-'.join(map(str, out_channels))}_enc-{encoder_}_dec-{decoder_}" + transgcn_params
                                 run_config = {
                                     "device": config["device"],
                                     "num_layers": 2,
@@ -113,25 +137,41 @@ def main():
                                 # exit(-1)
                                 autoencoder = MRGAE(encoder, decoder, projections=config["projections"]).to(device)
                                 optimizer = optim.Adam(autoencoder.parameters(), lr=config["learning_rate"])
-                                performances = train_X_reconstruction(autoencoder, data, optimizer, config["num_epochs"],
+                                local_data = copy.deepcopy(data)
+                                performances = train_X_reconstruction(autoencoder, local_data, optimizer, config["num_epochs"],
                                             gdp, file_name,device, config,loss_fct=["MSE"], save_dir = save_dir,
                                             wandb=wandb)
                                 results.append(performances)
                                 wandb.finish()
 
                         else:  # Si num_bases n'est pas utilisé
-                            encoder = GCNEncoder(data, out_channels, config["num_layers"], message_sens=msg_sens).to(device)
+                            if encoder_ == "GCN":
+                                encoder = GCNEncoder(data, out_channels, config["num_layers"], message_sens=msg_sens).to(device)
+                            elif encoder_ == "TransGCN":
+                                encoder = TransGCNEncoder(data, out_channels, config["num_layers"], dropout=0.2,
+                                                         kg_score_fn=config["kg_score_fn"],variant=config["variant"],
+                                                         use_edges_info=config["use_edges_info"], activation='relu',
+                                                         bias=False).to(device)
 
                             if decoder_ == "GCN":
                                 decoder = GCNDecoder(encoder, data, config["alpha"], message_sens=msg_sens).to(device)
                             elif decoder_ == "MLP":
                                 decoder = MLPDecoder(encoder, data, config["alpha"]).to(device)
+                            elif decoder_ == "TransGCN":
+                                decoder = TransGCNDecoder(encoder, data, config["alpha"], dropout=0.3,
+                                                          kg_score_fn=config["kg_score_fn"],variant=config["variant"],
+                                                          use_edges_info=config["use_edges_info"]).to(device)
+
+
                             else:
                                 print("Error: RGCN decoder requires num_bases but is not defined!")
-                                exit(-1)
+                                raise ValueError("Invalid encoder type!")
 
-                            run_name = f"{task}_channels_{'-'.join(map(str, out_channels))}_enc-{encoder_}_dec-{decoder_}"
-                            file_name = f"{task}_channels_{'-'.join(map(str, out_channels))}_enc-{encoder_}_dec-{decoder_}"
+                            transgcn_params = ""
+                            if encoder_ == "TransGCN" or decoder_ == "TransGCN":
+                                transgcn_params = f"_{config['kg_score_fn']}_variant{config['variant']}"
+                            run_name = f"{task}_channels_{'-'.join(map(str, out_channels))}_enc-{encoder_}_dec-{decoder_}" + transgcn_params
+                            file_name = f"{task}_channels_{'-'.join(map(str, out_channels))}_enc-{encoder_}_dec-{decoder_}" + transgcn_params
                             run_config = {
                                 "device": config["device"],
                                 "num_layers": 2,
@@ -155,10 +195,11 @@ def main():
                                 config=run_config,
                                 settings=wandb.Settings(start_method="thread")
                             )
+                            local_data = copy.deepcopy(data)
 
                             autoencoder = MRGAE(encoder, decoder, projections=config["projections"]).to(device)
                             optimizer = optim.Adam(autoencoder.parameters(), lr=config["learning_rate"])
-                            performances = train_X_reconstruction(autoencoder, data, optimizer, config["num_epochs"],
+                            performances = train_X_reconstruction(autoencoder, local_data, optimizer, config["num_epochs"],
                                             gdp, file_name, device, config,save_dir=save_dir, loss_fct=["MSE"],
                                         wandb=wandb)
                             results.append(performances)
@@ -199,21 +240,34 @@ def main():
                                 config=run_config,
                                 settings=wandb.Settings(start_method="thread")
                             )
+                            local_data = copy.deepcopy(data)
 
                             autoencoder = GAE(encoder).to(device)
                             optimizer = optim.Adam(autoencoder.parameters(), lr=config["learning_rate"])
-                            performances = train_GAE(autoencoder, data, optimizer, config["num_epochs"], gdp,save_file = file_name,
+                            performances = train_GAE(autoencoder, local_data, optimizer, config["num_epochs"], gdp,save_file = file_name,
                                          save_dir=config["root_save_dir"],device = device, wandb=wandb)
 
-
                             results.append(performances)
-
                             wandb.finish()
-                    elif encoder_ == "GCN":
-                        encoder = GCNEncoder(data, out_channels, config["num_layers"],
-                                             message_sens=msg_sens).to(device)
-                        run_name = f"{task}_channels_{'-'.join(map(str, out_channels))}_enc-{encoder_}_GAE"
-                        file_name = f"{task}_channels_{'-'.join(map(str, out_channels))}_enc-{encoder_}_GAE"
+                    else:
+                        if encoder_ == "GCN":
+                            encoder = GCNEncoder(data, out_channels, config["num_layers"],
+                                                 message_sens=msg_sens).to(device)
+                        elif encoder_ == "TransGCN":
+                            encoder = TransGCNEncoder(data, out_channels, config["num_layers"], dropout=0.2,
+                                                      kg_score_fn=config["kg_score_fn"],variant=config["variant"],
+                                                      use_edges_info=config["use_edges_info"], activation='relu',
+                                                      bias=False).to(device)
+                        else:
+                            print("invalid encoder type!")
+                            raise ValueError("Invalid encoder type!")
+
+
+                        transgcn_params = ""
+                        if encoder_ == "TransGCN":
+                            transgcn_params = f"_{config['kg_score_fn']}_variant{config['variant']}"
+                        run_name = f"{task}_channels_{'-'.join(map(str, out_channels))}_enc-{encoder_}_GAE" + transgcn_params
+                        file_name = f"{task}_channels_{'-'.join(map(str, out_channels))}_enc-{encoder_}_GAE" + transgcn_params
                         run_config = {
                             "device": config["device"],
                             "num_layers": 2,
@@ -237,17 +291,17 @@ def main():
                             config=run_config,
                             settings=wandb.Settings(start_method="thread")
                         )
+                        local_data = copy.deepcopy(data)
+
                         autoencoder = GAE(encoder).to(device)
                         optimizer = optim.Adam(autoencoder.parameters(), lr=config["learning_rate"])
-                        performances = train_GAE(autoencoder, data, optimizer, config["num_epochs"], gdp,
+                        performances = train_GAE(autoencoder, local_data, optimizer, config["num_epochs"], gdp,
                                                  save_file=file_name,
                                                  save_dir=config["root_save_dir"], device=device, wandb=wandb)
 
                         results.append(performances)
                         wandb.finish()
-                    else:
-                        print("invalid encoder type!")
-                        exit(-1)
+
         elif task == "Recons_R":
             for out_channels in config["hyperparams_grid"]["out_channels"]:
                 for encoder_ in config["encoders"]:
@@ -281,12 +335,13 @@ def main():
                                 config=run_config,
                                 settings=wandb.Settings(start_method="thread")
                             )
-                            r_decoder = DistMultDecoder(data.num_edge_types, out_channels[-1])
+                            r_decoder = DistMultDecoder(data.num_edge_types, data.edge_attr.shape[-1])
                             autoencoder = MRGAE(encoder,x_decoder = None, r_decoder= r_decoder).to(device)
                             optimizer = optim.Adam(autoencoder.parameters(), lr=config["learning_rate"])
 
+                            local_data = copy.deepcopy(data)
 
-                            performances = train_DisMult(autoencoder, data, optimizer, config["num_epochs"],gdp,file_name,device,save_dir=config["root_save_dir"]+"/"+task, wandb=wandb)
+                            performances = train_DisMult(autoencoder, local_data, optimizer, config["num_epochs"],gdp,file_name,device,save_dir=config["root_save_dir"]+"/"+task, wandb=wandb)
                             # performances = train_GAE(autoencoder, data, optimizer, config["num_epochs"], gdp,save_file = file_name,
                             #              save_dir=config["root_save_dir"],device = device, wandb=wandb)
                             #
@@ -294,12 +349,24 @@ def main():
                             results.append(performances)
 
                             wandb.finish()
-
-                    elif encoder_ == "GCN":
-                        encoder = GCNEncoder(data, out_channels, config["num_layers"],
+                    else:
+                        if encoder_ == "GCN":
+                            encoder = GCNEncoder(data, out_channels, config["num_layers"],
                                              message_sens=msg_sens).to(device)
-                        run_name = f"{task}_channels_{'-'.join(map(str, out_channels))}_enc-{encoder_}_Dismult"
-                        file_name = f"{task}_channels_{'-'.join(map(str, out_channels))}_enc-{encoder_}_Dismult"
+                        elif encoder_ == "TransGCN":
+                            encoder = TransGCNEncoder(data, out_channels, config["num_layers"], dropout=0.2,
+                                                      kg_score_fn=config["kg_score_fn"], variant=config["variant"],
+                                                      use_edges_info=config["use_edges_info"], activation='relu',
+                                                      bias=False).to(device)
+                        else:
+                            print("invalid encoder type!")
+                            raise ValueError("Invalid encoder type!")
+
+                        transgcn_params = ""
+                        if encoder_ == "TransGCN":
+                            transgcn_params = f"_{config['kg_score_fn']}_variant{config['variant']}"
+                        run_name = f"{task}_channels_{'-'.join(map(str, out_channels))}_enc-{encoder_}_Dismult" + transgcn_params
+                        file_name = f"{task}_channels_{'-'.join(map(str, out_channels))}_enc-{encoder_}_Dismult" + transgcn_params
                         run_config = {
                             "device": config["device"],
                             "num_layers": 2,
@@ -332,34 +399,47 @@ def main():
                         results.append(performances)
 
                         wandb.finish()
-                    else:
-                        print("invalid encoder type!")
-                        exit(-1)
+
         elif task == "Double_reconstruction":
             for cmb in config["param_combinations"]:
                 if cmb["encoder"] == "GCN":
                     encoder = GCNEncoder(data, cmb["out_channels"], config["num_layers"],
                                              message_sens=msg_sens).to(device)
                 elif cmb["encoder"] == "RGCN":
-                    encoder = RGCNEncoder(data, cmb["out_channels"], config["num_layers"], 10,
+                    encoder = RGCNEncoder(data, cmb["out_channels"], config["num_layers"], 5,
                                           message_sens=msg_sens).to(device)
+                elif cmb["encoder"] == "TransGCN":
+                    encoder = TransGCNEncoder(data, cmb["out_channels"], config["num_layers"], dropout=0.2,
+                                              kg_score_fn=config["kg_score_fn"], variant=config["variant"],
+                                              use_edges_info=config["use_edges_info"], activation='relu',
+                                              bias=False).to(device)
                 else:
                     print("invalid encoder type!")
-                    exit(-1)
+                    raise ValueError("Invalid encoder type!")
+
 
                 if cmb["decoder"] == "GCN":
                     decoder = GCNDecoder(encoder, data, config["alpha"], message_sens=msg_sens).to(device)
                 elif cmb["decoder"] == "RGCN":
-                    decoder = RGCNDecoder(encoder, data, 10, config["alpha"],
+                    decoder = RGCNDecoder(encoder, data, 5, config["alpha"],
                                           message_sens=msg_sens).to(device)
                 elif cmb["decoder"] == "MLP":
                     decoder = MLPDecoder(encoder, data, config["alpha"]).to(device)
+                elif cmb["decoder"] == "TransGCN":
+                    decoder = TransGCNDecoder(encoder, data, config["alpha"], dropout=0.3,
+                                              kg_score_fn=config["kg_score_fn"], variant=config["variant"],
+                                              use_edges_info=config["use_edges_info"]).to(device)
+
+
                 else:
                     print("invalid decoder type!")
-                    exit(-1)
+                    raise ValueError("Invalid encoder type!")
 
-                run_name = f"{task}_channels_{'-'.join(map(str, cmb['out_channels']))}_enc-{cmb['encoder']}_dec-{cmb['decoder']}_R_Dismult"
-                file_name = f"{task}_channels_{'-'.join(map(str, cmb['out_channels']))}_enc-{cmb['encoder']}_dec-{cmb['decoder']}_R_Dismult"
+                transgcn_params = ""
+                if cmb["encoder"] == "TransGCN" or cmb["decoder"] == "TransGCN":
+                    transgcn_params = f"_{config['kg_score_fn']}_variant{config['variant']}"
+                run_name = f"{task}_channels_{'-'.join(map(str, cmb['out_channels']))}_enc-{cmb['encoder']}_dec-{cmb['decoder']}_R_Dismult" + transgcn_params
+                file_name = f"{task}_channels_{'-'.join(map(str, cmb['out_channels']))}_enc-{cmb['encoder']}_dec-{cmb['decoder']}_R_Dismult" + transgcn_params
                 run_config = {
                     "device": config["device"],
                     "num_layers": 2,
@@ -388,11 +468,12 @@ def main():
 
 
                 r_decoder = DistMultDecoder(data.num_edge_types, cmb["out_channels"][-1])
+                local_data = copy.deepcopy(data)
 
                 autoencoder = MRGAE(encoder, x_decoder=decoder, r_decoder=r_decoder).to(device)
                 optimizer = optim.Adam(autoencoder.parameters(), lr=config["learning_rate"])
 
-                performances = train_Double_Reconstruction(autoencoder, data, optimizer, config["num_epochs"], gdp, file_name,
+                performances = train_Double_Reconstruction(autoencoder, local_data, optimizer, config["num_epochs"], gdp, file_name,
                                              device, save_dir=config["root_save_dir"] + "/" + task, wandb=wandb)
                 results.append(performances)
 

@@ -112,7 +112,7 @@ def train_GAE(model, data, optimizer, num_epochs, gdp,save_file,
     set_seed(seed)
     G_data_loader = GraphDataLoader(data, num_neighbors=config["num_neighbors"],
                                     batch_size=config["batch_size"], shuffle=config["shuffle"]).get_loader()
-
+    G_data_loader.edge_attr = data.edge_attr
     total_loss = 0
     transform_directed_without_split = T.Compose([
         T.ToDevice(device),
@@ -180,6 +180,7 @@ def train_DisMult(model, data, optimizer,num_epochs,gdp, save_file,device,
     set_seed(seed)
     G_data_loader = GraphDataLoader(data, num_neighbors=config["num_neighbors"],
                                     batch_size=config["batch_size"], shuffle=config["shuffle"]).get_loader()
+    G_data_loader.edge_attr = data.edge_attr
     set_seed(seed)
 
     for epoch in range(num_epochs):
@@ -300,7 +301,7 @@ def train_X_reconstruction(model, data ,optimizer, num_epochs, gdp, save_file,de
     set_seed(seed)
     G1_data_loader = GraphDataLoader(masked_features_data, num_neighbors=config["num_neighbors"],
                                      batch_size=config["batch_size"], shuffle=config["shuffle"]).get_loader()
-
+    G1_data_loader.edge_attr = masked_features_data.edge_attr
     set_seed(seed)
     for epoch in range(num_epochs):
         model.train()
@@ -316,6 +317,7 @@ def train_X_reconstruction(model, data ,optimizer, num_epochs, gdp, save_file,de
         with tqdm(total=len(G1_data_loader), desc=f"Epoch {epoch + 1}/{num_epochs}",
                   unit="batch") as batch_pbar:
             for batch in G1_data_loader:
+
                 batch = batch.to(device)
                 n_id = batch.n_id  ## The global node index for every sampled node
                 mask = torch.isin(n_id, batch.input_id)  ## mask to get only the embedding of input_id nodes
@@ -391,7 +393,7 @@ def train_Double_Reconstruction(model, data, optimizer,num_epochs,gdp, save_file
     set_seed(seed)
     G_data_loader = GraphDataLoader(masked_features_data, num_neighbors=config["num_neighbors"],
                                     batch_size=config["batch_size"], shuffle=config["shuffle"]).get_loader()
-
+    G_data_loader.data.edge_attr = data.edge_attr
     for epoch in range(num_epochs):
         model.train()
         total_loss = 0

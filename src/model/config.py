@@ -1,10 +1,8 @@
 import torch
 config = {
     "device": "cuda" if torch.cuda.is_available() else "cpu", #
-    # "out_channels": [256,128],
     "seed":42,
     "num_layers": 2,
-    # "num_bases": 10,
     "alpha": 0.01,
     "max_masking_percentage": 0.3,
     "total_drop_rate": 0.2,
@@ -14,15 +12,18 @@ config = {
     # "cosine_loss_weight": 0.5,
     "shuffle": False,
     "num_neighbors": [200,200],
-    "num_epochs": 100,
-
-    "Entities_path": "../outputs/EntitiesBertEmbedding_NCI.pickle", #EntitiesBertEmbedding_NCI.pickle",../outputs/EntitiesBertEmbedding_noicy_nci
-    "Edges_path": "../outputs/PredicatesBertEmbedding_NCI.pickle",#PredicatesBertEmbedding_NCI.pickle",PredicatesBertEmbedding_noicy_nci
+    "num_epochs": 80,
+    "kg_score_fn":'TransE',
+    "variant":'conv',
+    "use_edges_info":True,
+    "Entities_path": "../outputs/../outputs/EntitiesBertEmbedding_noicy_nci.pickle", #EntitiesBertEmbedding_NCI.pickle",../outputs/EntitiesBertEmbedding_noicy_nci
+    "Edges_path": "../outputs/PredicatesBertEmbedding_noicy_nci.pickle",#PredicatesBertEmbedding_NCI.pickle",PredicatesBertEmbedding_noicy_nci
 
     "Entities_path_cs": "../outputs/EntitiesBertEmbeddingAugmented_cs__.pickle",
     "Edges_path_cs": "../outputs/PredicatesBertEmbeddingAugmented_cs__.pickle",
-    "KG_path": "../../data/KG_NCI_vf.json",   #KG_NCI_vf.json",MM_mapped_nci_KG
-    "Gs_path_no_other": "../../data/MM_mapped_nci_GS.xlsx",#nci_mm_GS_vf
+    "KG_path": "../../data/UMLS/noisy/org/MM_mapped_nci_All_R_KG.json",   #KG_NCI_vf.json",MM_mapped_nci_KG
+
+    "Gs_path_no_other": "../../data/UMLS/MM_mapped_nci_GS.xlsx",#nci_mm_GS_vf
      "KG_path_cs": "../../data/augmented_graph/augmented_graph_is_rules.json",
 
 
@@ -97,11 +98,11 @@ config = {
                     'use_bias': True,
                     },
     "coresp_hidden_sizes":{768 : 43648, 512: 27776, 256: 11904, 128: 3968, 64:27776},
-    "training_task" : ["Recons_X"],
-    "hyperparams_grid" : {"num_bases": [10], "out_channels": [ [384,256],[256,128]]},
+    "training_task" : ["Recons_R"],
+    "hyperparams_grid" : {"num_bases": [10], "out_channels": [[384,256], [256,128], [128,64],[384,256], [64,32]]},
     "wandb_project_name": "last_Experiments_Recons_X_09_05",
-    "encoders": ["GCN"],
-    "decoders": ["MLP","RGCN"],
+    "encoders": ["TransGCN"],
+    "decoders": ["TransGCN"],
 
     "message_sens": ["source_to_target"],
     "projections": None,
