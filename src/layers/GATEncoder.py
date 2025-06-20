@@ -5,7 +5,7 @@ from torch_geometric.nn import GATConv
 class GATEncoder(nn.Module):
     def __init__(self, data: Data, out_channels, num_layers=2, heads=4, dropout=0.5):
         super(GATEncoder, self).__init__()
-
+        self.out_channels = out_channels[-1]
         in_channels = data.x.shape[1]
         self.convs = nn.ModuleList()
         self.bns = nn.ModuleList()

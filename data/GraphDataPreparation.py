@@ -98,9 +98,14 @@
 ## with Edges
 
 ## with edges
-import sys 
+import sys
+
+import pandas as pd
+from sklearn.preprocessing import LabelEncoder
+
 sys.path.append("../../utilities")
-import utilities as u
+# import utilities as u
+import utilities.utilities as u
 import torch
 from torch_geometric.data import Data
 # from torch_geometric.utils import train_test_split_edges
@@ -414,3 +419,50 @@ class GraphDataPreparation:
         """
         indexes = [self.nodes_index[cc] for cc in list]
         return indexes
+
+    ## !! Validation ----> next version
+    def annotate_with_labels(self, data: Data, train_excel_path: str, test_excel_path: str) -> Data:
+        train_df = pd.read_excel(train_excel_path)
+        test_df = pd.read_excel(test_excel_path)
+
+        # Encode labels
+        all_labels = pd.concat([train_df['label'], test_df['label']])
+        self.label_encoder = LabelEncoder()
+        self.label_encoder.fit(all_labels)
+
+        train_df['encoded_label'] = self.label_encoder.transform(train_df['label'])
+        test_df['encoded_label'] = self.label_encoder.transform(test_df['label'])
+
+        term_to_index = self.nodes_index
+        num_nodes = data.num_nodes
+
+        train_mask = torch.zeros(num_nodes, dtype=torch.bool)
+        test_mask = torch.zeros(num_nodes, dtype=torch.bool)
+        y = torch.full((num_nodes,), -1, dtype=torch.long)
+
+        for _, row in train_df.iterrows():
+            term, label = row['term'], row['encoded_label']
+            if term in term_to_index:
+                idx = term_to_index[term]
+                train_mask[idx] = True
+                y[idx] = label
+            else:
+                print(f"[WARN] Train term not found: {term}")
+
+        for _, row in test_df.iterrows():
+            term, label = row['term'], row['encoded_label']
+            if term in term_to_index:
+                idx = term_to_index[term]
+                test_mask[idx] = True
+                y[idx] = label
+            else:
+                print(f"[WARN] Test term not found: {term}")
+
+        data.train_mask = train_mask
+        data.test_mask = test_mask
+        data.y = y
+        data.label_encoder = self.label_encoder
+        data.num_classes = len(self.label_encoder.classes_)
+
+        return data
+

@@ -101,8 +101,8 @@ config = {
     "training_task" : ["Recons_X"],
     "hyperparams_grid" : {"num_bases": [10], "out_channels": [[384,256]]}, ## , [256,128], [128,64],[384,256], [64,32]
     "wandb_project_name": "last_Experiments_Recons_X_09_05",
-    "encoders": ["GAT","TransGCN_conv","TransGCN_attn","RotatEGCN_conv","RotatEGCN_attn"],
-    "decoders": ["GAT","GCN","RGCN", "MLP"],
+    "encoders": ["TransGCN_conv","TransGCN_attn","RotatEGCN_conv","RotatEGCN_attn"],
+    "decoders": ["MLP","GCN","RGCN", "MLP"],
 
     "message_sens": ["source_to_target"],
     "projections": None,
