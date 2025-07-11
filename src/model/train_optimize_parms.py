@@ -1,6 +1,8 @@
 import sys
 import os
 
+from networkx.algorithms.connectivity import edge_augmentation
+
 from loss_func import recon_r_loss, sce_loss_fnc, similarity_pair_loss, mse_loss_fnc, contrastive_loss, \
     contrastive_loss_exclude_is, calculate_cluster_assignments, inter_cluster_loss, intra_cluster_loss
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'layers')))
@@ -392,6 +394,117 @@ def train_X_reconstruction(model, data ,optimizer, num_epochs, gdp, save_file,de
     return best_metrics
 
 
+def train_Contrastive(model, data, optimizer, num_epochs, gdp, save_file,
+                      device="cuda", save_dir="contrastive_training",
+                      wandb=None, seed=42):
+    import copy
+    set_seed(seed)
+    best_loss = float('inf')
+    best_accuracy = 0
+    best_metrics = {}
+
+    print("\n--- Preparing views for contrastive learning ---\n")
+    masked_features_data = view_partial_features_masking(data, max_masking_percentage=config["max_masking_percentage"])
+    masked_edges_data, removed_edge_indices, _ = relation_based_edge_dropping_balanced(
+        data, config["total_drop_rate"], max_drop_fraction_per_node=0.3, random_seed=42
+    )
+
+    removed_edge_indices = removed_edge_indices.to(device)
+
+    G_data_loader = GraphDataLoader(data, num_neighbors=config["num_neighbors"],
+                                    batch_size=config["batch_size"], shuffle=config["shuffle"]).get_loader()
+
+    for epoch in range(num_epochs):
+        model.train()
+        total_loss = 0
+
+        with tqdm(total=len(G_data_loader), desc=f"Epoch {epoch + 1}/{num_epochs}", unit="batch") as pbar:
+            for batch in G_data_loader:
+                batch = batch.to(device)
+                optimizer.zero_grad()
+
+                # View 1: masking features
+                view_1 = copy.deepcopy(batch)
+                view_1.x = masked_features_data.x[view_1.n_id]
+
+                # View 2: masking edges
+                view_2 = copy.deepcopy(batch)
+
+                edge_mask = ~torch.isin(view_2.e_id, removed_edge_indices)
+                view_2.edge_index = view_2.edge_index[:, edge_mask]
+                view_2.edge_type = view_2.edge_type[edge_mask]
+                view_2.edge_attr = view_2.edge_attr[edge_mask]
+                view_2.e_id = view_2.e_id[edge_mask]
+
+                # Masquer les input_id
+                mask_nodes = torch.isin(batch.n_id, batch.input_id)
+
+                # Encodage + projection (cas TransGCNEncoder ou non)
+                if isinstance(model.encoder, TransGCNEncoder):
+                    h1, _ = model.encoder(view_1)
+                    h2, _ = model.encoder(view_2)
+                else:
+                    h1 = model.encode(view_1)
+                    h2 = model.encode(view_2)
+
+
+                ##
+                if not isinstance(mask_nodes, torch.Tensor):
+                    mask_nodes = torch.tensor(mask_nodes)
+
+                # Si mask_nodes est un masque booléen
+                if mask_nodes.dtype == torch.bool:
+                    mask_nodes = mask_nodes.to(h1.device)
+
+                # Sinon on suppose que c'est une liste d'indices
+                else:
+                    mask_nodes = mask_nodes.long().to(h1.device)
+
+                ###
+
+                # Appliquer les projecteurs
+                z1 = model.projector_fc1(h1[mask_nodes])
+                z2 = model.projector_fc2(h2[mask_nodes])
+
+                # Calcul de la perte contrastive standard
+                c_loss = contrastive_loss(z1, z2)
+
+                c_loss.backward()
+                optimizer.step()
+                total_loss += c_loss.item()
+
+                pbar.set_postfix(loss=c_loss.item())
+                pbar.update(1)
+
+        avg_loss = total_loss / len(G_data_loader)
+
+        print("\n--- Evaluation ---")
+        metrics = evaluate(model, data, config["Gs_path_no_other"], config["core_concepts"], gdp, config)
+        print(metrics)
+
+        if avg_loss < best_loss:
+            best_loss = avg_loss
+            save_model(model, optimizer, epoch, save_dir=save_dir, file_name=save_file, is_best_acc=False)
+            print(f"Model saved with lowest contrastive loss: {best_loss:.4f}")
+
+        if metrics["accuracy"] > best_accuracy:
+            best_accuracy = metrics["accuracy"]
+            best_metrics = metrics
+            save_model(model, optimizer, epoch, save_dir=save_dir, file_name=save_file, is_best_acc=True)
+            print(f"Model saved with best accuracy: {best_accuracy:.4f}")
+
+        if wandb is not None:
+            wandb.log({
+                "epoch": epoch + 1,
+                "contrastive_loss": avg_loss,
+                "accuracy": metrics["accuracy"],
+                "f1-score": metrics["f1_score"],
+                "recall": metrics["recall"],
+                "precision": metrics["precision"]
+            })
+
+    best_metrics["exp_name"] = save_file
+    return best_metrics
 
 
 def train_Double_Reconstruction(model, data, optimizer,num_epochs,gdp, save_file,device, loss_fct = ["MSE"],

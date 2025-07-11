@@ -57,3 +57,11 @@ class TransGCNEncoder(nn.Module):
             x, edge_attr = layer(x, edge_index, edge_attr)
             x = self.dropout(x)
         return x, edge_attr
+
+    def encode(self, data: Data):
+        x, edge_index, edge_attr = data.x, data.edge_index, data.edge_attr
+
+        for layer in self.layers:
+            x, edge_attr = layer(x, edge_index, edge_attr)
+            x = self.dropout(x)
+        return x, edge_attr

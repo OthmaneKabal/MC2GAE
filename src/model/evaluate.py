@@ -6,28 +6,33 @@ import sys
 from torch_geometric.nn import GAE
 from tqdm import tqdm
 from transformers import BeitModel
-
-from data.GraphDataLoader import GraphDataLoader
-from src.bert_embedding.BertEmbedder import BertEmbedder
-from src.layers.Dismult import DistMultDecoder
-from src.layers.GCNDecoder import GCNDecoder
-from src.layers.GCNEncoder import GCNEncoder
-from src.layers.MLPDecoder import MLPDecoder
-from src.model.clustering import kmeans_classify_with_centroid_flag, dbscan_classify_with_centroid_flag_cosine, \
-    kmeans_with_fixed_centroids
-
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'layers')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..', 'data')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..', 'utils')))
+from data.GraphDataLoader import GraphDataLoader
+from src.bert_embedding.BertEmbedder import BertEmbedder
+from src.layers.Dismult import DistMultDecoder
+from src.layers.GATDecoder import GATDecoder
+from src.layers.GATEncoder import GATEncoder
+from src.layers.GCNDecoder import GCNDecoder
+from src.layers.GCNEncoder import GCNEncoder
+from src.layers.MLPDecoder import MLPDecoder
+from src.layers.TransGCNDecoder import TransGCNDecoder
+from src.model.clustering import kmeans_classify_with_centroid_flag, dbscan_classify_with_centroid_flag_cosine, \
+    kmeans_with_fixed_centroids
+
+
 from GraphDataPreparation import GraphDataPreparation
 from src.layers.TransGCNEncoder import TransGCNEncoder
-
+from src.model.gnn_classifier.classifier_utils import  instantiate_encoder, instantiate_decoder
+from MRGAE import MRGAE
+from torch_geometric.nn import GAE
 from ConvE import ConvE
 from RGCNDecoder import RGCNDecoder
 from RGCNEncoder import RGCNEncoder
 from MRGAE import MRGAE
 from utils.utils import save_model, load_model_checkpoint, load_gold_standard_labels, \
-    save_model_with_hyperparams, set_seed
+    save_model_with_hyperparams, set_seed, load_model_from_checkpoint
 from config import config
 import torch
 from torch import optim
@@ -36,8 +41,7 @@ import pandas as pd
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, classification_report
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
-from collections import Counter
-
+from collections import Counter, defaultdict
 
 sys.path.append("../../utilities")
 import utilities as u
@@ -371,15 +375,20 @@ def generate_batch_term_embeddings(model, graph, gdp, terms, batch_size, num_nei
 ### New Version ---> Embeds a list of terms from a given GS and CC
 def generate_batch_GS_term_embeddings(model, graph, gdp, gs_path, core_concepts, batch_size = config['test_batch_size'], num_neighbors = config['num_neighbors'], seed=42):
     set_seed(seed)
-    GS_cs_pd = pd.read_excel(gs_path)
 
-    GS_terms = GS_cs_pd.term.tolist()
+
+    if gs_path == "whole_graph":
+        GS_terms =  list(gdp.nodes_index.keys())
+    else:
+        GS_cs_pd = pd.read_excel(gs_path)
+
+        GS_terms = GS_cs_pd.term.tolist()
     dict_terms_embeddings = generate_batch_term_embeddings(model, graph, gdp, GS_terms, batch_size, num_neighbors, seed)
     dict_cc_embeddings = generate_batch_term_embeddings(model, graph, gdp, core_concepts, batch_size, num_neighbors, seed)
     return dict_terms_embeddings, dict_cc_embeddings
 
 
-def classify_terms_by_cosine_similarity(gs_embeddings, core_concepts_embeddings, with_other = False, threshold = 0.5):
+def classify_terms_by_cosine_similarity(gs_embeddings, core_concepts_embeddings, with_other = False, threshold = 0.5, with_similarity = False):
     """
     Classe les termes du GS en fonction de leur similarité cosinus avec les core concepts.
     :param with_other: si on va considerer la classe 'other'
@@ -410,6 +419,8 @@ def classify_terms_by_cosine_similarity(gs_embeddings, core_concepts_embeddings,
         classifications[term] = {
             'class': class_
         }
+        if with_similarity:
+            classifications[term]['similarity'] = best_similarity
     # print(f'*****Median: {np.median(similarities)} ********** Mean: {np.mean(similarities)} ***********')
     return classifications
 
@@ -487,9 +498,41 @@ def evaluate(model, data,gs_path, core_concepts, gdp, config,is_encoder = False,
 
     return metrics
 
+
+
+
+def assign_top_k_pseudo_labels_batched(model, data, core_concepts, gdp, config, top_k = 10, output_path = None):
+    Node_embeddings, core_concepts_embeddings = generate_batch_GS_term_embeddings(model, data, gdp, "whole_graph", core_concepts,batch_size = config['test_batch_size'], num_neighbors = config['num_neighbors'], seed=42)
+    # print(core_concepts_embeddings["operating system"])
+    classifications = classify_terms_by_cosine_similarity(Node_embeddings, core_concepts_embeddings, with_other = False, with_similarity = True)
+    top_k_by_class = defaultdict(list)
+    for term, info in classifications.items():
+        class_ = info['class']
+        similarity = info['similarity']
+        top_k_by_class[class_].append((term, similarity))
+
+    # Construction du DataFrame final
+    rows = []
+    for label, terms in top_k_by_class.items():
+        top_terms = sorted(terms, key=lambda x: x[1], reverse=True)[:top_k]
+        for term, sim in top_terms:
+            rows.append({'term': term, 'label': label, 'similarity': round(sim, 6)})
+
+    df = pd.DataFrame(rows)
+
+    # Sauvegarde Excel
+    if output_path:
+        df.to_excel(output_path, index=False)
+
+    return df
+
+
+
+
 ## NEW
 def evaluate_trained_GNN(model_path, config, export_preds_path = None):
-    gdp = GraphDataPreparation(config["Entities_path"], KG_path,
+    print(config["Entities_path"],'\n',config["Edges_path"],'\n',config['KG_path'])
+    gdp = GraphDataPreparation(config["Entities_path"], config['KG_path'],
                                edges_embd_path=config["Edges_path"], is_directed=True)
 
     data = gdp.prepare_graph_with_type()
@@ -522,14 +565,14 @@ def evaluate_all(KG_path, GS_path, ckpt_dir, config, embedding_model = "GNN", wi
                 print(f'\n************* {threshold} *****************\n')
                 classifications = classify_terms_by_cosine_similarity(embeddings_dict, cc_embd, threshold=threshold,
                                                                       with_other=with_other)
-                metrics_df = evaluate_classification(Gs_path, classifications)
+                metrics_df = evaluate_classification(GS_path, classifications)
                 print(metrics_df)
             return
 
         else:
 
             classifications = classify_terms_by_cosine_similarity(embeddings_dict, cc_embd, with_other=with_other)
-            metrics_df = evaluate_classification(Gs_path, classifications, export_preds_path = export_preds_path)
+            metrics_df = evaluate_classification(GS_path, classifications, export_preds_path = export_preds_path)
             print(metrics_df)
             return metrics_df
 
@@ -708,11 +751,74 @@ def parse_model_filename(filename):
 
     return task, bases, channels, encoder, decoder
 
+#
+# def load_model_from_checkpoint_(checkpoint_path, data, config, gdp):
+#     """
+#     Charge un modèle depuis un checkpoint à partir du nom de fichier.
+#     """
+#     device = config["device"]
+#     filename = checkpoint_path.split('/')[-1].replace("_best_acc.pth", "")
+#     task, bases, out_channels, encoder_name, decoder_name = parse_model_filename(filename)
+#     print(task, bases, out_channels, encoder_name, decoder_name)
+#     msg_sens = config["message_sens"][0]
+#
+#     # --- Encoder ---
+#     if encoder_name == "GCN":
+#         encoder = GCNEncoder(data, out_channels, config["num_layers"], message_sens=msg_sens).to(device)
+#     elif encoder_name == "RGCN":
+#         encoder = RGCNEncoder(data, out_channels, config["num_layers"], bases, message_sens=msg_sens).to(device)
+#     else:
+#         raise ValueError(f"Unknown encoder: {encoder_name}")
+#
+#     # --- Decoder ---
+#     if task == "Recons_X":
+#         if decoder_name == "GCN":
+#             decoder = GCNDecoder(encoder, data, config["alpha"], message_sens=msg_sens).to(device)
+#         elif decoder_name == "RGCN":
+#             decoder = RGCNDecoder(encoder, data, bases, config["alpha"], message_sens=msg_sens).to(device)
+#         elif decoder_name == "MLP":
+#             decoder = MLPDecoder(encoder, data, config["alpha"]).to(device)
+#         else:
+#             raise ValueError(f"Unknown decoder: {decoder_name}")
+#
+#         model = MRGAE(encoder, decoder).to(device)
+#
+#     elif task == "Recons_A":
+#         model = GAE(encoder).to(device)
+#
+#     elif task == "Recons_R":
+#         r_decoder = DistMultDecoder(data.num_edge_types, out_channels[-1])
+#         model = MRGAE(encoder, x_decoder=None, r_decoder=r_decoder).to(device)
+#
+#     elif task == "Double_reconstruction":
+#         r_decoder = DistMultDecoder(data.num_edge_types, out_channels[-1])
+#         if decoder_name == "GCN":
+#             decoder = GCNDecoder(encoder, data, config["alpha"], message_sens=msg_sens).to(device)
+#         elif decoder_name == "RGCN":
+#             decoder = RGCNDecoder(encoder, data, bases, config["alpha"], message_sens=msg_sens).to(device)
+#         elif decoder_name == "MLP":
+#             decoder = MLPDecoder(encoder, data, config["alpha"]).to(device)
+#         else:
+#             raise ValueError(f"Unknown decoder: {decoder_name}")
+#         model = MRGAE(encoder, x_decoder=decoder, r_decoder=r_decoder).to(device)
+#
+#     else:
+#         raise ValueError(f"Unknown task: {task}")
+#
+#     checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=True)
+#     model.load_state_dict(checkpoint["model_state_dict"])
+#     model.eval()
+#     return model
+#
+
 
 def load_model_from_checkpoint_(checkpoint_path, data, config, gdp):
     """
     Charge un modèle depuis un checkpoint à partir du nom de fichier.
     """
+    import torch
+    import copy
+
     device = config["device"]
     filename = checkpoint_path.split('/')[-1].replace("_best_acc.pth", "")
     task, bases, out_channels, encoder_name, decoder_name = parse_model_filename(filename)
@@ -724,44 +830,64 @@ def load_model_from_checkpoint_(checkpoint_path, data, config, gdp):
         encoder = GCNEncoder(data, out_channels, config["num_layers"], message_sens=msg_sens).to(device)
     elif encoder_name == "RGCN":
         encoder = RGCNEncoder(data, out_channels, config["num_layers"], bases, message_sens=msg_sens).to(device)
+    elif encoder_name in ["TransGCN_conv", "TransGCN_attn"]:
+        encoder = TransGCNEncoder(data, out_channels, config["num_layers"], dropout=0.2,
+                                  kg_score_fn='TransE',
+                                  variant='conv' if encoder_name.endswith("conv") else "attn",
+                                  use_edges_info=config["use_edges_info"],
+                                  activation='relu',
+                                  bias=False).to(device)
+    elif encoder_name in ["RotatEGCN_conv", "RotatEGCN_attn"]:
+        encoder = TransGCNEncoder(data, out_channels, config["num_layers"], dropout=0.2,
+                                  kg_score_fn='RotatE',
+                                  variant='conv' if encoder_name.endswith("conv") else "attn",
+                                  use_edges_info=config["use_edges_info"],
+                                  activation='relu',
+                                  bias=False).to(device)
+    elif encoder_name == "GAT":
+        encoder = GATEncoder(data, out_channels, config["num_layers"]).to(device)
     else:
         raise ValueError(f"Unknown encoder: {encoder_name}")
 
     # --- Decoder ---
-    if task == "Recons_X":
+    decoder = None
+    if task in ["Recons_X", "Double_reconstruction"]:
         if decoder_name == "GCN":
             decoder = GCNDecoder(encoder, data, config["alpha"], message_sens=msg_sens).to(device)
         elif decoder_name == "RGCN":
             decoder = RGCNDecoder(encoder, data, bases, config["alpha"], message_sens=msg_sens).to(device)
         elif decoder_name == "MLP":
             decoder = MLPDecoder(encoder, data, config["alpha"]).to(device)
+        elif decoder_name in ["TransGCN_conv", "TransGCN_attn"]:
+            decoder = TransGCNDecoder(encoder, data, config["alpha"], dropout=0.3,
+                                      kg_score_fn='TransE',
+                                      variant='conv' if decoder_name.endswith("conv") else "attn",
+                                      use_edges_info=config["use_edges_info"]).to(device)
+        elif decoder_name in ["RotatEGCN_conv", "RotatEGCN_attn"]:
+            decoder = TransGCNDecoder(encoder, data, config["alpha"], dropout=0.3,
+                                      kg_score_fn='RotatE',
+                                      variant='conv' if decoder_name.endswith("conv") else "attn",
+                                      use_edges_info=config["use_edges_info"]).to(device)
+        elif decoder_name == "GAT":
+            decoder = GATDecoder(encoder, data, heads=4, alpha=0.01, dropout=0.3).to(device)
         else:
             raise ValueError(f"Unknown decoder: {decoder_name}")
 
+    # --- Assemble Model ---
+    if task == "Recons_X":
         model = MRGAE(encoder, decoder).to(device)
-
     elif task == "Recons_A":
         model = GAE(encoder).to(device)
-
     elif task == "Recons_R":
         r_decoder = DistMultDecoder(data.num_edge_types, out_channels[-1])
         model = MRGAE(encoder, x_decoder=None, r_decoder=r_decoder).to(device)
-
     elif task == "Double_reconstruction":
         r_decoder = DistMultDecoder(data.num_edge_types, out_channels[-1])
-        if decoder_name == "GCN":
-            decoder = GCNDecoder(encoder, data, config["alpha"], message_sens=msg_sens).to(device)
-        elif decoder_name == "RGCN":
-            decoder = RGCNDecoder(encoder, data, bases, config["alpha"], message_sens=msg_sens).to(device)
-        elif decoder_name == "MLP":
-            decoder = MLPDecoder(encoder, data, config["alpha"]).to(device)
-        else:
-            raise ValueError(f"Unknown decoder: {decoder_name}")
         model = MRGAE(encoder, x_decoder=decoder, r_decoder=r_decoder).to(device)
-
     else:
         raise ValueError(f"Unknown task: {task}")
 
+    # --- Load Weights ---
     checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=True)
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
@@ -770,9 +896,18 @@ def load_model_from_checkpoint_(checkpoint_path, data, config, gdp):
 
 
 
-KG_path = config["KG_path"]
-Gs_path = config["Gs_path_no_other"]
-thresholds_list = [0.6,0.7,0.8]
+
+
+
+
+
+
+
+
+#
+# KG_path = config["KG_path"]
+# Gs_path = config["Gs_path_no_other"]
+# thresholds_list = [0.6,0.7,0.8]
 
 ################################## Evaluate Bert/ sentence bert Medels ########################
 # models_cs = [
@@ -873,19 +1008,113 @@ thresholds_list = [0.6,0.7,0.8]
 
 
 
+
 #
 # #
-# # #
-# metrics = evaluate_all(KG_path, Gs_path,None, config, embedding_model="Bert", with_other=False, thresholds_list=thresholds_list, bert_model= "sentence-transformers/all-MiniLM-L6-v2", export_preds_path= "classification_SBert.xlsx")
+# metrics = evaluate_all(config['KG_path'], config["Gs_path_no_other"],None, config, embedding_model="Bert", with_other=False, bert_model= "sentence-transformers/all-MiniLM-L6-v2", export_preds_path= "classification_Bert.xlsx")
 # print('\n----------------Bert------------------\n', metrics)
+
 #
-#
-# # metrics = evaluate_trained_GNN("checkpoints/umls_Recons_X_v0/Recons_X_bases-10_channels_256-128_enc-RGCN_dec-MLP_best_acc.pth", config,"classification_clean.xlsx")
-# # metrics = evaluate_trained_GNN("checkpoints/UMLS/noisy/Recons_X_bases-5_channels_364-256_enc-RGCN_dec-MLP_best_acc.pth", config,"classification_noisy.xlsx")
-#
+# metrics = evaluate_trained_GNN("best_models/recons_x/noisy/Recons_X_bases-5_channels_364-256_enc-RGCN_dec-MLP_best_acc.pth", config,"classification_noisy.xlsx")
+# metrics = evaluate_trained_GNN("best_models/recons_x/clean/Recons_X_bases-10_channels_256-128_enc-RGCN_dec-MLP_best_acc.pth", config,"classification_clean.xlsx")
 # print('\n---------------RGCN-----------------\n',metrics)
 #
 
+def generate_all_top_k_dataframes(model, data, core_concepts, gdp, config, k_list, output_base_path):
+    """
+    Génère les DataFrames des top-k pseudo-labels pour chaque k de k_list,
+    sans recalculer les similarités à chaque fois (optimisé).
+
+    :param model: modèle GNN
+    :param data: graphe PyG
+    :param core_concepts: concepts de référence
+    :param gdp: préparateur de graphe
+    :param config: dict avec test_batch_size et num_neighbors
+    :param k_list: liste des valeurs de k (ex. [5, 10, 15])
+    :param output_base_path: chemin de base pour sauvegarde .xlsx
+    :return: dict {k: DataFrame}
+    """
+    import os
+    import pandas as pd
+    from collections import defaultdict
+
+    # 1. Générer embeddings une seule fois
+    Node_embeddings, core_concepts_embeddings = generate_batch_GS_term_embeddings(
+        model,
+        data,
+        gdp,
+        "whole_graph",
+        core_concepts,
+        batch_size=config['test_batch_size'],
+        num_neighbors=config['num_neighbors'],
+        seed=42
+    )
+
+    # 2. Calculer les similarités une seule fois
+    classifications = classify_terms_by_cosine_similarity(
+        Node_embeddings,
+        core_concepts_embeddings,
+        with_other=False,
+        with_similarity=True
+    )
+
+    # 3. Grouper tous les résultats par type
+    top_k_by_class = defaultdict(list)
+    for term, info in classifications.items():
+        label = info['class']
+        sim = info['similarity']
+        top_k_by_class[label].append((term, sim))
+
+    # 4. Générer tous les DataFrames à partir des top-k filtrés
+    base, ext = os.path.splitext(output_base_path)
+    results = {}
+
+    for k in k_list:
+        rows = []
+        for label, term_list in top_k_by_class.items():
+            top_terms = sorted(term_list, key=lambda x: x[1], reverse=True)[:k]
+            for term, sim in top_terms:
+                rows.append({'term': term, 'label': label, 'similarity': round(sim, 6)})
+
+        df = pd.DataFrame(rows)
+        results[k] = df
+
+        # Sauvegarde
+        output_path_k = f"{base}_k{k}{ext}"
+        df.to_excel(output_path_k, index=False)
+
+    return results
+
+
+#
+# model_1 = "best_models/recons_x/noisy/Recons_X_bases-5_channels_364-256_enc-RGCN_dec-MLP_best_acc.pth"
+# model_2 = "best_models/recons_x/noisy/Recons_X_channels_256-128_enc-RotatEGCN_conv_dec-MLP_best_acc.pth"
+# model_3 = "best_models/recons_x/noisy/Recons_X_channels_256-128_enc-TransGCN_conv_dec-RotatEGCN_attn_best_acc.pth"
+#
+# gdp = GraphDataPreparation(config["Entities_path"], KG_path,
+#                                edges_embd_path=config["Edges_path"], is_directed=True)
+#
+# data = gdp.prepare_graph_with_type()
+# data = data.to(config["device"])
+# print(data)
+# model, model_info, checkpoint = load_model_from_checkpoint(model_3, data)
+#
+# print(model)
+#
+# output_base_path = "Recons_X_channels_384-256_enc-TransGCN_attn_dec-RotatEGCN_attn_best_acc.xlsx"
+# results = generate_all_top_k_dataframes(model, data, config["core_concepts"], gdp, config,
+#                                         [25,50,100,200,500,1000,1200,1500],
+#                                         output_base_path)
+
+
+# metrics = assign_top_k_pseudo_labels_batched(model,
+#                                              data,
+#                                              config['core_concepts'],
+#                                              gdp,
+#                                              config,
+#                                              top_k=1000,
+#                                              output_path="PL1000_v2_Recons_X_channels_256-128_enc-TransGCN_conv_dec-RotatEGCN_attn_best_acc.xlsx")
+# print(metrics)
 
 
 
@@ -895,6 +1124,9 @@ thresholds_list = [0.6,0.7,0.8]
 
 
 # # evaluate_all(KG_path, Gs_path, "checkpoints/Recons_X", config, embedding_model = "GNN", with_other = False, thresholds_list = thresholds_list, emb_file = None)
+
+
+
 
 #
 # gs_embd, cc_embd = generate_Bert_Embeddings(config["Entities_path"], Gs_path, config["core_concepts"], model_name = "allenai/scibert_scivocab_uncased" )

@@ -8,6 +8,16 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 from sklearn.model_selection import train_test_split
 import torch
 from sklearn.model_selection import StratifiedShuffleSplit
+from torch_geometric.nn import GAE
+
+from src.layers.GATEncoder import GATEncoder
+from src.layers.GCNEncoder import GCNEncoder
+from src.layers.RGCNEncoder import RGCNEncoder
+from src.layers.TransGCNEncoder import TransGCNEncoder
+from src.model.MRGAE import MRGAE
+from src.model.gnn_classifier.classifier_utils import instantiate_decoder
+
+
 def load_gold_standard_labels(gs_path):
     """
     Charge les labels du gold standard à partir d'un fichier Excel.
@@ -288,6 +298,124 @@ def instantiate_encoder(config_, data):
         raise ValueError(f"Unknown encoder type: {encoder_type}")
 
     return encoder
+
+
+
+import os
+import re
+import torch
+
+
+def parse_model_name(filename):
+    basename = os.path.splitext(os.path.basename(filename))[0]
+
+    encoder_patterns = [
+        'TransGCN_conv', 'TransGCN_attn',
+        'RotatEGCN_conv', 'RotatEGCN_attn',
+        'RGCN', 'GAT', 'GCN'
+    ]
+
+    decoder_patterns = [
+        'TransGCN_conv', 'TransGCN_attn',
+        'RotatEGCN_conv', 'RotatEGCN_attn',
+        'RGCN', 'GAT', 'GCN', 'MLP', 'Dismult', 'GAE'
+    ]
+
+    info = {
+        'task_type': None,
+        'encoder_type': None,
+        'decoder_type': None,
+        'out_channels': None,
+        'num_bases': None,
+        'epoch': None,
+        'is_best': False,
+    }
+
+    for task in ['Recons_X', 'Recons_A', 'Recons_R', 'Double_reconstruction']:
+        if task in basename:
+            info['task_type'] = task
+            break
+
+    for enc in encoder_patterns:
+        if f'enc-{enc}' in basename:
+            info['encoder_type'] = enc
+            break
+
+    for dec in decoder_patterns:
+        if f'dec-{dec}' in basename or f'_{dec}' in basename:
+            info['decoder_type'] = dec
+            break
+
+    match = re.search(r'channels_([\d\-]+)', basename)
+
+    if match:
+        channels_str = match.group(1)
+        info['out_channels'] = [int(x) for x in re.split(r'[-_]', channels_str)]
+
+    match = re.search(r'bases-(\d+)', basename)
+    if match:
+        info['num_bases'] = int(match.group(1))
+
+    match = re.search(r'epoch[_-](\d+)', basename, re.IGNORECASE)
+    if match:
+        info['epoch'] = int(match.group(1))
+
+    if 'best' in basename.lower():
+        info['is_best'] = True
+
+    return info
+
+
+def build_config_from_filename(filename, default_device='cuda'):
+    info = parse_model_name(filename)
+    config = {
+        "device": default_device if torch.cuda.is_available() else "cpu",
+        "classifier_encoder": info['encoder_type'],
+        "classifier_decoder": info['decoder_type'],
+        "encoder_out_channels": info['out_channels'],
+        "num_bases": info['num_bases'],
+        "num_layers": 2,
+        "alpha": 0.01,
+        "message_sens": "source_to_target",
+        "use_edges_info": True,
+        "task_type": info['task_type']
+    }
+    return config, info
+
+
+def load_model_from_checkpoint(filename, data, strict=True, load_full_model=True):
+
+
+    config, model_info = build_config_from_filename(filename)
+
+    if not os.path.exists(filename):
+        raise FileNotFoundError(f"Checkpoint file not found: {filename}")
+
+    encoder = instantiate_encoder(config, data)
+    model = encoder
+    device = torch.device(config["device"])
+    checkpoint = torch.load(filename, map_location=device)
+
+    if load_full_model and config["classifier_decoder"]:
+        try:
+            decoder = instantiate_decoder(config, data, encoder)
+            if model_info['task_type'] == 'Recons_A':
+                model = GAE(encoder).to(device)
+            elif model_info['task_type'] == 'Double_reconstruction':
+                r_decoder = instantiate_decoder({**config, "classifier_decoder": "Dismult"}, data, encoder)
+                model = MRGAE(encoder, x_decoder=decoder, r_decoder=r_decoder).to(device)
+            elif model_info['task_type'] == 'Recons_R':
+                model = MRGAE(encoder, x_decoder=None, r_decoder=decoder).to(device)
+            else:
+                model = MRGAE(encoder, x_decoder=decoder).to(device)
+        except Exception as e:
+            print(f"[Warning] Could not load decoder. Using encoder only. Reason: {e}")
+            model = encoder
+        state_key = 'model_state_dict' if 'model_state_dict' in checkpoint else 'state_dict'
+        model.load_state_dict(checkpoint.get(state_key, checkpoint), strict=strict)
+        model.eval()
+        return model, model_info, checkpoint
+
 
 
 def set_seed(seed):

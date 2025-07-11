@@ -1,5 +1,5 @@
 import torch
-from sklearn.metrics import accuracy_score, precision_recall_fscore_support, recall_score, f1_score
+from sklearn.metrics import accuracy_score, precision_recall_fscore_support, recall_score, f1_score, precision_score
 from torch import nn
 import torch.optim as optim
 from utilities.utilities import set_seed
@@ -108,11 +108,13 @@ def evaluate_batch(model, data_loader, mask_name, config):
     accuracy = accuracy_score(y_true, preds)
     recall = recall_score(y_true, preds, average='weighted', zero_division=0)
     f1 = f1_score(y_true, preds, average='weighted', zero_division=0)
+    precision = precision_score(y_true, preds, average='weighted', zero_division=0)
 
     return {
         'accuracy': accuracy,
         'recall': recall,
-        'f1': f1
+        'f1': f1,
+        'precision': precision
     }
 
 
@@ -123,14 +125,18 @@ def training_loop_minibatch(model, train_loader, test_loader, config, epochs=100
     optimizer = optim.Adam(model.parameters(), lr=config.get("lr", 0.001),
                            weight_decay=config.get("weight_decay", 5e-4))
     criterion = nn.CrossEntropyLoss(ignore_index=-1)
+
     best_test_acc = 0.0
+    best_test_metrics = {}
+    best_model_state = None
+
     print("Starting training...")
     print("=" * 60)
-    best_model_state = None
+
     for epoch in range(1, epochs + 1):
         loss = 0
         for batch in train_loader:
-            batch.to("cuda")
+            batch.to(device)
             batch_loss = batch_train(model, batch, optimizer, criterion)
             loss += batch_loss
 
@@ -144,7 +150,7 @@ def training_loop_minibatch(model, train_loader, test_loader, config, epochs=100
             best_test_metrics = test_metrics
             best_model_state = model.state_dict()
 
-        # Clean display
+        # Logging
         print(f"Epoch {epoch:3d}/{epochs}")
         print(f"  Loss:     {avg_loss:.4f}")
         print(
@@ -153,10 +159,64 @@ def training_loop_minibatch(model, train_loader, test_loader, config, epochs=100
             f"  Test  -   Acc: {test_metrics['accuracy']:.4f} | Recall: {test_metrics['recall']:.4f} | F1: {test_metrics['f1']:.4f}")
         print(f"  Best Test Acc: {best_test_acc:.4f}")
         print("-" * 60)
-        print(f"\nTraining completed! Best Test Accuracy: {best_test_acc:.4f}")
+
+    print(f"\nTraining completed! Best Test Accuracy: {best_test_acc:.4f}")
+
+    # Optionnel : recharger le meilleur modèle
     if best_model_state is not None:
-        model.load_state_dict(best_model_state)  # Optionnel : recharger dans le modèle courant
+        model.load_state_dict(best_model_state)
         save_best_classifier_and_config(model, config, best_test_metrics)
+
+    # Retourner les meilleurs résultats
+    return {
+        'accuracy': best_test_metrics.get('accuracy', 0.0),
+        'f1': best_test_metrics.get('f1', 0.0),
+        'recall': best_test_metrics.get('recall', 0.0),
+        'precision': best_test_metrics.get('precision', 0.0)
+    }
+
+
+# def training_loop_minibatch(model, train_loader, test_loader, config, epochs=100, seed=42):
+#     set_seed(seed)
+#     device = torch.device(config["device"])
+#     model = model.to(device)
+#     optimizer = optim.Adam(model.parameters(), lr=config.get("lr", 0.001),
+#                            weight_decay=config.get("weight_decay", 5e-4))
+#     criterion = nn.CrossEntropyLoss(ignore_index=-1)
+#     best_test_acc = 0.0
+#     print("Starting training...")
+#     print("=" * 60)
+#     best_model_state = None
+#     for epoch in range(1, epochs + 1):
+#         loss = 0
+#         for batch in train_loader:
+#             batch.to("cuda")
+#             batch_loss = batch_train(model, batch, optimizer, criterion)
+#             loss += batch_loss
+#
+#         train_metrics = evaluate_batch(model, train_loader, "train_mask", config)
+#         test_metrics = evaluate_batch(model, test_loader, "test_mask", config)
+#         avg_loss = loss / len(train_loader)
+#
+#         # Update best accuracy
+#         if test_metrics['accuracy'] > best_test_acc:
+#             best_test_acc = test_metrics['accuracy']
+#             best_test_metrics = test_metrics
+#             best_model_state = model.state_dict()
+#
+#         # Clean display
+#         print(f"Epoch {epoch:3d}/{epochs}")
+#         print(f"  Loss:     {avg_loss:.4f}")
+#         print(
+#             f"  Train -   Acc: {train_metrics['accuracy']:.4f} | Recall: {train_metrics['recall']:.4f} | F1: {train_metrics['f1']:.4f}")
+#         print(
+#             f"  Test  -   Acc: {test_metrics['accuracy']:.4f} | Recall: {test_metrics['recall']:.4f} | F1: {test_metrics['f1']:.4f}")
+#         print(f"  Best Test Acc: {best_test_acc:.4f}")
+#         print("-" * 60)
+#         print(f"\nTraining completed! Best Test Accuracy: {best_test_acc:.4f}")
+#     if best_model_state is not None:
+#         model.load_state_dict(best_model_state)  # Optionnel : recharger dans le modèle courant
+#         save_best_classifier_and_config(model, config, best_test_metrics)
 
 
 def save_best_classifier_and_config(model, config, test_metrics, directory="checkpoints", excel_file="classifier_results.xlsx"):

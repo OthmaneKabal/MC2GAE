@@ -7,7 +7,7 @@ from torch_geometric.nn import GAE
 
 from src.layers.Dismult import DistMultDecoder
 from src.layers.GATDecoder import GATDecoder
-from src.model.train_optimize_parms import train_GAE, train_X_reconstruction, train_DisMult, train_Double_Reconstruction
+from src.model.train_optimize_parms import train_GAE, train_Contrastive, train_X_reconstruction, train_DisMult, train_Double_Reconstruction
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'layers')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..', 'data')))
@@ -608,6 +608,117 @@ def main():
                 results.append(performances)
 
                 wandb.finish()
+
+        elif task == "Contrastive":
+            print("CC")
+            for out_channels in config["hyperparams_grid"]["out_channels"]:
+                for encoder_ in config["encoders"]:
+                    if encoder_ == "RGCN":
+                        for num_bases in config["hyperparams_grid"]["num_bases"]:
+                            encoder = RGCNEncoder(data, out_channels, config["num_layers"], num_bases,
+                                                  message_sens=msg_sens).to(device)
+
+                            run_name = f"{task}_bases-{num_bases}_channels_{'-'.join(map(str, out_channels))}_enc-{encoder_}"
+                            file_name = f"{task}_bases-{num_bases}_channels_{'-'.join(map(str, out_channels))}_enc-{encoder_}"
+                            run_config = {
+                                "device": config["device"],
+                                "num_layers": config["num_layers"],
+                                "learning_rate": config["learning_rate"],
+                                "batch_size": config["batch_size"],
+                                "num_neighbors": config["num_neighbors"],
+                                "num_epochs": config["num_epochs"],
+                                "bases": num_bases,
+                                "out_channels": out_channels,
+                                "training_task": task,
+                                "encoders": encoder_,
+                                "projections": config["projections"]
+                            }
+
+                            wandb.init(
+                                project=config["wandb_project_name"],
+                                name=run_name,
+                                config=run_config,
+                                settings=wandb.Settings(start_method="thread")
+                            )
+
+                            autoencoder = MRGAE(encoder, x_decoder=None, r_decoder=None, projections=[out_channels[-1], out_channels[-1]]).to(
+                                device)
+                            optimizer = optim.Adam(autoencoder.parameters(), lr=config["learning_rate"])
+                            local_data = copy.deepcopy(data)
+
+                            performances = train_Contrastive(autoencoder, local_data, optimizer,
+                                                             config["num_epochs"], gdp, file_name,
+                                                             device=device, save_dir=config["root_save_dir"] + "/" + task,
+                                                             wandb=wandb)
+                            results.append(performances)
+                            wandb.finish()
+
+                    else:  # GCN, TransGCN, etc.
+                        if encoder_ == "GCN":
+                            encoder = GCNEncoder(data, out_channels, config["num_layers"], message_sens=msg_sens).to(device)
+
+                        elif encoder_ == "TransGCN_conv":
+                            encoder = TransGCNEncoder(data, out_channels, config["num_layers"], dropout=0.2,
+                                                      kg_score_fn='TransE', variant='conv',
+                                                      use_edges_info=config["use_edges_info"], activation='relu',
+                                                      bias=False).to(device)
+
+                        elif encoder_ == "TransGCN_attn":
+                            encoder = TransGCNEncoder(data, out_channels, config["num_layers"], dropout=0.2,
+                                                      kg_score_fn='TransE', variant='attn',
+                                                      use_edges_info=config["use_edges_info"], activation='relu',
+                                                      bias=False).to(device)
+
+                        elif encoder_ == "RotatEGCN_conv":
+                            encoder = TransGCNEncoder(data, out_channels, config["num_layers"], dropout=0.2,
+                                                      kg_score_fn='RotatE', variant='conv',
+                                                      use_edges_info=config["use_edges_info"], activation='relu',
+                                                      bias=False).to(device)
+
+                        elif encoder_ == "RotatEGCN_attn":
+                            encoder = TransGCNEncoder(data, out_channels, config["num_layers"], dropout=0.2,
+                                                      kg_score_fn='RotatE', variant='attn',
+                                                      use_edges_info=config["use_edges_info"], activation='relu',
+                                                      bias=False).to(device)
+
+                        elif encoder_ == "GAT":
+                            encoder = GATEncoder(data, out_channels, config["num_layers"]).to(device)
+
+                        else:
+                            raise ValueError("Invalid encoder for Contrastive task!")
+
+                        run_name = f"{task}_channels_{'-'.join(map(str, out_channels))}_enc-{encoder_}"
+                        file_name = f"{task}_channels_{'-'.join(map(str, out_channels))}_enc-{encoder_}"
+                        run_config = {
+                            "device": config["device"],
+                            "num_layers": config["num_layers"],
+                            "learning_rate": config["learning_rate"],
+                            "batch_size": config["batch_size"],
+                            "num_neighbors": config["num_neighbors"],
+                            "num_epochs": config["num_epochs"],
+                            "out_channels": out_channels,
+                            "training_task": task,
+                            "encoders": encoder_,
+                            "projections": config["projections"]
+                        }
+
+                        wandb.init(
+                            project=config["wandb_project_name"],
+                            name=run_name,
+                            config=run_config,
+                            settings=wandb.Settings(start_method="thread")
+                        )
+                        autoencoder = MRGAE(encoder, x_decoder=None, r_decoder=None, projections= [out_channels[-1], out_channels[-1]]).to(device)
+                        optimizer = optim.Adam(autoencoder.parameters(), lr=config["learning_rate"])
+                        local_data = copy.deepcopy(data)
+
+
+                        performances = train_Contrastive(autoencoder, local_data, optimizer,
+                                                         config["num_epochs"], gdp, file_name,
+                                                         device=device, save_dir=config["root_save_dir"] + "/" + task,
+                                                         wandb=wandb)
+                        results.append(performances)
+                        wandb.finish()
 
     df = pd.DataFrame(results)
     # Sauvegarde en fichier Excel

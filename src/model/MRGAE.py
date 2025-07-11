@@ -22,7 +22,8 @@ class MRGAE(nn.Module):
         self.r_decoder = r_decoder
         # self.options = options
         ##  projections for contrastive
-        if projections is not None:
+        if projections:
+            print("hhh")
             self.projector_fc1 = nn.Sequential(nn.Linear(encoder.out_channels, projections[0], bias=True),
                                                nn.PReLU(),
                                                nn.Linear(projections[0], projections[1], bias=True)
@@ -42,8 +43,16 @@ class MRGAE(nn.Module):
         self.x_decoder.reset_parameters()
 
 
-    def forward(self, data):
-        return self.encode(data)
+    def forward(self, data, return_projected=False):
+        """
+        Si return_projected=True, retourne aussi les projections contrastives.
+        """
+        embeddings = self.encode(data)
+        if return_projected and self.use_projection:
+            proj1 = self.projector_fc1(embeddings)
+            proj2 = self.projector_fc2(embeddings)
+            return embeddings, proj1, proj2
+        return embeddings
 
 
     def encode(self, data):

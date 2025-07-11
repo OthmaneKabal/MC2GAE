@@ -135,6 +135,7 @@ def relation_based_edge_dropping_balanced(data, total_drop_rate, max_drop_fracti
         x=data.x,  # Copie des nœuds
         edge_index=edge_index[:, keep_edge_indices],  # Arêtes mises à jour
         edge_type=edge_type[keep_edge_indices],  # Types d'arêtes mis à jour
+        edge_attr= data.edge_attr[keep_edge_indices]
     )
 
     return new_data, torch.tensor(removed_edge_indices), removed_edge_types
