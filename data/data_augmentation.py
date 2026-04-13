@@ -1,7 +1,7 @@
 import torch
 from torch_geometric.data import Data
 
-def view_partial_features_masking(data, max_masking_percentage=0.3, random_seed=42):
+def view_partial_features_masking(data, max_masking_percentage=0.3, random_seed=0):
     """
     Génère une vue augmentée du graphe en appliquant un masquage partiel exact
     sur les caractéristiques des nœuds, respectant le pourcentage de masquage pour chaque nœud.
@@ -142,7 +142,7 @@ def relation_based_edge_dropping_balanced(data, total_drop_rate, max_drop_fracti
 
 ### with limit per type
 def relation_based_edge_dropping_balanced_type(data, total_drop_rate, max_drop_fraction_per_node=0.3, type_limite=0.3,
-                                          random_seed=42):
+                                          random_seed=0):
     """
     Suppression équilibrée des relations dans un graphe en limitant les suppressions par nœud
     et par type tout en évitant l'isolation des nœuds.

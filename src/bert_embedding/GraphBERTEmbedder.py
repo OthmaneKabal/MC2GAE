@@ -31,6 +31,6 @@ class GraphBERTEmbedder:
     def run(self):
         print("Entities and Predicates Embedding using : "+ self.pretrained_model_name_or_path + "...")
         self.entities_predicates_Embedding()
-        u.save_to_pickle(self.output_path + "/EntitiesBertEmbedding_noicy_nci.pickle", self.Entites_embedding_dict)
-        u.save_to_pickle(self.output_path + "/PredicatesBertEmbedding_noicy_nci.pickle", self.Predicates_embedding_dict)
+        u.save_to_pickle(self.output_path + "/umls_nci_bert_embeddings/Entities_noisy_.pickle", self.Entites_embedding_dict)
+        u.save_to_pickle(self.output_path + "/umls_nci_bert_embeddings/Predicates_mapped_rel_SM.pickle", self.Predicates_embedding_dict)
         print("Done")

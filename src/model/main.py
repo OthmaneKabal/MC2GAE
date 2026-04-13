@@ -1,48 +1,52 @@
+
 import sys
 import os
-import copy
-
+import random
+import torch
+import numpy as np
 import pandas as pd
+import torch.optim as optim
 from torch_geometric.nn import GAE
 
-from src.layers.Dismult import DistMultDecoder
-from src.layers.GATDecoder import GATDecoder
-from src.model.train_optimize_parms import train_GAE, train_Contrastive, train_X_reconstruction, train_DisMult, train_Double_Reconstruction
-
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'layers')))
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..', 'data')))
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..', 'utils')))
-from src.layers.GATEncoder import GATEncoder
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'utils')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'data')))
 
-from utils.utils import  set_seed
-from src.layers.GCNDecoder import GCNDecoder
-from src.layers.GCNEncoder import GCNEncoder
-from src.layers.MLPDecoder import MLPDecoder
-import torch.optim as optim
+# Imports locaux (sans le préfixe src.)
+from train_optimize_parms import train_GAE,train_Contrastive , train_X_reconstruction, train_DisMult, train_Double_Reconstruction, train_Contrastive
+from Dismult import DistMultDecoder
+from GCNDecoder import GCNDecoder
+from GCNEncoder import GCNEncoder
+from GATDecoder import GATDecoder
+from GATEncoder import GATEncoder
+from MLPDecoder import MLPDecoder
+from TransGCNEncoder import TransGCNEncoder
+from TransGCNDecoder import TransGCNDecoder
 from RGCNEncoder import RGCNEncoder
 from RGCNDecoder import RGCNDecoder
-from src.layers.TransGCNEncoder import TransGCNEncoder
-from src.layers.TransGCNDecoder import TransGCNDecoder
-from torch_geometric.data import Data
-from config import config
 from GraphDataPreparation import GraphDataPreparation
-from MRGAE import  MRGAE
-import wandb
-import torch
-import random
-import numpy as np
-seed = 42
+from MRGAE import MRGAE
+from config import config
+from utils.utils import set_seed
+import copy
+from data_augmentation import relation_based_edge_dropping_balanced, view_partial_features_masking
+
+# Initialisation des seeds pour reproductibilité
+seed = config["seed"]
 torch.manual_seed(seed)
 torch.cuda.manual_seed(seed)
 np.random.seed(seed)
 random.seed(seed)
-import torch
-set_seed(42)
+set_seed(seed)
+
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
-# wandb.require("legacy-service")
-# wandb.login(key="c278e62d2025b60ff8b984a40f7b62b697f9b4fd", relogin=True)
 
+# Initialisation wandb
+import wandb
+wandb.require("legacy-service")
+wandb.login(key="c278e62d2025b60ff8b984a40f7b62b697f9b4fd", relogin=True)
 def main():
     results = []
     wandb_project_name = config["wandb_project_name"]
@@ -54,9 +58,9 @@ def main():
     gdp = GraphDataPreparation(Entities_path, KG_path, edges_embd_path=Edges_path, is_directed=True)
     data = gdp.prepare_graph_with_type()
     print(data)
-
-
     data = data.to(device)
+    masked_features_data = None
+    removed_edge_indices = None
     # data = Data(x=data.x, edge_index=data.edge_index, edge_type=data.edge_type).to(device)
     for task in config["training_task"]:
         save_dir = config["root_save_dir"] + f"/{task}"
@@ -67,6 +71,12 @@ def main():
                 for encoder_ in config["encoders"]:
                     print(encoder_)
                     for decoder_ in config["decoders"]:
+                        if (encoder_ in ["RGCN", "GCN", "GAT"]) and (decoder_ in ["TransGCN_conv", "TransGCN_attn", "RotatEGCN_conv", "RotatEGCN_attn"]):
+                            print(f"Skipping invalid combination: enc={encoder_}, dec={decoder_}")
+                            continue
+                        if (encoder_ in ["RGCN", "GAT"]) and (decoder_ in ["GAT","RGCN"]):
+                            print(f"Skipping invalid combination: enc={encoder_}, dec={decoder_}")
+                            continue
                         use_num_bases = (encoder_ == "RGCN") or (decoder_ == "RGCN")
                         if use_num_bases:
                             for num_bases in config["hyperparams_grid"]["num_bases"]:
@@ -181,7 +191,7 @@ def main():
                                 local_data = copy.deepcopy(data)
                                 performances = train_X_reconstruction(autoencoder, local_data, optimizer, config["num_epochs"],
                                             gdp, file_name,device, config,loss_fct=["MSE"], save_dir = save_dir,
-                                            wandb=wandb)
+                                            wandb=wandb, seed = config["seed"])
                                 results.append(performances)
                                 wandb.finish()
 
@@ -283,7 +293,7 @@ def main():
                             optimizer = optim.Adam(autoencoder.parameters(), lr=config["learning_rate"])
                             performances = train_X_reconstruction(autoencoder, local_data, optimizer, config["num_epochs"],
                                             gdp, file_name, device, config,save_dir=save_dir, loss_fct=["MSE"],
-                                        wandb=wandb)
+                                        wandb=wandb, seed = config["seed"])
                             results.append(performances)
 
                             wandb.finish()
@@ -327,7 +337,7 @@ def main():
                             autoencoder = GAE(encoder).to(device)
                             optimizer = optim.Adam(autoencoder.parameters(), lr=config["learning_rate"])
                             performances = train_GAE(autoencoder, local_data, optimizer, config["num_epochs"], gdp,save_file = file_name,
-                                         save_dir=config["root_save_dir"],device = device, wandb=wandb)
+                                         save_dir=config["root_save_dir"],device = device, wandb=wandb, seed=seed)
 
                             results.append(performances)
                             wandb.finish()
@@ -401,7 +411,7 @@ def main():
                         optimizer = optim.Adam(autoencoder.parameters(), lr=config["learning_rate"])
                         performances = train_GAE(autoencoder, local_data, optimizer, config["num_epochs"], gdp,
                                                  save_file=file_name,
-                                                 save_dir=config["root_save_dir"], device=device, wandb=wandb)
+                                                 save_dir=config["root_save_dir"], device=device, wandb=wandb, seed = config["seed"])
 
                         results.append(performances)
                         wandb.finish()
@@ -439,13 +449,13 @@ def main():
                                 config=run_config,
                                 settings=wandb.Settings(start_method="thread")
                             )
-                            r_decoder = DistMultDecoder(data.num_edge_types, data.edge_attr.shape[-1])
+                            r_decoder = DistMultDecoder(data.num_edge_types, out_channels[-1])
                             autoencoder = MRGAE(encoder,x_decoder = None, r_decoder= r_decoder).to(device)
                             optimizer = optim.Adam(autoencoder.parameters(), lr=config["learning_rate"])
 
                             local_data = copy.deepcopy(data)
 
-                            performances = train_DisMult(autoencoder, local_data, optimizer, config["num_epochs"],gdp,file_name,device,save_dir=config["root_save_dir"]+"/"+task, wandb=wandb)
+                            performances = train_DisMult(autoencoder, local_data, optimizer, config["num_epochs"],gdp,file_name,device,save_dir=config["root_save_dir"]+"/"+task, wandb=wandb, seed = config["seed"])
                             # performances = train_GAE(autoencoder, data, optimizer, config["num_epochs"], gdp,save_file = file_name,
                             #              save_dir=config["root_save_dir"],device = device, wandb=wandb)
                             #
@@ -525,7 +535,7 @@ def main():
                         optimizer = optim.Adam(autoencoder.parameters(), lr=config["learning_rate"])
 
                         performances = train_DisMult(autoencoder, data, optimizer, config["num_epochs"], gdp, file_name,
-                                                     device, save_dir=config["root_save_dir"]+"/"+task, wandb=wandb)
+                                                     device, save_dir=config["root_save_dir"]+"/"+task, wandb=wandb, seed = config["seed"])
                         results.append(performances)
 
                         wandb.finish()
@@ -604,13 +614,22 @@ def main():
                 optimizer = optim.Adam(autoencoder.parameters(), lr=config["learning_rate"])
 
                 performances = train_Double_Reconstruction(autoencoder, local_data, optimizer, config["num_epochs"], gdp, file_name,
-                                             device, save_dir=config["root_save_dir"] + "/" + task, wandb=wandb)
+                                             device, save_dir=config["root_save_dir"] + "/" + task, wandb=wandb, seed = config["seed"])
                 results.append(performances)
 
                 wandb.finish()
 
         elif task == "Contrastive":
-            print("CC")
+            if masked_features_data is None or removed_edge_indices is None:
+                print("\n--- Preparing views ONCE for contrastive learning ---\n")
+                masked_features_data = view_partial_features_masking(
+                    data, max_masking_percentage=config["max_masking_percentage"], random_seed=seed
+                )
+                _, removed_edge_indices, _ = relation_based_edge_dropping_balanced(
+                    data, config["total_drop_rate"], max_drop_fraction_per_node=0.3, random_seed=seed
+                )
+                removed_edge_indices = removed_edge_indices.to(device)
+                        
             for out_channels in config["hyperparams_grid"]["out_channels"]:
                 for encoder_ in config["encoders"]:
                     if encoder_ == "RGCN":
@@ -646,10 +665,12 @@ def main():
                             optimizer = optim.Adam(autoencoder.parameters(), lr=config["learning_rate"])
                             local_data = copy.deepcopy(data)
 
-                            performances = train_Contrastive(autoencoder, local_data, optimizer,
-                                                             config["num_epochs"], gdp, file_name,
-                                                             device=device, save_dir=config["root_save_dir"] + "/" + task,
-                                                             wandb=wandb)
+                            performances = train_Contrastive(
+                                autoencoder, local_data, optimizer, config["num_epochs"], gdp, file_name,
+                                masked_features_data, removed_edge_indices,
+                                device=device, save_dir=config["root_save_dir"] + "/" + task,
+                                wandb=wandb, seed=config["seed"]
+                            )
                             results.append(performances)
                             wandb.finish()
 
@@ -713,16 +734,18 @@ def main():
                         local_data = copy.deepcopy(data)
 
 
-                        performances = train_Contrastive(autoencoder, local_data, optimizer,
-                                                         config["num_epochs"], gdp, file_name,
-                                                         device=device, save_dir=config["root_save_dir"] + "/" + task,
-                                                         wandb=wandb)
+                        performances = train_Contrastive(
+                            autoencoder, local_data, optimizer, config["num_epochs"], gdp, file_name,
+                            masked_features_data, removed_edge_indices,
+                            device=device, save_dir=config["root_save_dir"] + "/" + task,
+                            wandb=wandb, seed = config["seed"]
+                        )                       
                         results.append(performances)
                         wandb.finish()
 
     df = pd.DataFrame(results)
     # Sauvegarde en fichier Excel
-    df.to_excel("results_Double_recons.xlsx", index=False)
+    df.to_excel("Recons_R_noisy_mapped_seed_0.xlsx", index=False)
 #
 # def main():
 #     print(44)

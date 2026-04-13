@@ -8,7 +8,7 @@ from loss_func import recon_r_loss, sce_loss_fnc, similarity_pair_loss, mse_loss
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'layers')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..', 'data')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..', 'utils')))
-from src.layers.TransGCNDecoder import TransGCNDecoder
+from TransGCNDecoder import TransGCNDecoder
 from sklearn.metrics import f1_score, accuracy_score, recall_score, precision_score
 from torch_geometric.loader import NeighborLoader
 from evaluate import evaluate
@@ -20,7 +20,7 @@ from data_augmentation import relation_based_edge_dropping_balanced
 from data_augmentation import view_partial_features_masking
 from GraphDataLoader import GraphDataLoader
 import torch.nn.functional as F
-from src.layers.TransGCNEncoder import TransGCNEncoder
+from TransGCNEncoder import TransGCNEncoder
 
 import pandas as pd
 from config import config
@@ -30,7 +30,7 @@ import wandb
 import torch
 import random
 import numpy as np
-seed = 42
+seed = config["seed"]
 torch.backends.cudnn.benchmark = False
 torch.manual_seed(seed)
 torch.cuda.manual_seed(seed)
@@ -41,6 +41,8 @@ import copy
 set_seed(42)
 torch.backends.cudnn.deterministic = True
 import torch_geometric.transforms as T
+
+
 
 
 
@@ -172,7 +174,7 @@ def train_GAE(model, data, optimizer, num_epochs, gdp,save_file,
 
 
 def train_DisMult(model, data, optimizer,num_epochs,gdp, save_file,device,
-                           save_dir="train_R_reconstruction", wandb = None, seed = 42):
+                           save_dir="train_R_reconstruction", wandb = None, seed = config["seed"]):
     best_loss = float('inf')
     best_F1 = 0
     best_accuracy = 0
@@ -296,7 +298,7 @@ def train_DisMult(model, data, optimizer,num_epochs,gdp, save_file,device,
 
 
 def train_X_reconstruction(model, data ,optimizer, num_epochs, gdp, save_file,device, config,loss_fct = ["MSE"],
-                           save_dir="train_X_reconstruction", wandb = None, seed = 42):
+                           save_dir="train_X_reconstruction", wandb = None, seed = config["seed"]):
 
 
     best_loss = float('inf')
@@ -395,19 +397,20 @@ def train_X_reconstruction(model, data ,optimizer, num_epochs, gdp, save_file,de
 
 
 def train_Contrastive(model, data, optimizer, num_epochs, gdp, save_file,
+                      masked_features_data, removed_edge_indices,
                       device="cuda", save_dir="contrastive_training",
-                      wandb=None, seed=42):
+                      wandb=None, seed=config["seed"]):
     import copy
     set_seed(seed)
     best_loss = float('inf')
     best_accuracy = 0
     best_metrics = {}
 
-    print("\n--- Preparing views for contrastive learning ---\n")
-    masked_features_data = view_partial_features_masking(data, max_masking_percentage=config["max_masking_percentage"])
-    masked_edges_data, removed_edge_indices, _ = relation_based_edge_dropping_balanced(
-        data, config["total_drop_rate"], max_drop_fraction_per_node=0.3, random_seed=42
-    )
+    #print("\n--- Preparing views for contrastive learning ---\n")
+    #masked_features_data = view_partial_features_masking(data, max_masking_percentage=config["max_masking_percentage"])
+    #masked_edges_data, removed_edge_indices, _ = relation_based_edge_dropping_balanced(
+    #    data, config["total_drop_rate"], max_drop_fraction_per_node=0.3, random_seed=42
+    #)
 
     removed_edge_indices = removed_edge_indices.to(device)
 
@@ -429,7 +432,6 @@ def train_Contrastive(model, data, optimizer, num_epochs, gdp, save_file,
 
                 # View 2: masking edges
                 view_2 = copy.deepcopy(batch)
-
                 edge_mask = ~torch.isin(view_2.e_id, removed_edge_indices)
                 view_2.edge_index = view_2.edge_index[:, edge_mask]
                 view_2.edge_type = view_2.edge_type[edge_mask]
@@ -441,30 +443,28 @@ def train_Contrastive(model, data, optimizer, num_epochs, gdp, save_file,
 
                 # Encodage + projection (cas TransGCNEncoder ou non)
                 if isinstance(model.encoder, TransGCNEncoder):
-                    h1, _ = model.encoder(view_1)
-                    h2, _ = model.encoder(view_2)
+                    H1, _ = model.encoder(view_1)
+                    H2, _ = model.encoder(view_2)
                 else:
-                    h1 = model.encode(view_1)
-                    h2 = model.encode(view_2)
-
-
+                    H1 = model.encode(view_1)
+                    H2 = model.encode(view_2)
                 ##
                 if not isinstance(mask_nodes, torch.Tensor):
                     mask_nodes = torch.tensor(mask_nodes)
 
                 # Si mask_nodes est un masque booléen
                 if mask_nodes.dtype == torch.bool:
-                    mask_nodes = mask_nodes.to(h1.device)
+                    mask_nodes = mask_nodes.to(H1.device)
 
                 # Sinon on suppose que c'est une liste d'indices
                 else:
-                    mask_nodes = mask_nodes.long().to(h1.device)
+                    mask_nodes = mask_nodes.long().to(H1.device)
 
                 ###
 
                 # Appliquer les projecteurs
-                z1 = model.projector_fc1(h1[mask_nodes])
-                z2 = model.projector_fc2(h2[mask_nodes])
+                z1 = model.projector_fc1(H1[mask_nodes])
+                z2 = model.projector_fc2(H2[mask_nodes])
 
                 # Calcul de la perte contrastive standard
                 c_loss = contrastive_loss(z1, z2)
@@ -508,7 +508,7 @@ def train_Contrastive(model, data, optimizer, num_epochs, gdp, save_file,
 
 
 def train_Double_Reconstruction(model, data, optimizer,num_epochs,gdp, save_file,device, loss_fct = ["MSE"],
-                           save_dir="train_R_reconstruction", wandb = None, seed = 42):
+                           save_dir="train_R_reconstruction", wandb = None, seed = config["seed"]):
     best_loss = float('inf')
     best_F1 = 0
     best_accuracy = 0

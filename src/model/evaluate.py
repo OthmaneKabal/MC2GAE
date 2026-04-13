@@ -9,21 +9,20 @@ from transformers import BeitModel
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'layers')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..', 'data')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..', 'utils')))
-from data.GraphDataLoader import GraphDataLoader
-from src.bert_embedding.BertEmbedder import BertEmbedder
-from src.layers.Dismult import DistMultDecoder
-from src.layers.GATDecoder import GATDecoder
-from src.layers.GATEncoder import GATEncoder
-from src.layers.GCNDecoder import GCNDecoder
-from src.layers.GCNEncoder import GCNEncoder
-from src.layers.MLPDecoder import MLPDecoder
-from src.layers.TransGCNDecoder import TransGCNDecoder
+from GraphDataLoader import GraphDataLoader
+from Dismult import DistMultDecoder
+from GATDecoder import GATDecoder
+from GATEncoder import GATEncoder
+from GCNDecoder import GCNDecoder
+from GCNEncoder import GCNEncoder
+from MLPDecoder import MLPDecoder
+from TransGCNDecoder import TransGCNDecoder
 from src.model.clustering import kmeans_classify_with_centroid_flag, dbscan_classify_with_centroid_flag_cosine, \
     kmeans_with_fixed_centroids
 
 
 from GraphDataPreparation import GraphDataPreparation
-from src.layers.TransGCNEncoder import TransGCNEncoder
+from TransGCNEncoder import TransGCNEncoder
 from src.model.gnn_classifier.classifier_utils import  instantiate_encoder, instantiate_decoder
 from MRGAE import MRGAE
 from torch_geometric.nn import GAE
