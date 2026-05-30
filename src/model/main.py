@@ -33,12 +33,22 @@ import copy
 from data_augmentation import relation_based_edge_dropping_balanced, view_partial_features_masking
 
 # Initialisation des seeds pour reproductibilité
-seed = config["seed"]
-torch.manual_seed(seed)
-torch.cuda.manual_seed(seed)
-np.random.seed(seed)
-random.seed(seed)
-set_seed(seed)
+def _seed_values(seed_config):
+    if isinstance(seed_config, (list, tuple)):
+        return list(seed_config)
+    return [seed_config]
+
+
+def _set_all_seeds(seed):
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    np.random.seed(seed)
+    random.seed(seed)
+    set_seed(seed)
+
+
+seed = _seed_values(config["seed"])[0]
+_set_all_seeds(seed)
 
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
@@ -47,15 +57,64 @@ torch.backends.cudnn.benchmark = False
 import wandb
 wandb.require("legacy-service")
 wandb.login(key="c278e62d2025b60ff8b984a40f7b62b697f9b4fd", relogin=True)
+
+
+def _ensure_seeded_wandb_init():
+    if getattr(wandb, "_mc2gae_seed_wrapped", False):
+        return
+
+    original_init = wandb.init
+
+    def seeded_init(*args, **kwargs):
+        active_seed = config.get("active_seed")
+        run_name = kwargs.get("name")
+        if active_seed is not None and run_name and f"seed_{active_seed}" not in run_name:
+            kwargs["name"] = f"{run_name}_seed_{active_seed}"
+
+        run_config = kwargs.get("config")
+        if isinstance(run_config, dict):
+            kwargs["config"] = {**run_config, "seed": active_seed}
+
+        return original_init(*args, **kwargs)
+
+    wandb.init = seeded_init
+    wandb._mc2gae_seed_wrapped = True
+
+
 def main():
+    seed_config = config["seed"]
+    if isinstance(seed_config, (list, tuple)):
+        base_root_save_dir = config["root_save_dir"]
+        for active_seed in seed_config:
+            config["seed"] = active_seed
+            config["active_seed"] = active_seed
+            config["root_save_dir"] = os.path.join(base_root_save_dir, f"seed_{active_seed}")
+            main()
+        config["seed"] = seed_config
+        config["active_seed"] = None
+        config["root_save_dir"] = base_root_save_dir
+        return
+
+    active_seed = config["seed"]
+    config["active_seed"] = active_seed
+    _set_all_seeds(active_seed)
+    _ensure_seeded_wandb_init()
+
     results = []
     wandb_project_name = config["wandb_project_name"]
     # save_dir = config["save_dir"]
     Entities_path = config["Entities_path"]
     KG_path = config["KG_path"]
     Edges_path = config["Edges_path"]
+    plm_embedding_model = config["plm_embedding_model"]
     device = config["device"]
-    gdp = GraphDataPreparation(Entities_path, KG_path, edges_embd_path=Edges_path, is_directed=True)
+    gdp = GraphDataPreparation(
+        Entities_path,
+        KG_path,
+        edges_embd_path=Edges_path,
+        is_directed=True,
+        model_name_init=plm_embedding_model,
+    )
     data = gdp.prepare_graph_with_type()
     print(data)
     data = data.to(device)
@@ -337,7 +396,7 @@ def main():
                             autoencoder = GAE(encoder).to(device)
                             optimizer = optim.Adam(autoencoder.parameters(), lr=config["learning_rate"])
                             performances = train_GAE(autoencoder, local_data, optimizer, config["num_epochs"], gdp,save_file = file_name,
-                                         save_dir=config["root_save_dir"],device = device, wandb=wandb, seed=seed)
+                                         save_dir=config["root_save_dir"],device = device, wandb=wandb, seed=config["seed"])
 
                             results.append(performances)
                             wandb.finish()
@@ -505,8 +564,8 @@ def main():
                             raise ValueError("Invalid encoder type!")
 
 
-                        run_name = f"{task}_channels_{'-'.join(map(str, out_channels))}_enc-{encoder_}_Dismult" + transgcn_params
-                        file_name = f"{task}_channels_{'-'.join(map(str, out_channels))}_enc-{encoder_}_Dismult" + transgcn_params
+                        run_name = f"{task}_channels_{'-'.join(map(str, out_channels))}_enc-{encoder_}_Dismult"
+                        file_name = f"{task}_channels_{'-'.join(map(str, out_channels))}_enc-{encoder_}_Dismult"
                         run_config = {
                             "device": config["device"],
                             "num_layers": 2,
@@ -623,10 +682,10 @@ def main():
             if masked_features_data is None or removed_edge_indices is None:
                 print("\n--- Preparing views ONCE for contrastive learning ---\n")
                 masked_features_data = view_partial_features_masking(
-                    data, max_masking_percentage=config["max_masking_percentage"], random_seed=seed
+                    data, max_masking_percentage=config["max_masking_percentage"], random_seed=active_seed
                 )
                 _, removed_edge_indices, _ = relation_based_edge_dropping_balanced(
-                    data, config["total_drop_rate"], max_drop_fraction_per_node=0.3, random_seed=seed
+                    data, config["total_drop_rate"], max_drop_fraction_per_node=0.3, random_seed=active_seed
                 )
                 removed_edge_indices = removed_edge_indices.to(device)
                         
@@ -745,7 +804,8 @@ def main():
 
     df = pd.DataFrame(results)
     # Sauvegarde en fichier Excel
-    df.to_excel("Recons_R_noisy_mapped_seed_0.xlsx", index=False)
+    os.makedirs(config["root_save_dir"], exist_ok=True)
+    df.to_excel(os.path.join(config["root_save_dir"], f"results_seed_{config['seed']}.xlsx"), index=False)
 #
 # def main():
 #     print(44)

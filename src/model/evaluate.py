@@ -7,9 +7,11 @@ from torch_geometric.nn import GAE
 from tqdm import tqdm
 from transformers import BeitModel
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'layers')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'bert_embedding')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..', 'data')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..', 'utils')))
 from GraphDataLoader import GraphDataLoader
+from BertEmbedder import BertEmbedder
 from Dismult import DistMultDecoder
 from GATDecoder import GATDecoder
 from GATEncoder import GATEncoder
@@ -174,7 +176,7 @@ def generate_gs_embeddings_full_batch(graph_path, checkpoint_path, gs_path, core
         #print(embeddings, print(embeddings.shape))
         print(embeddings.shape)
     # Charger le fichier GS
-    gs_df = pd.read_excel(gs_path, sheet_name='Sheet1')
+    gs_df = pd.read_excel(gs_path, sheet_name=0)
     gs_terms = set(gs_df['term'].str.lower().unique())  # Termes du GS en minuscules pour uniformiser
 
     # Décoder les indices des nœuds pour obtenir le texte associé
@@ -267,7 +269,7 @@ def generate_gs_embeddgs_from_model_mini_batch(model, data,gs_path, core_concept
                 # Concatenate results instead of appending to a list
                 embeddings = torch.cat((embeddings, masked_embd), dim=0)
 
-    gs_df = pd.read_excel(gs_path, sheet_name='Sheet1')
+    gs_df = pd.read_excel(gs_path, sheet_name=0)
     gs_terms = set(gs_df['term'].str.lower().unique())  # Termes du GS en minuscules pour uniformiser
     node_index_to_text = gdp.decode_indexes()
     gs_embeddings = {}
@@ -291,7 +293,7 @@ def generate_gs_embeddgs_from_model(model, data,gs_path, core_concepts, gdp,is_e
         with torch.no_grad():
              embeddings = model.encode(data)
            # embeddings = model.encoder(data.x, data.edge_index, data.edge_type)
-    gs_df = pd.read_excel(gs_path, sheet_name='Sheet1')
+    gs_df = pd.read_excel(gs_path, sheet_name=0)
     gs_terms = set(gs_df['term'].str.lower().unique())  # Termes du GS en minuscules pour uniformiser
     node_index_to_text = gdp.decode_indexes()
     gs_embeddings = {}
@@ -424,6 +426,22 @@ def classify_terms_by_cosine_similarity(gs_embeddings, core_concepts_embeddings,
     return classifications
 
 
+def compute_classification_metrics(true_labels, predicted_labels):
+    metrics = {
+        'accuracy': accuracy_score(true_labels, predicted_labels),
+    }
+    for average in ['macro', 'micro', 'weighted']:
+        metrics[f'f1_{average}'] = f1_score(true_labels, predicted_labels, average=average, zero_division=0)
+        metrics[f'precision_{average}'] = precision_score(true_labels, predicted_labels, average=average, zero_division=0)
+        metrics[f'recall_{average}'] = recall_score(true_labels, predicted_labels, average=average, zero_division=0)
+
+    # Backward-compatible aliases used by the training code.
+    metrics['f1_score'] = metrics['f1_macro']
+    metrics['precision'] = metrics['precision_macro']
+    metrics['recall'] = metrics['recall_macro']
+    return metrics
+
+
 def evaluate_classification(gs_path, classifications, export_preds_path = None):
     """
     Évalue la classification en calculant les métriques de performance.
@@ -467,17 +485,7 @@ def evaluate_classification(gs_path, classifications, export_preds_path = None):
     print("\nRapport de Classification:\n")
     print(classification_report(true_labels, predicted_labels, zero_division=0))
 
-    accuracy = accuracy_score(true_labels, predicted_labels)
-    f1 = f1_score(true_labels, predicted_labels, average='macro', zero_division=0)
-    precision = precision_score(true_labels, predicted_labels, average='macro', zero_division=0)
-    recall = recall_score(true_labels, predicted_labels, average='macro', zero_division=0)
-
-    metrics = {
-        'accuracy': accuracy,
-        'f1_score': f1,
-        'precision': precision,
-        'recall': recall
-    }
+    metrics = compute_classification_metrics(true_labels, predicted_labels)
     metrics_df = pd.DataFrame([metrics], index=['Metrics'])
     return metrics_df
 ## generate_batch_GS_term_embeddings(model, graph, gdp, gs_path, core_concepts, batch_size = config['test_batch_size'], num_neighbors = config['num_neighbors'], seed=42)
@@ -488,12 +496,7 @@ def evaluate(model, data,gs_path, core_concepts, gdp, config,is_encoder = False,
     # print(core_concepts_embeddings["operating system"])
     classifications = classify_terms_by_cosine_similarity(gs_embeddings, core_concepts_embeddings, with_other = False)
     metrics_df = evaluate_classification(gs_path, classifications, export_preds_path = export_preds_path)
-    metrics = {
-        'accuracy': metrics_df.loc['Metrics', 'accuracy'],
-        'f1_score': metrics_df.loc['Metrics', 'f1_score'],
-        'precision': metrics_df.loc['Metrics', 'precision'],
-        'recall': metrics_df.loc['Metrics', 'recall']
-    }
+    metrics = metrics_df.loc['Metrics'].to_dict()
 
     return metrics
 

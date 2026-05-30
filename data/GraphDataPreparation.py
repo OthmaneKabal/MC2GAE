@@ -98,12 +98,16 @@
 ## with Edges
 
 ## with edges
+import os
+import re
 import sys
 
 import pandas as pd
 from sklearn.preprocessing import LabelEncoder
+from tqdm import tqdm
 
 sys.path.append("../../utilities")
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src', 'bert_embedding')))
 # import utilities as u
 import utilities.utilities as u
 import torch
@@ -116,10 +120,18 @@ from torch_geometric.data import Data
 from torch_geometric.utils import to_undirected
 
 class GraphDataPreparation:
-    def __init__(self, entities_embd_path, kg_path, edges_embd_path=None, is_directed=True, with_self_loop= False):
+    def __init__(self, entities_embd_path, kg_path, edges_embd_path=None, is_directed=True, with_self_loop= False,
+                 model_name_init="sentence-transformers/all-MiniLM-L6-v2", emb_dim=256):
         self.entities_embd_path = entities_embd_path
         self.edges_embd_path = edges_embd_path
         self.kg_path = kg_path
+        self.embedding_cache_name = str(model_name_init or "random")
+        self.model_name_init = model_name_init
+        self.emb_dim = emb_dim
+        self.random_embd_seed = 42
+        if isinstance(model_name_init, str) and model_name_init.startswith("random_"):
+            self.model_name_init = "random"
+            self.random_embd_seed = int(model_name_init.split("_", 1)[1])
         self.built_graph = None
         self.nxGraph = None
         self.nodes_index = None
@@ -130,11 +142,105 @@ class GraphDataPreparation:
         inverted_dict = {value: key for key, value in self.nodes_index.items()}
         return inverted_dict
 
+    def _path_exists(self, path):
+        return bool(path) and os.path.exists(path)
+
+    def _ensure_parent_dir(self, path):
+        parent_dir = os.path.dirname(path)
+        if parent_dir:
+            os.makedirs(parent_dir, exist_ok=True)
+
+    def _default_embedding_paths(self):
+        kg_name = os.path.splitext(os.path.basename(self.kg_path))[0]
+        model_name = re.sub(r"[^A-Za-z0-9_.-]+", "_", self.embedding_cache_name).strip("_")
+        output_dir = os.path.join("outputs", kg_name)
+        return (
+            os.path.join(output_dir, f"{model_name}_entities.pickle"),
+            os.path.join(output_dir, f"{model_name}_predicates.pickle"),
+        )
+
+    def _generate_random_embeddings(self, graph_data):
+        print(f"[INFO] Generating random embeddings (seed={self.random_embd_seed})")
+        nodes = sorted({entry["subject"] for entry in graph_data} | {entry["object"] for entry in graph_data})
+        predicates = sorted({entry["predicate"] for entry in graph_data})
+        generator = torch.Generator().manual_seed(self.random_embd_seed)
+        return (
+            {node: torch.rand(1, self.emb_dim, generator=generator) for node in nodes},
+            {predicate: torch.rand(1, self.emb_dim, generator=generator) for predicate in predicates},
+        )
+
+    def _generate_plm_embeddings(self, graph_data):
+        from BertEmbedder import BertEmbedder
+
+        print(f"[INFO] Generating embeddings with PLM: {self.model_name_init}")
+        embedder = BertEmbedder(self.model_name_init)
+        entities_embeddings = {}
+        edge_embeddings = {}
+
+        for entry in tqdm(graph_data, desc="Initial PLM embeddings", unit="triple"):
+            subject = entry["subject"]
+            obj = entry["object"]
+            predicate = entry["predicate"]
+
+            if subject not in entities_embeddings:
+                entities_embeddings[subject] = embedder.embed_entity(subject)
+            if obj not in entities_embeddings:
+                entities_embeddings[obj] = embedder.embed_entity(obj)
+            if predicate not in edge_embeddings:
+                edge_embeddings[predicate] = embedder.embed_entity(predicate)
+
+        return entities_embeddings, edge_embeddings
+
+    def _resolve_embeddings(self, graph_data):
+        entities_path = self.entities_embd_path
+        edges_path = self.edges_embd_path
+        explicit_entities_exist = self._path_exists(entities_path)
+        explicit_edges_exist = self._path_exists(edges_path) if edges_path else True
+
+        if explicit_entities_exist and explicit_edges_exist:
+            print(f"[INFO] Loading entity embeddings from {entities_path}")
+            entities_embeddings = u.read_pickle_file(entities_path)
+            edge_embeddings = u.read_pickle_file(edges_path) if edges_path else None
+            return entities_embeddings, edge_embeddings
+
+        entities_path, edges_path = self._default_embedding_paths()
+        self.entities_embd_path = entities_path
+        self.edges_embd_path = edges_path
+
+        entities_exist = self._path_exists(entities_path)
+        edges_exist = self._path_exists(edges_path)
+
+        if entities_exist and edges_exist:
+            print(f"[INFO] Loading auto-generated embeddings from {os.path.dirname(entities_path)}")
+            return u.read_pickle_file(entities_path), u.read_pickle_file(edges_path)
+
+        if self.model_name_init == "random" or not self.model_name_init:
+            generated_entities, generated_edges = self._generate_random_embeddings(graph_data)
+        else:
+            generated_entities, generated_edges = self._generate_plm_embeddings(graph_data)
+
+        if entities_exist:
+            entities_embeddings = u.read_pickle_file(entities_path)
+        else:
+            entities_embeddings = generated_entities
+            self._ensure_parent_dir(entities_path)
+            u.save_to_pickle(entities_path, entities_embeddings)
+
+        if not edges_path:
+            edge_embeddings = None
+        elif edges_exist:
+            edge_embeddings = u.read_pickle_file(edges_path)
+        else:
+            edge_embeddings = generated_edges
+            self._ensure_parent_dir(edges_path)
+            u.save_to_pickle(edges_path, edge_embeddings)
+
+        return entities_embeddings, edge_embeddings
+
     def build_networkx_graph(self):
         print("Building NetworkX graph")
         graph_data = u.read_json_file(self.kg_path)
-        embeddings = u.read_pickle_file(self.entities_embd_path)
-        edge_embeddings = u.read_pickle_file(self.edges_embd_path) if self.edges_embd_path else None
+        embeddings, edge_embeddings = self._resolve_embeddings(graph_data)
 
         # Create a NetworkX graph
         if self.is_directed:
@@ -309,8 +415,7 @@ class GraphDataPreparation:
         graph_data = u.read_json_file(self.kg_path)
         if not self.with_self_loop:
             graph_data = self.remove_self_loops_from_json(graph_data)
-        embeddings = u.read_pickle_file(self.entities_embd_path)
-        edge_embeddings = u.read_pickle_file(self.edges_embd_path) if self.edges_embd_path else None
+        embeddings, edge_embeddings = self._resolve_embeddings(graph_data)
 
         # Initialize NetworkX graph based on directed flag
         #self.nxGraph = nx.DiGraph() if self.is_directed else nx.Graph()

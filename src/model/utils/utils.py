@@ -26,7 +26,7 @@ def load_gold_standard_labels(gs_path):
     :return: DataFrame avec les colonnes 'term' et 'label'
     """
     # Charger la feuille contenant les termes et labels
-    gold_standard_df = pd.read_excel(gs_path, sheet_name='Sheet1')
+    gold_standard_df = pd.read_excel(gs_path, sheet_name=0)
 
     # Vérifier que les colonnes nécessaires sont présentes
     if 'term' not in gold_standard_df.columns or 'label' not in gold_standard_df.columns:

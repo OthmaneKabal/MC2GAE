@@ -135,6 +135,23 @@ def _classify_by_cosine(gs_embeddings, core_concepts_embeddings):
     return classifications
 
 
+def _compute_classification_metrics(true_labels, predicted_labels):
+    metrics = {
+        "accuracy": accuracy_score(true_labels, predicted_labels),
+    }
+    for average in ["macro", "micro", "weighted"]:
+        metrics[f"f1_{average}"] = f1_score(true_labels, predicted_labels, average=average, zero_division=0)
+        metrics[f"precision_{average}"] = precision_score(
+            true_labels, predicted_labels, average=average, zero_division=0
+        )
+        metrics[f"recall_{average}"] = recall_score(true_labels, predicted_labels, average=average, zero_division=0)
+
+    metrics["f1_score"] = metrics["f1_macro"]
+    metrics["precision"] = metrics["precision_macro"]
+    metrics["recall"] = metrics["recall_macro"]
+    return metrics
+
+
 def evaluate_plm(gs_path, plm_model, core_concepts, export_preds_path=None, entities_cache_path=None):
     from BertEmbedder import BertEmbedder
 
@@ -164,12 +181,7 @@ def evaluate_plm(gs_path, plm_model, core_concepts, export_preds_path=None, enti
     print("\nRapport de Classification:\n")
     print(classification_report(true_labels, predicted_labels, zero_division=0))
 
-    return {
-        "accuracy": accuracy_score(true_labels, predicted_labels),
-        "f1_score": f1_score(true_labels, predicted_labels, average="macro", zero_division=0),
-        "precision": precision_score(true_labels, predicted_labels, average="macro", zero_division=0),
-        "recall": recall_score(true_labels, predicted_labels, average="macro", zero_division=0),
-    }
+    return _compute_classification_metrics(true_labels, predicted_labels)
 
 
 def main():

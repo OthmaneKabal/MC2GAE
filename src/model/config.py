@@ -1,14 +1,17 @@
+import os
+import re
+
 import torch
 config = {
     "device": "cuda" if torch.cuda.is_available() else "cpu", #
-    "seed":0,
+    "seed": [0],
     "num_layers": 2,
     "alpha": 0.01,
     "max_masking_percentage": 0.3,
     "total_drop_rate": 0.2,
     "learning_rate": 0.001,
-    "batch_size": 256,
-    "test_batch_size":256,
+    "batch_size": 4096,
+    "test_batch_size":4096,
     # "cosine_loss_weight": 0.5,
     "shuffle": False,
     "num_neighbors": [200,200],
@@ -16,6 +19,7 @@ config = {
     "kg_score_fn":'TransE',
     "variant":'conv',
     "use_edges_info":True,
+    "plm_embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
     "Entities_path": "../outputs/../outputs/EntitiesBertEmbedding_noicy_nci.pickle", #EntitiesBertEmbedding_NCI.pickle",../outputs/EntitiesBertEmbedding_noicy_nci
     "Edges_path": "../outputs/PredicatesBertEmbedding_noicy_nci.pickle",#PredicatesBertEmbedding_NCI.pickle",PredicatesBertEmbedding_noicy_nci
 
@@ -25,7 +29,7 @@ config = {
 
     "Gs_path_no_other": "../../data/UMLS/MM_mapped_nci_GS.xlsx",#nci_mm_GS_vf
      "KG_path_cs": "../../data/augmented_graph/augmented_graph_is_rules.json",
-    "dataset": "umls_noisy_mapped",
+    "dataset": "umls_noisy",
 
     ####
     "Gs_path_no_other_cs": "../../data/GS_vf.xlsx",
@@ -54,13 +58,13 @@ config = {
 
     "training_task" : ["Recons_R"],
     "hyperparams_grid" : {"num_bases": [5,10], "out_channels": [[384,256],[512,364]]}, ## , [256,128], [128,64],[384,256], [64,32]
-    "wandb_project_name": "Experiments_Recons_R_mapped_rel_noisy",
-    "encoders": ["RGCN"],#"TransGCN_conv","TransGCN_attn","RotatEGCN_attn","RotatEGCN_conv", "GCN","GAT"],## "TransGCN_conv","TransGCN_attn","RotatEGCN_attn","RotatEGCN_conv", "GCN","RGCN","GAT"
+    "wandb_project_name": None,
+    "encoders": ["TransGCN_conv"],#"TransGCN_conv","TransGCN_attn","RotatEGCN_attn","RotatEGCN_conv", "GCN","GAT"],## "TransGCN_conv","TransGCN_attn","RotatEGCN_attn","RotatEGCN_conv", "GCN","RGCN","GAT"
     "decoders": ["MLP"],#,"TransGCN_attn","RotatEGCN_attn","RotatEGCN_conv", "GCN","RGCN","GAT","MLP"], ## "TransGCN_conv","TransGCN_attn","RotatEGCN_conv","RotatEGCN_attn"
 
     "message_sens": ["source_to_target"],
     "projections": None,
-    "root_save_dir": "ckpt_Recons_R_mapped_noisy",
+    "root_save_dir": None,
     "param_combinations": [{"encoder": "GCN","decoder":"GCN","out_channels":[640,512]},
                            {"encoder": "RGCN","decoder":"RGCN","out_channels":[640,512]},
                            {"encoder": "RGCN","decoder":"MLP","out_channels":[640,512]}
@@ -123,7 +127,12 @@ config["Edges_path"] = config["edges_path_map"].get(config["dataset"])
 config["Entities_path"] = config["entities_path_map"].get(config["dataset"])
 config["train_set_path"] = config["train_set_path"].get(config["dataset"])
 
+graph_name = os.path.splitext(os.path.basename(config["KG_path"]))[0]
+task_name = "_".join(config["training_task"])
+run_suffix = re.sub(r"[^A-Za-z0-9_.-]+", "_", f"{graph_name}_{task_name}").strip("_")
 
+config["wandb_project_name"] = f"Experiments_{run_suffix}"
+config["root_save_dir"] = f"ckpt_{run_suffix}"
 
 
 

@@ -30,17 +30,65 @@ import wandb
 import torch
 import random
 import numpy as np
-seed = config["seed"]
+import torch
+import copy
+def _first_seed(seed_config):
+    if isinstance(seed_config, (list, tuple)):
+        return seed_config[0]
+    return seed_config
+
+
+def _resolve_seed(seed_value=None):
+    if seed_value is not None:
+        return seed_value
+    return config.get("active_seed", _first_seed(config["seed"]))
+
+
+seed = _first_seed(config["seed"])
 torch.backends.cudnn.benchmark = False
 torch.manual_seed(seed)
 torch.cuda.manual_seed(seed)
 np.random.seed(seed)
 random.seed(seed)
-import torch
-import copy
-set_seed(42)
+set_seed(seed)
 torch.backends.cudnn.deterministic = True
 import torch_geometric.transforms as T
+
+
+def _split_encoder_output(encoder_output):
+    if isinstance(encoder_output, tuple):
+        node_embeddings = encoder_output[0]
+        relation_embeddings = encoder_output[1] if len(encoder_output) > 1 else None
+        return node_embeddings, relation_embeddings
+    return encoder_output, None
+
+
+def _encode(model, data):
+    return _split_encoder_output(model.encode(data))
+
+
+def _encode_nodes(model, data):
+    node_embeddings, _ = _encode(model, data)
+    return node_embeddings
+
+
+def _filter_edges(data, edge_mask):
+    data.edge_index = data.edge_index[:, edge_mask]
+    if hasattr(data, "edge_type") and data.edge_type is not None:
+        data.edge_type = data.edge_type[edge_mask]
+    if hasattr(data, "edge_attr") and data.edge_attr is not None:
+        data.edge_attr = data.edge_attr[edge_mask]
+    if hasattr(data, "e_id") and data.e_id is not None:
+        data.e_id = data.e_id[edge_mask]
+    return data
+
+
+def _calculate_relation_micro_metrics(predictions, true_labels):
+    accuracy = accuracy_score(true_labels, predictions)
+    precision = precision_score(true_labels, predictions, average="micro", zero_division=0)
+    recall = recall_score(true_labels, predictions, average="micro", zero_division=0)
+    f1 = f1_score(true_labels, predictions, average="micro", zero_division=0)
+    return accuracy, precision, recall, f1
 
 
 
@@ -62,12 +110,10 @@ def evaluate_ConvE(model, data, data_loader, test_removed_index, device, relatio
                 # Masking the edges based on test_removed_index
                 test_removed_index = test_removed_index.to(device)
                 mask = torch.isin(batch.e_id, test_removed_index)
-                removed_batch.edge_index = removed_batch.edge_index[:, mask]
-                removed_batch.edge_type = removed_batch.edge_type[mask]
-                removed_batch.e_id = removed_batch.e_id[mask]
+                _filter_edges(removed_batch, mask)
 
                 # Encoding the batch
-                H_2 = model.encode(batch)
+                H_2 = _encode_nodes(model, batch)
 
                 # Generating negative and positive triplets for evaluation
                 negative_triplets = generate_negatives(data, removed_batch, negative_ratio=1)
@@ -133,10 +179,7 @@ def train_GAE(model, data, optimizer, num_epochs, gdp,save_file,
         model.train()
 
         with tqdm(total=len(G_data_loader), desc=f"Epoch {epoch + 1}/{num_epochs}", unit="batch") as batch_pbar:
-            if  isinstance(model.encoder, TransGCNEncoder):
-                z,_ = model.encode(data)
-            else:
-                z = model.encode(data)
+            z = _encode_nodes(model, data)
             loss = model.recon_loss(z, train_data_directed_without_split.pos_edge_label_index)
             loss.backward()
             optimizer.step()
@@ -174,7 +217,8 @@ def train_GAE(model, data, optimizer, num_epochs, gdp,save_file,
 
 
 def train_DisMult(model, data, optimizer,num_epochs,gdp, save_file,device,
-                           save_dir="train_R_reconstruction", wandb = None, seed = config["seed"]):
+                           save_dir="train_R_reconstruction", wandb = None, seed = None):
+    seed = _resolve_seed(seed)
     best_loss = float('inf')
     best_F1 = 0
     best_accuracy = 0
@@ -217,16 +261,11 @@ def train_DisMult(model, data, optimizer,num_epochs,gdp, save_file,device,
                 edges_mask = torch.isin(G2_batch.e_id,batch_matching_e_ids) ## mask pour les edges à supprimer dans le batch
 
                 ## the final masked batch
-                G2_batch.edge_index = G2_batch.edge_index[:,~edges_mask]
-                G2_batch.edge_type = G2_batch.edge_type[~edges_mask]
-                G2_batch.e_id = G2_batch.e_id[~edges_mask]
-
-                removed_batch.edge_index = removed_batch.edge_index[:, edges_mask]
-                removed_batch.edge_type = removed_batch.edge_type[edges_mask]
-                removed_batch.e_id = removed_batch.e_id[edges_mask]
+                _filter_edges(G2_batch, ~edges_mask)
+                _filter_edges(removed_batch, edges_mask)
                 optimizer.zero_grad()
 
-                H_2 = model.encode(G2_batch)
+                H_2 = _encode_nodes(model, G2_batch)
 
                 # Générer les triplets négatifs et positifs
                 negative_triplets = generate_negatives(data, G2_batch, negative_ratio=1)
@@ -274,7 +313,7 @@ def train_DisMult(model, data, optimizer,num_epochs,gdp, save_file,device,
             print("\n")
             print(metrics)
 
-            R_accuracy, R_precision, R_recall, R_f1 = calculate_metrics(all_preds, all_true_labels)
+            R_accuracy, R_precision, R_recall, R_f1 = _calculate_relation_micro_metrics(all_preds, all_true_labels)
             print(f"R_accuracy: {R_accuracy}, R_precision: {R_precision}, R_recall: {R_recall},R_f1: {R_f1}")
 
             if avg_loss < best_loss:
@@ -298,7 +337,8 @@ def train_DisMult(model, data, optimizer,num_epochs,gdp, save_file,device,
 
 
 def train_X_reconstruction(model, data ,optimizer, num_epochs, gdp, save_file,device, config,loss_fct = ["MSE"],
-                           save_dir="train_X_reconstruction", wandb = None, seed = config["seed"]):
+                           save_dir="train_X_reconstruction", wandb = None, seed = None):
+    seed = _resolve_seed(seed)
 
 
     best_loss = float('inf')
@@ -332,12 +372,7 @@ def train_X_reconstruction(model, data ,optimizer, num_epochs, gdp, save_file,de
                 n_id = batch.n_id  ## The global node index for every sampled node
                 mask = torch.isin(n_id, batch.input_id)  ## mask to get only the embedding of input_id nodes
                 optimizer.zero_grad()
-                r_embd = None
-                if isinstance(model.encoder, TransGCNEncoder):
-                    embeddings, r_embd = model.encode(batch)
-
-                else:
-                    embeddings = model.encode(batch)
+                embeddings, r_embd = _encode(model, batch)
 
                 # embeddings = model.encode(batch)
                 if isinstance(model.x_decoder, TransGCNDecoder):
@@ -399,8 +434,9 @@ def train_X_reconstruction(model, data ,optimizer, num_epochs, gdp, save_file,de
 def train_Contrastive(model, data, optimizer, num_epochs, gdp, save_file,
                       masked_features_data, removed_edge_indices,
                       device="cuda", save_dir="contrastive_training",
-                      wandb=None, seed=config["seed"]):
+                      wandb=None, seed=None):
     import copy
+    seed = _resolve_seed(seed)
     set_seed(seed)
     best_loss = float('inf')
     best_accuracy = 0
@@ -433,21 +469,14 @@ def train_Contrastive(model, data, optimizer, num_epochs, gdp, save_file,
                 # View 2: masking edges
                 view_2 = copy.deepcopy(batch)
                 edge_mask = ~torch.isin(view_2.e_id, removed_edge_indices)
-                view_2.edge_index = view_2.edge_index[:, edge_mask]
-                view_2.edge_type = view_2.edge_type[edge_mask]
-                view_2.edge_attr = view_2.edge_attr[edge_mask]
-                view_2.e_id = view_2.e_id[edge_mask]
+                _filter_edges(view_2, edge_mask)
 
                 # Masquer les input_id
                 mask_nodes = torch.isin(batch.n_id, batch.input_id)
 
-                # Encodage + projection (cas TransGCNEncoder ou non)
-                if isinstance(model.encoder, TransGCNEncoder):
-                    H1, _ = model.encoder(view_1)
-                    H2, _ = model.encoder(view_2)
-                else:
-                    H1 = model.encode(view_1)
-                    H2 = model.encode(view_2)
+                # Encodage + projection
+                H1 = _encode_nodes(model, view_1)
+                H2 = _encode_nodes(model, view_2)
                 ##
                 if not isinstance(mask_nodes, torch.Tensor):
                     mask_nodes = torch.tensor(mask_nodes)
@@ -508,7 +537,8 @@ def train_Contrastive(model, data, optimizer, num_epochs, gdp, save_file,
 
 
 def train_Double_Reconstruction(model, data, optimizer,num_epochs,gdp, save_file,device, loss_fct = ["MSE"],
-                           save_dir="train_R_reconstruction", wandb = None, seed = config["seed"]):
+                           save_dir="train_R_reconstruction", wandb = None, seed = None):
+    seed = _resolve_seed(seed)
     best_loss = float('inf')
     best_F1 = 0
     best_accuracy = 0
@@ -552,20 +582,18 @@ def train_Double_Reconstruction(model, data, optimizer,num_epochs,gdp, save_file
                 edges_mask = torch.isin(G2_batch.e_id,batch_matching_e_ids) ## mask pour les edges à supprimer dans le batch
 
                 ## the final masked batch
-                G2_batch.edge_index = G2_batch.edge_index[:,~edges_mask]
-                G2_batch.edge_type = G2_batch.edge_type[~edges_mask]
-                G2_batch.e_id = G2_batch.e_id[~edges_mask]
-
-                removed_batch.edge_index = removed_batch.edge_index[:, edges_mask]
-                removed_batch.edge_type = removed_batch.edge_type[edges_mask]
-                removed_batch.e_id = removed_batch.e_id[edges_mask]
+                _filter_edges(G2_batch, ~edges_mask)
+                _filter_edges(removed_batch, edges_mask)
 
                 #### Features reconstruction
                 n_id_fm = G2_batch.n_id  ## The global node index for every sampled node
                 mask_fm = torch.isin(n_id_fm, G2_batch.input_id)  ## mask to get only the embedding of input_id nodes
                 optimizer.zero_grad()
-                H_2 = model.encode(G2_batch)
-                reconstructed_x = model.decode_x(G2_batch, H_2)
+                H_2, r_embd = _encode(model, G2_batch)
+                if isinstance(model.x_decoder, TransGCNDecoder):
+                    reconstructed_x = model.decode_x(G2_batch, H_2, r_embd)
+                else:
+                    reconstructed_x = model.decode_x(G2_batch, H_2)
                 reconstructed_x = reconstructed_x[mask_fm]
                 ##############################
                 Recons_X_loss = 0.0
@@ -638,7 +666,7 @@ def train_Double_Reconstruction(model, data, optimizer,num_epochs,gdp, save_file
             print("\n")
             print(metrics)
 
-            R_accuracy, R_precision, R_recall, R_f1 = calculate_metrics(all_preds, all_true_labels)
+            R_accuracy, R_precision, R_recall, R_f1 = _calculate_relation_micro_metrics(all_preds, all_true_labels)
             print(f"R_accuracy: {R_accuracy}, R_precision: {R_precision}, R_recall: {R_recall},R_f1: {R_f1}")
 
             if avg_loss < best_loss:
@@ -740,9 +768,7 @@ def train_model(model, data, optimizer, num_epochs, num_bases, out_channels, gdp
                     g2_batch = copy.deepcopy(g_batch)
                     g1_batch.x = masked_features_data.x[g_batch.n_id]
                     edges_mask = ~torch.isin(g2_batch.e_id, removed_edge_indices.to(device))
-                    g2_batch.edge_index = g2_batch.edge_index[:,edges_mask]
-                    g2_batch.e_id = g2_batch.e_id[edges_mask]
-                    g2_batch.edge_type = g2_batch.edge_type[edges_mask]
+                    _filter_edges(g2_batch, edges_mask)
 
 
                     ################################## Verification ###############################
@@ -756,8 +782,8 @@ def train_model(model, data, optimizer, num_epochs, num_bases, out_channels, gdp
                     # print(sorted_g2_batch == sorted_g2_)
                     #################################################################################
                     nodes_mask = torch.isin(g_batch.n_id, g_batch.input_id)
-                    h1_batch = model.encode(g1_batch)
-                    h2_batch = model.encode(g2_batch)
+                    h1_batch = _encode_nodes(model, g1_batch)
+                    h2_batch = _encode_nodes(model, g2_batch)
                     # mask = torch.isin(n_id, batch.input_id) ## select only input_nodes
                     # h1_projected = model.projector_fc1(h1_batch)[mask]
                     # h2_projected = model.projector_fc2(h1_batch)[mask]
@@ -847,15 +873,10 @@ def train_model(model, data, optimizer, num_epochs, num_bases, out_channels, gdp
                     edges_mask = torch.isin(G2_batch.e_id,batch_matching_e_ids) ## mask pour les edges à supprimer dans le batch
 
                     ## the final masked batch
-                    G2_batch.edge_index = G2_batch.edge_index[:,~edges_mask]
-                    G2_batch.edge_type = G2_batch.edge_type[~edges_mask]
-                    G2_batch.e_id = G2_batch.e_id[~edges_mask]
-
-                    removed_batch.edge_index = removed_batch.edge_index[:, edges_mask]
-                    removed_batch.edge_type = removed_batch.edge_type[edges_mask]
-                    removed_batch.e_id = removed_batch.e_id[edges_mask]
+                    _filter_edges(G2_batch, ~edges_mask)
+                    _filter_edges(removed_batch, edges_mask)
                     optimizer.zero_grad()
-                    H_2 = model.encode(G2_batch)
+                    H_2 = _encode_nodes(model, G2_batch)
 
                     # Générer les triplets négatifs et positifs
                     negative_triplets = generate_negatives(data, G2_batch, negative_ratio=1)
@@ -938,7 +959,7 @@ def train_model(model, data, optimizer, num_epochs, num_bases, out_channels, gdp
                     n_id = batch.n_id ## The global node index for every sampled node
                     mask = torch.isin(n_id, batch.input_id) ## mask to get only the embedding of input_id nodes
                     optimizer.zero_grad()
-                    embeddings = model.encode(batch)
+                    embeddings = _encode_nodes(model, batch)
                     reconstructed_x = model.decode_x(batch, embeddings)
                     reconstructed_x = reconstructed_x[mask]
                     cos_loss = similarity_pair_loss(data.x[n_id[mask]], reconstructed_x, embeddings[mask])
@@ -980,7 +1001,7 @@ def train_model(model, data, optimizer, num_epochs, num_bases, out_channels, gdp
                     n_id = batch.n_id  ## The global node index for every sampled node
                     mask = torch.isin(n_id, batch.input_id)  ## mask to get only the embedding of input_id nodes
                     optimizer.zero_grad()
-                    embeddings = model.encode(batch)
+                    embeddings = _encode_nodes(model, batch)
                     # print(batch)
                     reconstructed_x = model.decode_x(batch, embeddings)
                     reconstructed_x = reconstructed_x[mask]
@@ -1018,7 +1039,7 @@ def train_model(model, data, optimizer, num_epochs, num_bases, out_channels, gdp
                     n_id = batch.n_id  ## The global node index for every sampled node
                     mask = torch.isin(n_id, batch.input_id)  ## mask to get only the embedding of input_id nodes
                     optimizer.zero_grad()
-                    embeddings = model.encode(batch)
+                    embeddings = _encode_nodes(model, batch)
                     reconstructed_x = model.decode_x(batch, embeddings)
                     reconstructed_x = reconstructed_x[mask]
                     mse_loss = mse_loss_fnc(data.x[n_id[mask]], reconstructed_x)
@@ -1057,7 +1078,7 @@ def train_model(model, data, optimizer, num_epochs, num_bases, out_channels, gdp
                     n_id = batch.n_id  ## The global node index for every sampled node
                     mask = torch.isin(n_id, batch.input_id)  ## mask to get only the embedding of input_id nodes
                     optimizer.zero_grad()
-                    embeddings = model.encode(batch)
+                    embeddings = _encode_nodes(model, batch)
                     reconstructed_x = model.decode_x(batch, embeddings)
                     reconstructed_x = reconstructed_x[mask]
                     sce_loss = sce_loss_fnc(data.x[n_id[mask]], reconstructed_x)
@@ -1104,8 +1125,8 @@ def train_model(model, data, optimizer, num_epochs, num_bases, out_channels, gdp
                     n_id = batch.n_id  ## The global node index for every sampled node
                     mask = torch.isin(n_id, batch.input_id) ## mask to get only the embedding of input_id nodes
                     optimizer.zero_grad()
-                    cc_embeddings = model.encode(cc_graph)[cc_graph.input_id]
-                    embeddings = model.encode(batch)
+                    cc_embeddings = _encode_nodes(model, cc_graph)[cc_graph.input_id]
+                    embeddings = _encode_nodes(model, batch)
                     reconstructed_x = model.decode_x(batch, embeddings)
                     reconstructed_x = reconstructed_x[mask]
                     mse_loss = mse_loss_fnc(data.x[n_id[mask]], reconstructed_x)
