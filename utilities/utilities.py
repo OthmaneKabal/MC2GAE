@@ -1,4 +1,6 @@
 import json
+import os
+os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
 import pickle
 import torch
 import numpy as np
@@ -62,10 +64,13 @@ def save_to_pickle(save_path, data):
         print("An error occurred while saving the file:", str(e))
         
 def set_seed(seed_value=42):
+    os.environ["PYTHONHASHSEED"] = str(seed_value)
     torch.manual_seed(seed_value)
-    torch.cuda.manual_seed(seed_value)
-    torch.cuda.manual_seed_all(seed_value)  # si vous utilisez multi-GPU
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed_value)
+        torch.cuda.manual_seed_all(seed_value)  # si vous utilisez multi-GPU
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
+    torch.use_deterministic_algorithms(True, warn_only=True)
     np.random.seed(seed_value)
     random.seed(seed_value)

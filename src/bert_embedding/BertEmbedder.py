@@ -1,4 +1,5 @@
 # Import necessary libraries
+import os
 import random
 import torch
 from transformers import BertTokenizer, BertModel, AutoTokenizer, AutoModel
@@ -9,8 +10,10 @@ class BertEmbedder:
     def __init__(self, pretrained_model_name_or_path):
         # Set a fixed random seed for reproducibility
         random_seed = 42
+        os.environ["PYTHONHASHSEED"] = str(random_seed)
         random.seed(random_seed)
         torch.manual_seed(random_seed)
+        torch.use_deterministic_algorithms(True, warn_only=True)
 
         # Enable CUDA if available
         if torch.cuda.is_available():
@@ -24,12 +27,14 @@ class BertEmbedder:
         self.model = AutoModel.from_pretrained(pretrained_model_name_or_path)
         # Move model to GPU if available
         self.model.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+        self.model.eval()
 
     # Method to update tokenizer and model if a different pretrained model name is needed
     def set_pretrained_model_name(self, pretrained_model_name):
         self.tokenizer = BertTokenizer.from_pretrained(pretrained_model_name)
         self.model = BertModel.from_pretrained(pretrained_model_name)
         self.model.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+        self.model.eval()
 
     # Method to generate embedding for a given text entity
     def embed_entity(self, entity):

@@ -1,6 +1,7 @@
 
 import sys
 import os
+os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
 import random
 import torch
 import numpy as np
@@ -40,11 +41,15 @@ def _seed_values(seed_config):
 
 
 def _set_all_seeds(seed):
+    os.environ["PYTHONHASHSEED"] = str(seed)
     torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
     np.random.seed(seed)
     random.seed(seed)
     set_seed(seed)
+    torch.use_deterministic_algorithms(True, warn_only=True)
 
 
 seed = _seed_values(config["seed"])[0]
@@ -73,7 +78,7 @@ def _ensure_seeded_wandb_init():
 
         run_config = kwargs.get("config")
         if isinstance(run_config, dict):
-            kwargs["config"] = {**run_config, "seed": active_seed}
+            kwargs["config"] = {**run_config, "seed": active_seed, "num_steps": config.get("num_steps")}
 
         return original_init(*args, **kwargs)
 
@@ -119,6 +124,7 @@ def main():
     print(data)
     data = data.to(device)
     masked_features_data = None
+    removed_edge_types = None
     removed_edge_indices = None
     # data = Data(x=data.x, edge_index=data.edge_index, edge_type=data.edge_type).to(device)
     for task in config["training_task"]:
@@ -476,6 +482,14 @@ def main():
                         wandb.finish()
 
         elif task == "Recons_R":
+            if removed_edge_indices is None:
+                print("\n--- Preparing relation mask ONCE for relation reconstruction ---\n")
+                _, removed_edge_indices, removed_edge_types = relation_based_edge_dropping_balanced(
+                    data, config["total_drop_rate"], max_drop_fraction_per_node=0.3, random_seed=active_seed
+                )
+                removed_edge_indices = removed_edge_indices.to(device)
+                removed_edge_types = removed_edge_types.to(device)
+
             for out_channels in config["hyperparams_grid"]["out_channels"]:
                 for encoder_ in config["encoders"]:
                     if encoder_ == "RGCN":
@@ -514,7 +528,11 @@ def main():
 
                             local_data = copy.deepcopy(data)
 
-                            performances = train_DisMult(autoencoder, local_data, optimizer, config["num_epochs"],gdp,file_name,device,save_dir=config["root_save_dir"]+"/"+task, wandb=wandb, seed = config["seed"])
+                            performances = train_DisMult(
+                                autoencoder, local_data, optimizer, config["num_epochs"], gdp, file_name, device,
+                                save_dir=config["root_save_dir"]+"/"+task, wandb=wandb, seed=config["seed"],
+                                removed_edge_indices=removed_edge_indices, removed_edge_types=removed_edge_types
+                            )
                             # performances = train_GAE(autoencoder, data, optimizer, config["num_epochs"], gdp,save_file = file_name,
                             #              save_dir=config["root_save_dir"],device = device, wandb=wandb)
                             #
@@ -593,13 +611,29 @@ def main():
                         autoencoder = MRGAE(encoder, x_decoder=None, r_decoder=r_decoder).to(device)
                         optimizer = optim.Adam(autoencoder.parameters(), lr=config["learning_rate"])
 
-                        performances = train_DisMult(autoencoder, data, optimizer, config["num_epochs"], gdp, file_name,
-                                                     device, save_dir=config["root_save_dir"]+"/"+task, wandb=wandb, seed = config["seed"])
+                        performances = train_DisMult(
+                            autoencoder, data, optimizer, config["num_epochs"], gdp, file_name,
+                            device, save_dir=config["root_save_dir"]+"/"+task, wandb=wandb, seed=config["seed"],
+                            removed_edge_indices=removed_edge_indices, removed_edge_types=removed_edge_types
+                        )
                         results.append(performances)
 
                         wandb.finish()
 
         elif task == "Double_reconstruction":
+            if masked_features_data is None:
+                print("\n--- Preparing feature mask ONCE for double reconstruction ---\n")
+                masked_features_data = view_partial_features_masking(
+                    data, max_masking_percentage=config["max_masking_percentage"], random_seed=active_seed
+                )
+            if removed_edge_indices is None:
+                print("\n--- Preparing relation mask ONCE for double reconstruction ---\n")
+                _, removed_edge_indices, removed_edge_types = relation_based_edge_dropping_balanced(
+                    data, config["total_drop_rate"], max_drop_fraction_per_node=0.3, random_seed=active_seed
+                )
+                removed_edge_indices = removed_edge_indices.to(device)
+                removed_edge_types = removed_edge_types.to(device)
+
             for cmb in config["param_combinations"]:
                 if cmb["encoder"] == "GCN":
                     encoder = GCNEncoder(data, cmb["out_channels"], config["num_layers"],
@@ -672,18 +706,25 @@ def main():
                 autoencoder = MRGAE(encoder, x_decoder=decoder, r_decoder=r_decoder).to(device)
                 optimizer = optim.Adam(autoencoder.parameters(), lr=config["learning_rate"])
 
-                performances = train_Double_Reconstruction(autoencoder, local_data, optimizer, config["num_epochs"], gdp, file_name,
-                                             device, save_dir=config["root_save_dir"] + "/" + task, wandb=wandb, seed = config["seed"])
+                performances = train_Double_Reconstruction(
+                    autoencoder, local_data, optimizer, config["num_epochs"], gdp, file_name,
+                    device, save_dir=config["root_save_dir"] + "/" + task, wandb=wandb, seed=config["seed"],
+                    masked_features_data=masked_features_data,
+                    removed_edge_indices=removed_edge_indices,
+                    removed_edge_types=removed_edge_types,
+                )
                 results.append(performances)
 
                 wandb.finish()
 
         elif task == "Contrastive":
-            if masked_features_data is None or removed_edge_indices is None:
-                print("\n--- Preparing views ONCE for contrastive learning ---\n")
+            if masked_features_data is None:
+                print("\n--- Preparing feature mask ONCE for contrastive learning ---\n")
                 masked_features_data = view_partial_features_masking(
                     data, max_masking_percentage=config["max_masking_percentage"], random_seed=active_seed
                 )
+            if removed_edge_indices is None:
+                print("\n--- Preparing relation mask ONCE for contrastive learning ---\n")
                 _, removed_edge_indices, _ = relation_based_edge_dropping_balanced(
                     data, config["total_drop_rate"], max_drop_fraction_per_node=0.3, random_seed=active_seed
                 )
@@ -802,10 +843,11 @@ def main():
                         results.append(performances)
                         wandb.finish()
 
-    df = pd.DataFrame(results)
-    # Sauvegarde en fichier Excel
     os.makedirs(config["root_save_dir"], exist_ok=True)
-    df.to_excel(os.path.join(config["root_save_dir"], f"results_seed_{config['seed']}.xlsx"), index=False)
+    results_path = os.path.join(config["root_save_dir"], f"results_seed_{config['seed']}.xlsx")
+    if results and not os.path.exists(results_path):
+        pd.DataFrame([row for row in results if row]).to_excel(results_path, index=False)
+    print(f"Results saved incrementally in: {results_path}")
 #
 # def main():
 #     print(44)

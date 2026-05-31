@@ -1,5 +1,7 @@
 import sys
 import os
+os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
+from datetime import datetime
 
 from networkx.algorithms.connectivity import edge_augmentation
 
@@ -45,13 +47,17 @@ def _resolve_seed(seed_value=None):
 
 
 seed = _first_seed(config["seed"])
+os.environ["PYTHONHASHSEED"] = str(seed)
 torch.backends.cudnn.benchmark = False
 torch.manual_seed(seed)
-torch.cuda.manual_seed(seed)
+if torch.cuda.is_available():
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
 np.random.seed(seed)
 random.seed(seed)
 set_seed(seed)
 torch.backends.cudnn.deterministic = True
+torch.use_deterministic_algorithms(True, warn_only=True)
 import torch_geometric.transforms as T
 
 
@@ -91,6 +97,104 @@ def _calculate_relation_micro_metrics(predictions, true_labels):
     return accuracy, precision, recall, f1
 
 
+def _max_steps():
+    return config.get("num_steps")
+
+
+def _step_limit_reached(global_step):
+    num_steps = _max_steps()
+    return num_steps is not None and global_step >= num_steps
+
+
+def _wandb_classification_metrics(metrics):
+    logged_metrics = {
+        "accuracy": metrics["accuracy"],
+        "f1-score": metrics["f1_score"],
+        "recall": metrics["recall"],
+        "precision": metrics["precision"],
+    }
+    for average in ["macro", "micro", "weighted"]:
+        logged_metrics[f"f1-{average}"] = metrics.get(f"f1_{average}")
+        logged_metrics[f"precision-{average}"] = metrics.get(f"precision_{average}")
+        logged_metrics[f"recall-{average}"] = metrics.get(f"recall_{average}")
+    logged_metrics["f1-average"] = metrics.get("f1_weighted")
+    logged_metrics["precision-average"] = metrics.get("precision_weighted")
+    logged_metrics["recall-average"] = metrics.get("recall_weighted")
+    return {key: value for key, value in logged_metrics.items() if value is not None}
+
+
+def _results_file_path():
+    seed = config.get("active_seed", config.get("seed"))
+    return os.path.join(config["root_save_dir"], f"results_seed_{seed}.xlsx")
+
+
+def _excel_safe_value(value):
+    if isinstance(value, torch.Tensor):
+        if value.numel() == 1:
+            return value.detach().cpu().item()
+        return value.detach().cpu().tolist()
+    if isinstance(value, np.generic):
+        return value.item()
+    if isinstance(value, (list, tuple, dict)):
+        return str(value)
+    return value
+
+
+def _upsert_result_row(row):
+    results_path = _results_file_path()
+    os.makedirs(os.path.dirname(results_path), exist_ok=True)
+    row = {key: _excel_safe_value(value) for key, value in row.items()}
+
+    if os.path.exists(results_path):
+        try:
+            df = pd.read_excel(results_path)
+        except Exception as exc:
+            print(f"Could not read existing results file {results_path}: {exc}")
+            df = pd.DataFrame()
+    else:
+        df = pd.DataFrame()
+
+    if not df.empty and {"exp_name", "seed"}.issubset(df.columns):
+        mask = (df["exp_name"] == row["exp_name"]) & (df["seed"] == row["seed"])
+        df = df.loc[~mask]
+
+    df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
+    try:
+        df.to_excel(results_path, index=False)
+    except PermissionError:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_path = results_path.replace(".xlsx", f"_autosave_{timestamp}.xlsx")
+        df.to_excel(backup_path, index=False)
+        print(f"Results file is locked, autosaved to: {backup_path}")
+
+
+def _record_best_result(metrics, save_file, epoch, status="abnormal"):
+    seed = config.get("active_seed", config.get("seed"))
+    row = dict(metrics)
+    row.update({
+        "exp_name": save_file,
+        "seed": seed,
+        "status": status,
+        "exp_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "best_epoch": epoch + 1,
+        "num_epochs": config.get("num_epochs"),
+        "num_steps": config.get("num_steps"),
+    })
+    _upsert_result_row(row)
+    return row
+
+
+def _finalize_best_result(best_metrics, save_file):
+    if not best_metrics:
+        return best_metrics
+    row = dict(best_metrics)
+    row["exp_name"] = save_file
+    row["status"] = "normal"
+    row["exp_date"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    _upsert_result_row(row)
+    return row
+
+
 
 
 
@@ -126,7 +230,8 @@ def evaluate_ConvE(model, data, data_loader, test_removed_index, device, relatio
                     H_2,
                     relation_embeddings,
                     batch_size=config["batch_size"] * 3,
-                    shuffle=False
+                    shuffle=False,
+                    seed=_resolve_seed()
                 )
 
                 convE_loss = 0
@@ -145,25 +250,32 @@ def evaluate_ConvE(model, data, data_loader, test_removed_index, device, relatio
                 eval_pbar.update(1)
 
     avg_loss = total_loss / len(data_loader)
-    accuracy = accuracy_score(all_labels, all_preds)
-    recall = recall_score(all_labels, all_preds, average="macro")
-    precision = precision_score(all_labels, all_preds, average="macro")
-    f1 = f1_score(all_labels, all_preds, average="macro")
+    metrics = {
+        "accuracy": accuracy_score(all_labels, all_preds),
+    }
+    for average in ["macro", "micro", "weighted"]:
+        metrics[f"recall_{average}"] = recall_score(all_labels, all_preds, average=average, zero_division=0)
+        metrics[f"precision_{average}"] = precision_score(all_labels, all_preds, average=average, zero_division=0)
+        metrics[f"f1_{average}"] = f1_score(all_labels, all_preds, average=average, zero_division=0)
+    metrics["recall"] = metrics["recall_macro"]
+    metrics["precision"] = metrics["precision_macro"]
+    metrics["f1_score"] = metrics["f1_macro"]
 
     print(
-        f"\nEvaluation Results - Loss: {avg_loss:.4f}, Accuracy: {accuracy:.4f}, Recall: {recall:.4f}, Precision: {precision:.4f}, F1: {f1:.4f}")
+        f"\nEvaluation Results - Loss: {avg_loss:.4f}, Accuracy: {metrics['accuracy']:.4f}, Recall: {metrics['recall']:.4f}, Precision: {metrics['precision']:.4f}, F1: {metrics['f1_score']:.4f}")
 
-    return avg_loss, accuracy, recall, precision, f1
+    return avg_loss, metrics
 
 def train_GAE(model, data, optimizer, num_epochs, gdp,save_file,
                            save_dir="GAE", device = "cuda", wandb = None, seed = 42):
+    seed = _resolve_seed(seed)
 
     best_loss = float('inf')
     best_accuracy = 0
     best_metrics = {}
     set_seed(seed)
     G_data_loader = GraphDataLoader(data, num_neighbors=config["num_neighbors"],
-                                    batch_size=config["batch_size"], shuffle=config["shuffle"]).get_loader()
+                                    batch_size=config["batch_size"], shuffle=config["shuffle"], seed=seed).get_loader()
     G_data_loader.edge_attr = data.edge_attr
     total_loss = 0
     transform_directed_without_split = T.Compose([
@@ -174,8 +286,11 @@ def train_GAE(model, data, optimizer, num_epochs, gdp,save_file,
     print("Negative_sampling ....\n")
     train_data_directed_without_split, val_data_directed_without_split, test_data_directed_without_split = transform_directed_without_split(
         data)
+    global_step = 0
 
     for epoch in range(num_epochs):
+        if _step_limit_reached(global_step):
+            break
         model.train()
 
         with tqdm(total=len(G_data_loader), desc=f"Epoch {epoch + 1}/{num_epochs}", unit="batch") as batch_pbar:
@@ -183,6 +298,7 @@ def train_GAE(model, data, optimizer, num_epochs, gdp,save_file,
             loss = model.recon_loss(z, train_data_directed_without_split.pos_edge_label_index)
             loss.backward()
             optimizer.step()
+            global_step += 1
             total_loss += loss.item()
             batch_pbar.set_postfix(batch_loss=loss.item())
             batch_pbar.update(1)
@@ -206,41 +322,48 @@ def train_GAE(model, data, optimizer, num_epochs, gdp,save_file,
                 save_model(model, optimizer, epoch, save_dir=save_dir, file_name=save_file, is_best_acc=False)
 
                 print(f'Model saved with Accuracy: {best_accuracy:.4f}\n')
-                best_metrics = metrics
-            wandb.log({"epoch": epoch + 1, "loss": avg_loss,
-                       "accuracy": metrics["accuracy"], "f1-score": metrics["f1_score"],
-                       "recall": metrics["recall"], "precision": metrics["precision"], })
-    best_metrics["exp_name"] = save_file
-    return best_metrics
+                best_metrics = _record_best_result(metrics, save_file, epoch, status="abnormal")
+            wandb.log({"epoch": epoch + 1, "step": global_step, "loss": avg_loss,
+                       **_wandb_classification_metrics(metrics)})
+    return _finalize_best_result(best_metrics, save_file)
 
 
 
 
 def train_DisMult(model, data, optimizer,num_epochs,gdp, save_file,device,
-                           save_dir="train_R_reconstruction", wandb = None, seed = None):
+                           save_dir="train_R_reconstruction", wandb = None, seed = None,
+                           removed_edge_indices=None, removed_edge_types=None):
     seed = _resolve_seed(seed)
     best_loss = float('inf')
     best_F1 = 0
     best_accuracy = 0
     best_metrics = {}
     best_epoch = 0
-    print("\nRelations_dripping (Masking)...\n")
-    masked_edges_data, removed_edge_indices, removed_edge_types = relation_based_edge_dropping_balanced(data, config[
-        "total_drop_rate"], max_drop_fraction_per_node=0.3, random_seed=42)
+    if removed_edge_indices is None:
+        print("\nRelations_dripping (Masking)...\n")
+        _, removed_edge_indices, removed_edge_types = relation_based_edge_dropping_balanced(data, config[
+            "total_drop_rate"], max_drop_fraction_per_node=0.3, random_seed=seed)
+    else:
+        print("\nUsing precomputed relation mask...\n")
     removed_edge_indices = removed_edge_indices.to(device)
-    removed_edge_types = removed_edge_types.to(device)
+    if removed_edge_types is not None:
+        removed_edge_types = removed_edge_types.to(device)
 
     set_seed(seed)
     G_data_loader = GraphDataLoader(data, num_neighbors=config["num_neighbors"],
-                                    batch_size=config["batch_size"], shuffle=config["shuffle"]).get_loader()
+                                    batch_size=config["batch_size"], shuffle=config["shuffle"], seed=seed).get_loader()
     G_data_loader.edge_attr = data.edge_attr
     set_seed(seed)
+    global_step = 0
 
     for epoch in range(num_epochs):
+        if _step_limit_reached(global_step):
+            break
         model.train()
         total_loss = 0
         all_preds = []
         all_true_labels = []
+        steps_this_epoch = 0
         with tqdm(total=len(G_data_loader), desc=f"Epoch {epoch + 1}/{num_epochs}", unit="batch") as main_pbar:
 
             for G2_batch in G_data_loader:
@@ -301,11 +424,15 @@ def train_DisMult(model, data, optimizer,num_epochs,gdp, save_file,device,
                        F.binary_cross_entropy_with_logits(neg_scores, torch.zeros_like(neg_scores))
                 loss.backward()
                 optimizer.step()
+                global_step += 1
+                steps_this_epoch += 1
                 total_loss += loss.item()
                 main_pbar.update(1)
+                if _step_limit_reached(global_step):
+                    break
 
 
-            avg_loss = total_loss / len(G_data_loader)
+            avg_loss = total_loss / max(steps_this_epoch, 1)
             print("Evaluation\n")
             # metrics = evaluate(model, data, config["Gs_path_no_other"], config["core_concepts"], gdp)
             metrics = evaluate(model, data, config["Gs_path_no_other"], config["core_concepts"], gdp, config)
@@ -322,17 +449,21 @@ def train_DisMult(model, data, optimizer,num_epochs,gdp, save_file,device,
                 print(f'Model saved with Avg Loss: {best_loss:.4f}\n')
             if metrics["accuracy"] > best_accuracy:
                 best_accuracy = metrics["accuracy"]
-                best_metrics = metrics
+                best_metrics = _record_best_result({
+                    **metrics,
+                    "R_accuracy": R_accuracy,
+                    "R_precision": R_precision,
+                    "R_recall": R_recall,
+                    "R_f1": R_f1,
+                }, save_file, epoch, status="abnormal")
                 save_model(model, optimizer, epoch, save_dir=save_dir,file_name= save_file , is_best_acc=True)
                 print(f'Model saved with Accuracy: {best_accuracy:.4f}\n')
-            wandb.log({"epoch": epoch + 1, "loss": avg_loss,
-                       "accuracy": metrics["accuracy"], "f1-score": metrics["f1_score"],
-                       "recall": metrics["recall"], "precision": metrics["precision"],
+            wandb.log({"epoch": epoch + 1, "step": global_step, "loss": avg_loss,
+                       **_wandb_classification_metrics(metrics),
                        "R_accuracy": R_accuracy, "R_precision": R_precision,
                        "R_recall": R_recall, "R_f1": R_f1,})
 
-    best_metrics["exp_name"] = save_file
-    return best_metrics
+    return _finalize_best_result(best_metrics, save_file)
 
 
 
@@ -347,13 +478,17 @@ def train_X_reconstruction(model, data ,optimizer, num_epochs, gdp, save_file,de
     best_metrics = {}
     best_epoch = 0
     print("\nmask_features...\n")
-    masked_features_data = view_partial_features_masking(data, max_masking_percentage=config["max_masking_percentage"])
+    masked_features_data = view_partial_features_masking(data, max_masking_percentage=config["max_masking_percentage"],
+                                                         random_seed=seed)
     set_seed(seed)
     G1_data_loader = GraphDataLoader(masked_features_data, num_neighbors=config["num_neighbors"],
-                                     batch_size=config["batch_size"], shuffle=config["shuffle"]).get_loader()
+                                     batch_size=config["batch_size"], shuffle=config["shuffle"], seed=seed).get_loader()
     G1_data_loader.edge_attr = masked_features_data.edge_attr
     set_seed(seed)
+    global_step = 0
     for epoch in range(num_epochs):
+        if _step_limit_reached(global_step):
+            break
         model.train()
         total_loss = 0
         if "MSE" in loss_fct:
@@ -362,6 +497,7 @@ def train_X_reconstruction(model, data ,optimizer, num_epochs, gdp, save_file,de
             total_cos_loss = 0
         if "SCE" in loss_fct:
             total_sce_loss = 0
+        steps_this_epoch = 0
 
         print("\nMSE_Recons_X\n")
         with tqdm(total=len(G1_data_loader), desc=f"Epoch {epoch + 1}/{num_epochs}",
@@ -401,10 +537,14 @@ def train_X_reconstruction(model, data ,optimizer, num_epochs, gdp, save_file,de
                 loss = total_loss
                 loss.backward()
                 optimizer.step()
+                global_step += 1
+                steps_this_epoch += 1
                 total_loss += loss.item()
                 batch_pbar.set_postfix(batch_loss=loss.item())
                 batch_pbar.update(1)
-            avg_loss = total_loss / len(G1_data_loader)
+                if _step_limit_reached(global_step):
+                    break
+            avg_loss = total_loss / max(steps_this_epoch, 1)
 
             print("Evaluation\n")
             metrics = evaluate(model, data, config["Gs_path_no_other"], config["core_concepts"], gdp, config)
@@ -417,18 +557,16 @@ def train_X_reconstruction(model, data ,optimizer, num_epochs, gdp, save_file,de
                 print(f'Model saved with Avg Loss: {best_loss:.4f}\n')
             if metrics["accuracy"] > best_accuracy:
                 best_accuracy = metrics["accuracy"]
-                best_metrics = metrics
+                best_metrics = _record_best_result(metrics, save_file, epoch, status="abnormal")
                 # best_epoch = epoch
                 # save_model_with_hyperparams(model, optimizer, epoch, num_bases, out_channels, save_dir=save_dir,
                 #                             is_best_acc=True)
                 save_model(model, optimizer, epoch, save_dir=save_dir,file_name= save_file , is_best_acc=True)
                 print(f'Model saved with Accuracy: {best_accuracy:.4f}\n')
-            wandb.log({"epoch": epoch + 1, "mce loss": avg_loss,
-                       "accuracy": metrics["accuracy"], "f1-score": metrics["f1_score"],
-                       "recall": metrics["recall"], "precision": metrics["precision"], })
+            wandb.log({"epoch": epoch + 1, "step": global_step, "mce loss": avg_loss,
+                       **_wandb_classification_metrics(metrics)})
 
-    best_metrics["exp_name"] = save_file
-    return best_metrics
+    return _finalize_best_result(best_metrics, save_file)
 
 
 def train_Contrastive(model, data, optimizer, num_epochs, gdp, save_file,
@@ -451,11 +589,15 @@ def train_Contrastive(model, data, optimizer, num_epochs, gdp, save_file,
     removed_edge_indices = removed_edge_indices.to(device)
 
     G_data_loader = GraphDataLoader(data, num_neighbors=config["num_neighbors"],
-                                    batch_size=config["batch_size"], shuffle=config["shuffle"]).get_loader()
+                                    batch_size=config["batch_size"], shuffle=config["shuffle"], seed=seed).get_loader()
+    global_step = 0
 
     for epoch in range(num_epochs):
+        if _step_limit_reached(global_step):
+            break
         model.train()
         total_loss = 0
+        steps_this_epoch = 0
 
         with tqdm(total=len(G_data_loader), desc=f"Epoch {epoch + 1}/{num_epochs}", unit="batch") as pbar:
             for batch in G_data_loader:
@@ -500,12 +642,16 @@ def train_Contrastive(model, data, optimizer, num_epochs, gdp, save_file,
 
                 c_loss.backward()
                 optimizer.step()
+                global_step += 1
+                steps_this_epoch += 1
                 total_loss += c_loss.item()
 
                 pbar.set_postfix(loss=c_loss.item())
                 pbar.update(1)
+                if _step_limit_reached(global_step):
+                    break
 
-        avg_loss = total_loss / len(G_data_loader)
+        avg_loss = total_loss / max(steps_this_epoch, 1)
 
         print("\n--- Evaluation ---")
         metrics = evaluate(model, data, config["Gs_path_no_other"], config["core_concepts"], gdp, config)
@@ -518,50 +664,62 @@ def train_Contrastive(model, data, optimizer, num_epochs, gdp, save_file,
 
         if metrics["accuracy"] > best_accuracy:
             best_accuracy = metrics["accuracy"]
-            best_metrics = metrics
+            best_metrics = _record_best_result(metrics, save_file, epoch, status="abnormal")
             save_model(model, optimizer, epoch, save_dir=save_dir, file_name=save_file, is_best_acc=True)
             print(f"Model saved with best accuracy: {best_accuracy:.4f}")
 
         if wandb is not None:
             wandb.log({
                 "epoch": epoch + 1,
+                "step": global_step,
                 "contrastive_loss": avg_loss,
-                "accuracy": metrics["accuracy"],
-                "f1-score": metrics["f1_score"],
-                "recall": metrics["recall"],
-                "precision": metrics["precision"]
+                **_wandb_classification_metrics(metrics)
             })
 
-    best_metrics["exp_name"] = save_file
-    return best_metrics
+    return _finalize_best_result(best_metrics, save_file)
 
 
 def train_Double_Reconstruction(model, data, optimizer,num_epochs,gdp, save_file,device, loss_fct = ["MSE"],
-                           save_dir="train_R_reconstruction", wandb = None, seed = None):
+                           save_dir="train_R_reconstruction", wandb = None, seed = None,
+                           masked_features_data=None, removed_edge_indices=None, removed_edge_types=None):
     seed = _resolve_seed(seed)
     best_loss = float('inf')
     best_F1 = 0
     best_accuracy = 0
     best_metrics = {}
     best_epoch = 0
-    print("\nRelations_dripping (Masking)...\n")
-    masked_features_data = view_partial_features_masking(data, max_masking_percentage=config["max_masking_percentage"])
-    masked_edges_data, removed_edge_indices, removed_edge_types = relation_based_edge_dropping_balanced(data, config[
-        "total_drop_rate"], max_drop_fraction_per_node=0.3, random_seed=42)
+    if masked_features_data is None:
+        print("\nmask_features...\n")
+        masked_features_data = view_partial_features_masking(data, max_masking_percentage=config["max_masking_percentage"],
+                                                             random_seed=seed)
+    else:
+        print("\nUsing precomputed feature mask...\n")
+
+    if removed_edge_indices is None:
+        print("\nRelations_dripping (Masking)...\n")
+        _, removed_edge_indices, removed_edge_types = relation_based_edge_dropping_balanced(data, config[
+            "total_drop_rate"], max_drop_fraction_per_node=0.3, random_seed=seed)
+    else:
+        print("\nUsing precomputed relation mask...\n")
     removed_edge_indices = removed_edge_indices.to(device)
-    removed_edge_types = removed_edge_types.to(device)
+    if removed_edge_types is not None:
+        removed_edge_types = removed_edge_types.to(device)
 
     set_seed(seed)
     G_data_loader = GraphDataLoader(masked_features_data, num_neighbors=config["num_neighbors"],
-                                    batch_size=config["batch_size"], shuffle=config["shuffle"]).get_loader()
+                                    batch_size=config["batch_size"], shuffle=config["shuffle"], seed=seed).get_loader()
     G_data_loader.data.edge_attr = data.edge_attr
+    global_step = 0
     for epoch in range(num_epochs):
+        if _step_limit_reached(global_step):
+            break
         model.train()
         total_loss = 0
         total_Recons_X_loss = 0
         total_R_loss = 0
         all_preds = []
         all_true_labels = []
+        steps_this_epoch = 0
         with tqdm(total=len(G_data_loader), desc=f"Epoch {epoch + 1}/{num_epochs}", unit="batch") as main_pbar:
 
             for G2_batch in G_data_loader:
@@ -651,14 +809,18 @@ def train_Double_Reconstruction(model, data, optimizer,num_epochs,gdp, save_file
 
                 loss.backward()
                 optimizer.step()
+                global_step += 1
+                steps_this_epoch += 1
                 total_loss += loss.item()
                 total_R_loss += loss_R.item()
                 total_Recons_X_loss += Recons_X_loss
                 main_pbar.update(1)
+                if _step_limit_reached(global_step):
+                    break
 
-            avg_R_loss = total_R_loss / len(G_data_loader)
-            avg_Recons_X_loss = total_Recons_X_loss / len(G_data_loader)
-            avg_loss = total_loss / len(G_data_loader)
+            avg_R_loss = total_R_loss / max(steps_this_epoch, 1)
+            avg_Recons_X_loss = total_Recons_X_loss / max(steps_this_epoch, 1)
+            avg_loss = total_loss / max(steps_this_epoch, 1)
             print("Evaluation\n")
             # metrics = evaluate(model, data, config["Gs_path_no_other"], config["core_concepts"], gdp)
             metrics = evaluate(model, data, config["Gs_path_no_other"], config["core_concepts"], gdp, config)
@@ -675,17 +837,23 @@ def train_Double_Reconstruction(model, data, optimizer,num_epochs,gdp, save_file
                 print(f'Model saved with Avg Loss: {best_loss:.4f}\n')
             if metrics["accuracy"] > best_accuracy:
                 best_accuracy = metrics["accuracy"]
-                best_metrics = metrics
+                best_metrics = _record_best_result({
+                    **metrics,
+                    "R_accuracy": R_accuracy,
+                    "R_precision": R_precision,
+                    "R_recall": R_recall,
+                    "R_f1": R_f1,
+                    "R_loss": avg_R_loss,
+                    "X_loss": avg_Recons_X_loss,
+                }, save_file, epoch, status="abnormal")
                 save_model(model, optimizer, epoch, save_dir=save_dir,file_name= save_file , is_best_acc=True)
                 print(f'Model saved with Accuracy: {best_accuracy:.4f}\n')
-            wandb.log({"epoch": epoch + 1, "total_loss": avg_loss,
-                       "accuracy": metrics["accuracy"], "f1-score": metrics["f1_score"],
-                       "recall": metrics["recall"], "precision": metrics["precision"],
+            wandb.log({"epoch": epoch + 1, "step": global_step, "total_loss": avg_loss,
+                       **_wandb_classification_metrics(metrics),
                        "R_accuracy": R_accuracy, "R_precision": R_precision,
                        "R_recall": R_recall, "R_f1": R_f1, "R_loss": avg_R_loss, "X_loss" : avg_Recons_X_loss})
 
-    best_metrics["exp_name"] = save_file
-    return best_metrics
+    return _finalize_best_result(best_metrics, save_file)
 
 
 
@@ -701,19 +869,21 @@ def train_Double_Reconstruction(model, data, optimizer,num_epochs,gdp, save_file
 # Fonction d'entraînement avec suivi de la perte dans wandb
 def train_model(model, data, optimizer, num_epochs, num_bases, out_channels, gdp,
                            save_dir="ckpt_", training_options = "Reconstruct_X_MSE", device = "cuda", wandb = None, split = False, seed = 42):
+    seed = _resolve_seed(seed)
 
-    unique_relations = list(set([i.item() for i in data.edge_type]))
+    unique_relations = sorted({i.item() for i in data.edge_type})
     relation_embeddings = generate_relation_embeddings_tensor(unique_relations, out_channels[-1], device,
-                                                              seed=42)
+                                                              seed=seed)
 
     best_loss = float('inf')
     best_F1 = 0
     best_accuracy = 0
     # Application du masque de features
     print("\nmask_features...\n")
-    masked_features_data= view_partial_features_masking(data, max_masking_percentage = config["max_masking_percentage"])
+    masked_features_data= view_partial_features_masking(data, max_masking_percentage = config["max_masking_percentage"],
+                                                        random_seed=seed)
     print("\nRelations_dripping (Masking)...\n")
-    masked_edges_data, removed_edge_indices, removed_edge_types  = relation_based_edge_dropping_balanced(data, config["total_drop_rate"], max_drop_fraction_per_node=0.3, random_seed=42)
+    masked_edges_data, removed_edge_indices, removed_edge_types  = relation_based_edge_dropping_balanced(data, config["total_drop_rate"], max_drop_fraction_per_node=0.3, random_seed=seed)
     removed_edge_indices = removed_edge_indices.to(device)
     removed_edge_types = removed_edge_types.to(device)
 
@@ -726,18 +896,18 @@ def train_model(model, data, optimizer, num_epochs, num_bases, out_channels, gdp
 
     set_seed(seed)
     G1_data_loader = GraphDataLoader(masked_features_data, num_neighbors=config["num_neighbors"],
-                                     batch_size=config["batch_size"], shuffle=config["shuffle"]).get_loader()
+                                     batch_size=config["batch_size"], shuffle=config["shuffle"], seed=seed).get_loader()
 
     set_seed(seed)
     G_data_loader = GraphDataLoader(data, num_neighbors=config["num_neighbors"],
-                                     batch_size=config["batch_size"], shuffle=config["shuffle"]).get_loader()
+                                     batch_size=config["batch_size"], shuffle=config["shuffle"], seed=seed).get_loader()
     set_seed(seed)
     G2_data_loader = GraphDataLoader(masked_edges_data, num_neighbors=config["num_neighbors"],
-                                     batch_size=config["batch_size"], shuffle=config["shuffle"]).get_loader()
+                                     batch_size=config["batch_size"], shuffle=config["shuffle"], seed=seed).get_loader()
     set_seed(seed)
     cc_indexes = gdp.get_list_indexes(config["core_concepts"])
     cc_data_loader = GraphDataLoader(data, num_neighbors=config["num_neighbors"], batch_size=len(cc_indexes),
-                                     shuffle=config["shuffle"], input_nodes = cc_indexes).get_loader()
+                                     shuffle=config["shuffle"], seed=seed, input_nodes = cc_indexes).get_loader()
     gs_terms = pd.read_excel(config["Gs_path_no_other"], sheet_name='Sheet1')
     gs_terms_indexes = gdp.get_list_indexes(list(gs_terms['term']))
 
@@ -824,8 +994,7 @@ def train_model(model, data, optimizer, num_epochs, num_bases, out_channels, gdp
                                                 is_best_acc=True)
                     print(f'Model saved with Accuracy: {best_accuracy:.4f}\n')
                 wandb.log({"epoch": epoch + 1, "contrastive loss": avg_loss,
-                           "accuracy": metrics["accuracy"], "f1-score": metrics["f1_score"],
-                           "recall": metrics["recall"], "precision": metrics["precision"], })
+                           **_wandb_classification_metrics(metrics)})
 
 
                     # G1_batch.to(device)
@@ -890,7 +1059,7 @@ def train_model(model, data, optimizer, num_epochs, num_bases, out_channels, gdp
 
                 #     # Créer le DataLoader pour les batchs ConvE
                     convE_loader = create_data_loader(all_positive_triplets, all_negative_triplets, H_2, relation_embeddings,
-                                                      config["batch_size"]*3, shuffle=True)
+                                                      config["batch_size"]*3, shuffle=True, seed=seed)
 
                     convE_loss = 0
                     convE_batches_processed = 0
@@ -937,13 +1106,14 @@ def train_model(model, data, optimizer, num_epochs, num_bases, out_channels, gdp
                     shuffle=False
                 )
 
-                test_avg_loss, test_accuracy, test_recall, test_precision, test_f1 = evaluate_ConvE(model, data, test_data_loader, test_removed_edges_indices, device, relation_embeddings)
+                test_avg_loss, test_metrics = evaluate_ConvE(model, data, test_data_loader, test_removed_edges_indices, device, relation_embeddings)
+                test_f1 = test_metrics["f1_score"]
+                test_accuracy = test_metrics["accuracy"]
 
 
                 if "reconstruct_r" in training_options and len(training_options) == 1:
                     wandb.log({"epoch": epoch + 1, "train_loss": avg_loss, "train_accuracy": accuracy_train, "f1_train": f1_train, "test_loss": test_avg_loss,
-                               "test_accuracy": test_accuracy,"test_recall": test_recall,
-                               "test_precision": test_precision, "test_f1": test_f1})
+                               **{f"test_{key}": value for key, value in _wandb_classification_metrics(test_metrics).items()}})
                 if test_f1 > best_F1:
                     best_F1 = test_f1
                     save_model_with_hyperparams(model, optimizer, epoch, num_bases, out_channels, save_dir=save_dir,
@@ -989,8 +1159,7 @@ def train_model(model, data, optimizer, num_epochs, num_bases, out_channels, gdp
                     print(f'Model saved with Accuracy: {best_accuracy:.4f}\n')
                 wandb.log(
                     {"epoch": epoch + 1, "global loss": avg_loss, "mse_loss": avg_mse_loss, "cos_loss": avg_cos_loss,
-                     "accuracy": metrics["accuracy"], "f1-score": metrics["f1_score"],
-                     "recall": metrics["recall"], "precision": metrics["precision"],
+                     **_wandb_classification_metrics(metrics),
                      })
 
         elif "SCE_Recons_X" in training_options and len(training_options) == 1:
@@ -1027,8 +1196,7 @@ def train_model(model, data, optimizer, num_epochs, num_bases, out_channels, gdp
                                                 is_best_acc=True)
                     print(f'Model saved with Accuracy: {best_accuracy:.4f}\n')
                 wandb.log({"epoch": epoch + 1, "sce loss": avg_loss,
-                           "accuracy": metrics["accuracy"], "f1-score": metrics["f1_score"],
-                           "recall": metrics["recall"], "precision": metrics["precision"], })
+                           **_wandb_classification_metrics(metrics)})
 
         elif "MSE_Recons_X" in training_options and len(training_options) == 1:
             print("\nMSE_Recons_X\n")
@@ -1066,8 +1234,7 @@ def train_model(model, data, optimizer, num_epochs, num_bases, out_channels, gdp
                                                 is_best_acc=True)
                     print(f'Model saved with Accuracy: {best_accuracy:.4f}\n')
                 wandb.log({"epoch": epoch + 1, "mce loss": avg_loss,
-                           "accuracy": metrics["accuracy"], "f1-score": metrics["f1_score"],
-                           "recall": metrics["recall"], "precision": metrics["precision"], })
+                           **_wandb_classification_metrics(metrics)})
 
 
         elif "MSE_Recons_X"  in training_options and "SCE_Recons_X" in training_options:
@@ -1109,8 +1276,7 @@ def train_model(model, data, optimizer, num_epochs, num_bases, out_channels, gdp
                     print(f'Model saved with Accuracy: {best_accuracy:.4f}\n')
                 wandb.log(
                     {"epoch": epoch + 1, "global loss": avg_loss, "mse_loss": avg_mse_loss, "sce_loss": total_sce_loss,
-                     "accuracy": metrics["accuracy"], "f1-score": metrics["f1_score"],
-                     "recall": metrics["recall"], "precision": metrics["precision"],
+                     **_wandb_classification_metrics(metrics),
                      })
 
         elif "MSE_Recons_X"  in training_options and "clustering_obj" in training_options:
@@ -1195,8 +1361,7 @@ def train_model(model, data, optimizer, num_epochs, num_bases, out_channels, gdp
                     print(f'Model saved with Accuracy: {best_accuracy:.4f}\n')
                 wandb.log(
                     {"epoch": epoch + 1, "global loss": avg_loss, "mse_loss": avg_mse_loss, "intra_cluster_loss": avg_intra_cluster_loss,
-                     "inter_cluster_loss": avg_inter_cluster_loss, "accuracy": metrics["accuracy"], "f1-score": metrics["f1_score"],
-                     "Recall": metrics["recall"], "precision": metrics["precision"],
+                     "inter_cluster_loss": avg_inter_cluster_loss, **_wandb_classification_metrics(metrics),
                      })
 
 

@@ -36,7 +36,7 @@ class TripletDataset(Dataset):
 
 
 def create_data_loader(positive_triplets, negative_triplets, entity_embeddings, relation_embeddings, batch_size,
-                       shuffle=True):
+                       shuffle=True, seed=42):
     """
     Creates a DataLoader for the ConvE model.
 
@@ -51,5 +51,7 @@ def create_data_loader(positive_triplets, negative_triplets, entity_embeddings, 
         DataLoader: DataLoader for training the ConvE model.
     """
     dataset = TripletDataset(positive_triplets, negative_triplets, entity_embeddings, relation_embeddings)
-    data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
+    generator = torch.Generator()
+    generator.manual_seed(seed)
+    data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, generator=generator)
     return data_loader

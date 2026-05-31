@@ -32,11 +32,14 @@ class GraphDataLoader:
         random.seed(self.seed)
         np.random.seed(self.seed)
         torch.manual_seed(self.seed)
+        generator = torch.Generator()
+        generator.manual_seed(self.seed)
         loader = NeighborLoader(
         self.data,
         num_neighbors=self.num_neighbors,
         batch_size=self.batch_size,
         input_nodes= self.input_nodes,  # Entiers pour input_nodes
-        shuffle=self.shuffle
+        shuffle=self.shuffle,
+        generator=generator,
         )
         return loader

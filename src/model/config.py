@@ -4,7 +4,7 @@ import re
 import torch
 config = {
     "device": "cuda" if torch.cuda.is_available() else "cpu", #
-    "seed": [0],
+    "seed": [0,42,123],
     "num_layers": 2,
     "alpha": 0.01,
     "max_masking_percentage": 0.3,
@@ -15,7 +15,8 @@ config = {
     # "cosine_loss_weight": 0.5,
     "shuffle": False,
     "num_neighbors": [200,200],
-    "num_epochs": 50,
+    "num_epochs": 2,
+    "num_steps": 10,
     "kg_score_fn":'TransE',
     "variant":'conv',
     "use_edges_info":True,
@@ -133,6 +134,5 @@ run_suffix = re.sub(r"[^A-Za-z0-9_.-]+", "_", f"{graph_name}_{task_name}").strip
 
 config["wandb_project_name"] = f"Experiments_{run_suffix}"
 config["root_save_dir"] = f"ckpt_{run_suffix}"
-
 
 

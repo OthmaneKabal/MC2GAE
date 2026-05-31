@@ -19,8 +19,9 @@ def view_partial_features_masking(data, max_masking_percentage=0.3, random_seed=
 
     device = data.x.device
     torch.manual_seed(random_seed)
-    if device == "cuda":
+    if device.type == "cuda":
         torch.cuda.manual_seed_all(random_seed)
+    generator = torch.Generator(device="cpu").manual_seed(random_seed)
 
     data.x = data.x.to(device)
     data.edge_index = data.edge_index.to(device)
@@ -33,22 +34,22 @@ def view_partial_features_masking(data, max_masking_percentage=0.3, random_seed=
     num_nodes, num_features = data.x.shape
 
     # Générer un taux de masquage aléatoire pour chaque nœud entre 0 et max_masking_percentage
-    node_masking_ratios = (torch.rand(num_nodes, device=device) * max_masking_percentage)
+    node_masking_ratios = torch.rand(num_nodes, generator=generator) * max_masking_percentage
 
     # Créer un masque exact pour chaque nœud
-    mask = torch.ones((num_nodes, num_features), device=device)
+    mask = torch.ones((num_nodes, num_features))
     for i in range(num_nodes):
         # Calculer le nombre exact de caractéristiques à masquer pour le nœud i
         num_features_to_mask = int(num_features * node_masking_ratios[i].item())
 
         # Choisir aléatoirement les indices des caractéristiques à masquer
-        mask_indices = torch.randperm(num_features, device=device)[:num_features_to_mask]
+        mask_indices = torch.randperm(num_features, generator=generator)[:num_features_to_mask]
 
         # Appliquer le masquage aux indices sélectionnés
         mask[i, mask_indices] = 0
 
     # Appliquer le masque aux caractéristiques pour obtenir la vue partiellement masquée
-    masked_x = data.x * mask
+    masked_x = data.x * mask.to(device)
 
     # Créer une copie de data pour la vue augmentée avec les caractéristiques masquées
     data_augmented = data.clone()
@@ -71,8 +72,9 @@ def relation_based_edge_dropping_balanced(data, total_drop_rate, max_drop_fracti
     # Créer des copies pour éviter de modifier l'objet data original
     device = data.x.device
     torch.manual_seed(random_seed)
-    if device == "cuda":
+    if device.type == "cuda":
         torch.cuda.manual_seed_all(random_seed)
+    generator = torch.Generator(device="cpu").manual_seed(random_seed)
 
     assert 0 <= total_drop_rate <= 1, "total_drop_rate doit être entre 0 et 1"
     assert 0 <= max_drop_fraction_per_node <= 1, "max_drop_fraction_per_node doit être entre 0 et 1"
@@ -104,7 +106,7 @@ def relation_based_edge_dropping_balanced(data, total_drop_rate, max_drop_fracti
         indices_to_remove = []
 
         while len(indices_to_remove) < edges_to_drop and edge_indices_of_type:
-            candidate = edge_indices_of_type.pop(torch.randint(0, len(edge_indices_of_type), (1,)).item())
+            candidate = edge_indices_of_type.pop(torch.randint(0, len(edge_indices_of_type), (1,), generator=generator).item())
 
             # Vérifier la contrainte de suppression par nœud
             src, dst = edge_index[:, candidate]
