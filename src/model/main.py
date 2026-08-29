@@ -66,7 +66,11 @@ _wandb_disabled = os.environ.get("WANDB_DISABLED", "").lower() in ("1", "true", 
 if _wandb_mode:
     os.environ["WANDB_MODE"] = str(_wandb_mode)
 if not _wandb_disabled:
-    wandb.require("legacy-service")
+    if hasattr(wandb, "require"):
+        try:
+            wandb.require("legacy-service")
+        except Exception as exc:
+            print(f"wandb.require('legacy-service') skipped: {exc}")
     if os.environ.get("WANDB_MODE", "").lower() != "offline":
         wandb.login(key="c278e62d2025b60ff8b984a40f7b62b697f9b4fd", relogin=True)
 
