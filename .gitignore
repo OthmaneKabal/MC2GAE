@@ -1,0 +1,69 @@
+# Python/cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# IDE/local environment
+.idea/
+.vscode/
+.env
+.env.*
+venv/
+.venv/
+env/
+
+# Heavy/generated model artifacts
+outputs/
+src/outputs/
+src/model/outputs/
+ckpt*/
+src/model/ckpt*/
+checkpoints/
+**/checkpoints/
+*.pt
+*.pth
+*.ckpt
+*.pickle
+*.pkl
+
+# Experiment logs and dashboards
+wandb/
+**/wandb/
+analysis/
+randomness_diagnostic/
+
+# Experiment result tables and incremental DBs
+*.xlsx
+*.xls
+*.csv
+*.jsonl
+models.txt
+
+# Large/local data folders
+data/dbpedia_174/
+
+# Keep selected lightweight JSON data needed for the masking study if explicitly added
+!data/UMLS/noisy/org/GT2KG_mapped_and_old_rel_norm.json
+!data/UMLS/noisy/org/SM_network.json
+!data/UMLS/noisy/org/SM_domain_range_constraints.json
+
+# Keep masking study scripts and empty folder structure, ignore generated run outputs
+!masking_study/
+!masking_study/*.py
+!masking_study/*.ps1
+!masking_study/**/.gitkeep
+masking_study/**/runs/
+masking_study/**/*_plan.json
+masking_study/**/*.csv
+masking_study/**/*.jsonl
+
+# Baseline helper scripts are allowed, but generated baseline outputs are ignored
+!baseline_experiments/
+!baseline_experiments/*.py
+baseline_experiments/runs/
+baseline_experiments/*.csv
+baseline_experiments/*.jsonl

@@ -57,6 +57,44 @@ def view_partial_features_masking(data, max_masking_percentage=0.3, random_seed=
 
     return data_augmented
 
+
+def random_edge_dropping(data, total_drop_rate, random_seed=42):
+    device = data.x.device
+    generator = torch.Generator(device="cpu").manual_seed(random_seed)
+
+    assert 0 <= total_drop_rate <= 1, "total_drop_rate doit etre entre 0 et 1"
+
+    total_edges = data.edge_index.size(1)
+    num_edges_to_drop = int(total_edges * total_drop_rate)
+    if num_edges_to_drop <= 0:
+        removed_edge_indices = torch.empty(0, dtype=torch.long, device=device)
+    else:
+        removed_edge_indices = torch.randperm(total_edges, generator=generator)[:num_edges_to_drop].to(device)
+
+    keep_mask = torch.ones(total_edges, dtype=torch.bool, device=device)
+    keep_mask[removed_edge_indices] = False
+    keep_edge_indices = torch.where(keep_mask)[0]
+    removed_edge_types = data.edge_type[removed_edge_indices]
+
+    new_data_kwargs = {
+        "x": data.x,
+        "edge_index": data.edge_index[:, keep_edge_indices],
+        "edge_type": data.edge_type[keep_edge_indices],
+        "edge_attr": data.edge_attr[keep_edge_indices] if data.edge_attr is not None else None,
+    }
+    if hasattr(data, "edge_old_type") and data.edge_old_type is not None:
+        new_data_kwargs["edge_old_type"] = data.edge_old_type[keep_edge_indices]
+    if hasattr(data, "edge_is_mapped") and data.edge_is_mapped is not None:
+        new_data_kwargs["edge_is_mapped"] = data.edge_is_mapped[keep_edge_indices]
+    if hasattr(data, "num_edge_types"):
+        new_data_kwargs["num_edge_types"] = data.num_edge_types
+    if hasattr(data, "num_old_edge_types"):
+        new_data_kwargs["num_old_edge_types"] = data.num_old_edge_types
+
+    new_data = Data(**new_data_kwargs)
+    return new_data, removed_edge_indices, removed_edge_types
+
+
 ## without_limite_per_type
 def relation_based_edge_dropping_balanced(data, total_drop_rate, max_drop_fraction_per_node=0.3, random_seed=42):
 
@@ -133,14 +171,24 @@ def relation_based_edge_dropping_balanced(data, total_drop_rate, max_drop_fracti
     removed_edge_types = edge_type[removed_edge_indices]
 
     # Création d'un nouvel objet Data avec les arêtes mises à jour
-    new_data = Data(
-        x=data.x,  # Copie des nœuds
-        edge_index=edge_index[:, keep_edge_indices],  # Arêtes mises à jour
-        edge_type=edge_type[keep_edge_indices],  # Types d'arêtes mis à jour
-        edge_attr= data.edge_attr[keep_edge_indices]
-    )
+    new_data_kwargs = {
+        "x": data.x,
+        "edge_index": edge_index[:, keep_edge_indices],
+        "edge_type": edge_type[keep_edge_indices],
+        "edge_attr": data.edge_attr[keep_edge_indices] if data.edge_attr is not None else None,
+    }
+    if hasattr(data, "edge_old_type") and data.edge_old_type is not None:
+        new_data_kwargs["edge_old_type"] = data.edge_old_type[keep_edge_indices]
+    if hasattr(data, "edge_is_mapped") and data.edge_is_mapped is not None:
+        new_data_kwargs["edge_is_mapped"] = data.edge_is_mapped[keep_edge_indices]
+    if hasattr(data, "num_edge_types"):
+        new_data_kwargs["num_edge_types"] = data.num_edge_types
+    if hasattr(data, "num_old_edge_types"):
+        new_data_kwargs["num_old_edge_types"] = data.num_old_edge_types
 
-    return new_data, torch.tensor(removed_edge_indices), removed_edge_types
+    new_data = Data(**new_data_kwargs)
+
+    return new_data, torch.tensor(removed_edge_indices, dtype=torch.long, device=device), removed_edge_types
 
 ### with limit per type
 def relation_based_edge_dropping_balanced_type(data, total_drop_rate, max_drop_fraction_per_node=0.3, type_limite=0.3,

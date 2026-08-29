@@ -1,0 +1,2707 @@
+[
+  {
+    "subject": "Acquired Abnormality",
+    "predicate": "co-occurs_with",
+    "object": "Injury or Poisoning"
+  },
+  {
+    "subject": "Acquired Abnormality",
+    "predicate": "isa",
+    "object": "Anatomical Abnormality"
+  },
+  {
+    "subject": "Acquired Abnormality",
+    "predicate": "result_of",
+    "object": "Behavior"
+  },
+  {
+    "subject": "Activity",
+    "predicate": "isa",
+    "object": "Event"
+  },
+  {
+    "subject": "Age Group",
+    "predicate": "isa",
+    "object": "Group"
+  },
+  {
+    "subject": "Amino Acid Sequence",
+    "predicate": "isa",
+    "object": "Molecular Sequence"
+  },
+  {
+    "subject": "Amino Acid Sequence",
+    "predicate": "property_of",
+    "object": "Amino Acid, Peptide, or Protein"
+  },
+  {
+    "subject": "Amino Acid Sequence",
+    "predicate": "property_of",
+    "object": "Gene or Genome"
+  },
+  {
+    "subject": "Amino Acid, Peptide, or Protein",
+    "predicate": "consists_of",
+    "object": "Amino Acid, Peptide, or Protein"
+  },
+  {
+    "subject": "Amino Acid, Peptide, or Protein",
+    "predicate": "isa",
+    "object": "Organic Chemical"
+  },
+  {
+    "subject": "Amphibian",
+    "predicate": "isa",
+    "object": "Vertebrate"
+  },
+  {
+    "subject": "Anatomical Abnormality",
+    "predicate": "affects",
+    "object": "Organism"
+  },
+  {
+    "subject": "Anatomical Abnormality",
+    "predicate": "affects",
+    "object": "Physiologic Function"
+  },
+  {
+    "subject": "Anatomical Abnormality",
+    "predicate": "associated_with",
+    "object": "Organism Attribute"
+  },
+  {
+    "subject": "Anatomical Abnormality",
+    "predicate": "co-occurs_with",
+    "object": "Anatomical Abnormality"
+  },
+  {
+    "subject": "Anatomical Abnormality",
+    "predicate": "complicates",
+    "object": "Anatomical Abnormality"
+  },
+  {
+    "subject": "Anatomical Abnormality",
+    "predicate": "isa",
+    "object": "Anatomical Structure"
+  },
+  {
+    "subject": "Anatomical Abnormality",
+    "predicate": "location_of",
+    "object": "Pathologic Function"
+  },
+  {
+    "subject": "Anatomical Abnormality",
+    "predicate": "manifestation_of",
+    "object": "Biologic Function"
+  },
+  {
+    "subject": "Anatomical Abnormality",
+    "predicate": "occurs_in",
+    "object": "Group"
+  },
+  {
+    "subject": "Anatomical Abnormality",
+    "predicate": "result_of",
+    "object": "Anatomical Abnormality"
+  },
+  {
+    "subject": "Anatomical Abnormality",
+    "predicate": "result_of",
+    "object": "Health Care Activity"
+  },
+  {
+    "subject": "Anatomical Abnormality",
+    "predicate": "result_of",
+    "object": "Phenomenon or Process"
+  },
+  {
+    "subject": "Anatomical Structure",
+    "predicate": "isa",
+    "object": "Physical Object"
+  },
+  {
+    "subject": "Anatomical Structure",
+    "predicate": "location_of",
+    "object": "Bacterium"
+  },
+  {
+    "subject": "Anatomical Structure",
+    "predicate": "location_of",
+    "object": "Fungus"
+  },
+  {
+    "subject": "Anatomical Structure",
+    "predicate": "location_of",
+    "object": "Virus"
+  },
+  {
+    "subject": "Anatomical Structure",
+    "predicate": "part_of",
+    "object": "Organism"
+  },
+  {
+    "subject": "Animal",
+    "predicate": "exhibits",
+    "object": "Behavior"
+  },
+  {
+    "subject": "Animal",
+    "predicate": "isa",
+    "object": "Eukaryote"
+  },
+  {
+    "subject": "Antibiotic",
+    "predicate": "isa",
+    "object": "Pharmacologic Substance"
+  },
+  {
+    "subject": "Archaeon",
+    "predicate": "isa",
+    "object": "Organism"
+  },
+  {
+    "subject": "Bacterium",
+    "predicate": "causes",
+    "object": "Pathologic Function"
+  },
+  {
+    "subject": "Bacterium",
+    "predicate": "isa",
+    "object": "Organism"
+  },
+  {
+    "subject": "Bacterium",
+    "predicate": "location_of",
+    "object": "Biologically Active Substance"
+  },
+  {
+    "subject": "Behavior",
+    "predicate": "affects",
+    "object": "Behavior"
+  },
+  {
+    "subject": "Behavior",
+    "predicate": "affects",
+    "object": "Mental Process"
+  },
+  {
+    "subject": "Behavior",
+    "predicate": "associated_with",
+    "object": "Geographic Area"
+  },
+  {
+    "subject": "Behavior",
+    "predicate": "associated_with",
+    "object": "Group Attribute"
+  },
+  {
+    "subject": "Behavior",
+    "predicate": "associated_with",
+    "object": "Group"
+  },
+  {
+    "subject": "Behavior",
+    "predicate": "associated_with",
+    "object": "Occupation or Discipline"
+  },
+  {
+    "subject": "Behavior",
+    "predicate": "associated_with",
+    "object": "Organism Attribute"
+  },
+  {
+    "subject": "Behavior",
+    "predicate": "isa",
+    "object": "Activity"
+  },
+  {
+    "subject": "Behavior",
+    "predicate": "manifestation_of",
+    "object": "Mental Process"
+  },
+  {
+    "subject": "Behavior",
+    "predicate": "manifestation_of",
+    "object": "Mental or Behavioral Dysfunction"
+  },
+  {
+    "subject": "Behavior",
+    "predicate": "result_of",
+    "object": "Mental Process"
+  },
+  {
+    "subject": "Biologic Function",
+    "predicate": "affects",
+    "object": "Organism"
+  },
+  {
+    "subject": "Biologic Function",
+    "predicate": "isa",
+    "object": "Natural Phenomenon or Process"
+  },
+  {
+    "subject": "Biologic Function",
+    "predicate": "process_of",
+    "object": "Organism"
+  },
+  {
+    "subject": "Biologic Function",
+    "predicate": "produces",
+    "object": "Biologically Active Substance"
+  },
+  {
+    "subject": "Biologic Function",
+    "predicate": "produces",
+    "object": "Body Substance"
+  },
+  {
+    "subject": "Biologically Active Substance",
+    "predicate": "associated_with",
+    "object": "Virus"
+  },
+  {
+    "subject": "Biologically Active Substance",
+    "predicate": "complicates",
+    "object": "Anatomical Abnormality"
+  },
+  {
+    "subject": "Biologically Active Substance",
+    "predicate": "complicates",
+    "object": "Biologic Function"
+  },
+  {
+    "subject": "Biologically Active Substance",
+    "predicate": "complicates",
+    "object": "Injury or Poisoning"
+  },
+  {
+    "subject": "Biologically Active Substance",
+    "predicate": "disrupts",
+    "object": "Embryonic Structure"
+  },
+  {
+    "subject": "Biologically Active Substance",
+    "predicate": "disrupts",
+    "object": "Fully Formed Anatomical Structure"
+  },
+  {
+    "subject": "Biologically Active Substance",
+    "predicate": "disrupts",
+    "object": "Physiologic Function"
+  },
+  {
+    "subject": "Biologically Active Substance",
+    "predicate": "isa",
+    "object": "Chemical Viewed Functionally"
+  },
+  {
+    "subject": "Biomedical Occupation or Discipline",
+    "predicate": "isa",
+    "object": "Occupation or Discipline"
+  },
+  {
+    "subject": "Biomedical or Dental Material",
+    "predicate": "isa",
+    "object": "Chemical Viewed Functionally"
+  },
+  {
+    "subject": "Bird",
+    "predicate": "isa",
+    "object": "Vertebrate"
+  },
+  {
+    "subject": "Body Location or Region",
+    "predicate": "adjacent_to",
+    "object": "Body Location or Region"
+  },
+  {
+    "subject": "Body Location or Region",
+    "predicate": "adjacent_to",
+    "object": "Body Part, Organ, or Organ Component"
+  },
+  {
+    "subject": "Body Location or Region",
+    "predicate": "adjacent_to",
+    "object": "Body Space or Junction"
+  },
+  {
+    "subject": "Body Location or Region",
+    "predicate": "conceptual_part_of",
+    "object": "Body Location or Region"
+  },
+  {
+    "subject": "Body Location or Region",
+    "predicate": "conceptual_part_of",
+    "object": "Body System"
+  },
+  {
+    "subject": "Body Location or Region",
+    "predicate": "conceptual_part_of",
+    "object": "Fully Formed Anatomical Structure"
+  },
+  {
+    "subject": "Body Location or Region",
+    "predicate": "connected_to",
+    "object": "Body Location or Region"
+  },
+  {
+    "subject": "Body Location or Region",
+    "predicate": "isa",
+    "object": "Spatial Concept"
+  },
+  {
+    "subject": "Body Location or Region",
+    "predicate": "location_of",
+    "object": "Anatomical Abnormality"
+  },
+  {
+    "subject": "Body Location or Region",
+    "predicate": "location_of",
+    "object": "Biologic Function"
+  },
+  {
+    "subject": "Body Location or Region",
+    "predicate": "location_of",
+    "object": "Body Location or Region"
+  },
+  {
+    "subject": "Body Location or Region",
+    "predicate": "location_of",
+    "object": "Body Part, Organ, or Organ Component"
+  },
+  {
+    "subject": "Body Location or Region",
+    "predicate": "location_of",
+    "object": "Diagnostic Procedure"
+  },
+  {
+    "subject": "Body Location or Region",
+    "predicate": "location_of",
+    "object": "Injury or Poisoning"
+  },
+  {
+    "subject": "Body Location or Region",
+    "predicate": "location_of",
+    "object": "Therapeutic or Preventive Procedure"
+  },
+  {
+    "subject": "Body Location or Region",
+    "predicate": "location_of",
+    "object": "Tissue"
+  },
+  {
+    "subject": "Body Location or Region",
+    "predicate": "traverses",
+    "object": "Body Location or Region"
+  },
+  {
+    "subject": "Body Part, Organ, or Organ Component",
+    "predicate": "adjacent_to",
+    "object": "Body Part, Organ, or Organ Component"
+  },
+  {
+    "subject": "Body Part, Organ, or Organ Component",
+    "predicate": "adjacent_to",
+    "object": "Body Space or Junction"
+  },
+  {
+    "subject": "Body Part, Organ, or Organ Component",
+    "predicate": "adjacent_to",
+    "object": "Cell"
+  },
+  {
+    "subject": "Body Part, Organ, or Organ Component",
+    "predicate": "adjacent_to",
+    "object": "Tissue"
+  },
+  {
+    "subject": "Body Part, Organ, or Organ Component",
+    "predicate": "branch_of",
+    "object": "Body Part, Organ, or Organ Component"
+  },
+  {
+    "subject": "Body Part, Organ, or Organ Component",
+    "predicate": "conceptual_part_of",
+    "object": "Body System"
+  },
+  {
+    "subject": "Body Part, Organ, or Organ Component",
+    "predicate": "connected_to",
+    "object": "Body Part, Organ, or Organ Component"
+  },
+  {
+    "subject": "Body Part, Organ, or Organ Component",
+    "predicate": "connected_to",
+    "object": "Body Space or Junction"
+  },
+  {
+    "subject": "Body Part, Organ, or Organ Component",
+    "predicate": "connected_to",
+    "object": "Body Substance"
+  },
+  {
+    "subject": "Body Part, Organ, or Organ Component",
+    "predicate": "connected_to",
+    "object": "Tissue"
+  },
+  {
+    "subject": "Body Part, Organ, or Organ Component",
+    "predicate": "consists_of",
+    "object": "Body Part, Organ, or Organ Component"
+  },
+  {
+    "subject": "Body Part, Organ, or Organ Component",
+    "predicate": "consists_of",
+    "object": "Body Substance"
+  },
+  {
+    "subject": "Body Part, Organ, or Organ Component",
+    "predicate": "developmental_form_of",
+    "object": "Body Part, Organ, or Organ Component"
+  },
+  {
+    "subject": "Body Part, Organ, or Organ Component",
+    "predicate": "interconnects",
+    "object": "Body Space or Junction"
+  },
+  {
+    "subject": "Body Part, Organ, or Organ Component",
+    "predicate": "isa",
+    "object": "Fully Formed Anatomical Structure"
+  },
+  {
+    "subject": "Body Part, Organ, or Organ Component",
+    "predicate": "location_of",
+    "object": "Body Location or Region"
+  },
+  {
+    "subject": "Body Part, Organ, or Organ Component",
+    "predicate": "location_of",
+    "object": "Body Space or Junction"
+  },
+  {
+    "subject": "Body Part, Organ, or Organ Component",
+    "predicate": "location_of",
+    "object": "Diagnostic Procedure"
+  },
+  {
+    "subject": "Body Part, Organ, or Organ Component",
+    "predicate": "location_of",
+    "object": "Therapeutic or Preventive Procedure"
+  },
+  {
+    "subject": "Body Part, Organ, or Organ Component",
+    "predicate": "part_of",
+    "object": "Body Part, Organ, or Organ Component"
+  },
+  {
+    "subject": "Body Part, Organ, or Organ Component",
+    "predicate": "surrounds",
+    "object": "Body Part, Organ, or Organ Component"
+  },
+  {
+    "subject": "Body Part, Organ, or Organ Component",
+    "predicate": "surrounds",
+    "object": "Tissue"
+  },
+  {
+    "subject": "Body Part, Organ, or Organ Component",
+    "predicate": "traverses",
+    "object": "Body Part, Organ, or Organ Component"
+  },
+  {
+    "subject": "Body Part, Organ, or Organ Component",
+    "predicate": "tributary_of",
+    "object": "Body Part, Organ, or Organ Component"
+  },
+  {
+    "subject": "Body Space or Junction",
+    "predicate": "adjacent_to",
+    "object": "Body Space or Junction"
+  },
+  {
+    "subject": "Body Space or Junction",
+    "predicate": "conceptual_part_of",
+    "object": "Body System"
+  },
+  {
+    "subject": "Body Space or Junction",
+    "predicate": "conceptual_part_of",
+    "object": "Fully Formed Anatomical Structure"
+  },
+  {
+    "subject": "Body Space or Junction",
+    "predicate": "connected_to",
+    "object": "Tissue"
+  },
+  {
+    "subject": "Body Space or Junction",
+    "predicate": "contains",
+    "object": "Body Part, Organ, or Organ Component"
+  },
+  {
+    "subject": "Body Space or Junction",
+    "predicate": "contains",
+    "object": "Body Substance"
+  },
+  {
+    "subject": "Body Space or Junction",
+    "predicate": "contains",
+    "object": "Tissue"
+  },
+  {
+    "subject": "Body Space or Junction",
+    "predicate": "interconnects",
+    "object": "Cell"
+  },
+  {
+    "subject": "Body Space or Junction",
+    "predicate": "isa",
+    "object": "Spatial Concept"
+  },
+  {
+    "subject": "Body Space or Junction",
+    "predicate": "location_of",
+    "object": "Anatomical Abnormality"
+  },
+  {
+    "subject": "Body Space or Junction",
+    "predicate": "location_of",
+    "object": "Biologic Function"
+  },
+  {
+    "subject": "Body Space or Junction",
+    "predicate": "location_of",
+    "object": "Body Space or Junction"
+  },
+  {
+    "subject": "Body Space or Junction",
+    "predicate": "location_of",
+    "object": "Body Substance"
+  },
+  {
+    "subject": "Body Space or Junction",
+    "predicate": "location_of",
+    "object": "Cell Component"
+  },
+  {
+    "subject": "Body Space or Junction",
+    "predicate": "location_of",
+    "object": "Diagnostic Procedure"
+  },
+  {
+    "subject": "Body Space or Junction",
+    "predicate": "location_of",
+    "object": "Injury or Poisoning"
+  },
+  {
+    "subject": "Body Space or Junction",
+    "predicate": "location_of",
+    "object": "Therapeutic or Preventive Procedure"
+  },
+  {
+    "subject": "Body Space or Junction",
+    "predicate": "part_of",
+    "object": "Body Part, Organ, or Organ Component"
+  },
+  {
+    "subject": "Body Space or Junction",
+    "predicate": "surrounds",
+    "object": "Body Space or Junction"
+  },
+  {
+    "subject": "Body Space or Junction",
+    "predicate": "surrounds",
+    "object": "Cell"
+  },
+  {
+    "subject": "Body Substance",
+    "predicate": "conceptual_part_of",
+    "object": "Body System"
+  },
+  {
+    "subject": "Body Substance",
+    "predicate": "consists_of",
+    "object": "Body Substance"
+  },
+  {
+    "subject": "Body Substance",
+    "predicate": "consists_of",
+    "object": "Organic Chemical"
+  },
+  {
+    "subject": "Body Substance",
+    "predicate": "derivative_of",
+    "object": "Tissue"
+  },
+  {
+    "subject": "Body Substance",
+    "predicate": "isa",
+    "object": "Substance"
+  },
+  {
+    "subject": "Body Substance",
+    "predicate": "part_of",
+    "object": "Body Part, Organ, or Organ Component"
+  },
+  {
+    "subject": "Body Substance",
+    "predicate": "part_of",
+    "object": "Body Substance"
+  },
+  {
+    "subject": "Body Substance",
+    "predicate": "surrounds",
+    "object": "Embryonic Structure"
+  },
+  {
+    "subject": "Body System",
+    "predicate": "conceptual_part_of",
+    "object": "Body System"
+  },
+  {
+    "subject": "Body System",
+    "predicate": "conceptual_part_of",
+    "object": "Fully Formed Anatomical Structure"
+  },
+  {
+    "subject": "Body System",
+    "predicate": "isa",
+    "object": "Functional Concept"
+  },
+  {
+    "subject": "Carbohydrate Sequence",
+    "predicate": "isa",
+    "object": "Molecular Sequence"
+  },
+  {
+    "subject": "Cell Component",
+    "predicate": "adjacent_to",
+    "object": "Body Space or Junction"
+  },
+  {
+    "subject": "Cell Component",
+    "predicate": "adjacent_to",
+    "object": "Cell Component"
+  },
+  {
+    "subject": "Cell Component",
+    "predicate": "affects",
+    "object": "Physiologic Function"
+  },
+  {
+    "subject": "Cell Component",
+    "predicate": "conceptual_part_of",
+    "object": "Body System"
+  },
+  {
+    "subject": "Cell Component",
+    "predicate": "isa",
+    "object": "Fully Formed Anatomical Structure"
+  },
+  {
+    "subject": "Cell Component",
+    "predicate": "location_of",
+    "object": "Body Space or Junction"
+  },
+  {
+    "subject": "Cell Component",
+    "predicate": "location_of",
+    "object": "Diagnostic Procedure"
+  },
+  {
+    "subject": "Cell Component",
+    "predicate": "location_of",
+    "object": "Therapeutic or Preventive Procedure"
+  },
+  {
+    "subject": "Cell Component",
+    "predicate": "part_of",
+    "object": "Body Part, Organ, or Organ Component"
+  },
+  {
+    "subject": "Cell Component",
+    "predicate": "part_of",
+    "object": "Cell Component"
+  },
+  {
+    "subject": "Cell Component",
+    "predicate": "part_of",
+    "object": "Cell"
+  },
+  {
+    "subject": "Cell Component",
+    "predicate": "part_of",
+    "object": "Tissue"
+  },
+  {
+    "subject": "Cell Component",
+    "predicate": "surrounds",
+    "object": "Cell Component"
+  },
+  {
+    "subject": "Cell Function",
+    "predicate": "isa",
+    "object": "Physiologic Function"
+  },
+  {
+    "subject": "Cell or Molecular Dysfunction",
+    "predicate": "isa",
+    "object": "Pathologic Function"
+  },
+  {
+    "subject": "Cell",
+    "predicate": "adjacent_to",
+    "object": "Cell"
+  },
+  {
+    "subject": "Cell",
+    "predicate": "conceptual_part_of",
+    "object": "Body System"
+  },
+  {
+    "subject": "Cell",
+    "predicate": "consists_of",
+    "object": "Cell"
+  },
+  {
+    "subject": "Cell",
+    "predicate": "developmental_form_of",
+    "object": "Cell"
+  },
+  {
+    "subject": "Cell",
+    "predicate": "isa",
+    "object": "Fully Formed Anatomical Structure"
+  },
+  {
+    "subject": "Cell",
+    "predicate": "location_of",
+    "object": "Body Space or Junction"
+  },
+  {
+    "subject": "Cell",
+    "predicate": "location_of",
+    "object": "Diagnostic Procedure"
+  },
+  {
+    "subject": "Cell",
+    "predicate": "location_of",
+    "object": "Therapeutic or Preventive Procedure"
+  },
+  {
+    "subject": "Cell",
+    "predicate": "part_of",
+    "object": "Body Part, Organ, or Organ Component"
+  },
+  {
+    "subject": "Cell",
+    "predicate": "part_of",
+    "object": "Cell"
+  },
+  {
+    "subject": "Cell",
+    "predicate": "part_of",
+    "object": "Tissue"
+  },
+  {
+    "subject": "Chemical Viewed Functionally",
+    "predicate": "isa",
+    "object": "Chemical"
+  },
+  {
+    "subject": "Chemical Viewed Structurally",
+    "predicate": "isa",
+    "object": "Chemical"
+  },
+  {
+    "subject": "Chemical",
+    "predicate": "affects",
+    "object": "Natural Phenomenon or Process"
+  },
+  {
+    "subject": "Chemical",
+    "predicate": "interacts_with",
+    "object": "Chemical"
+  },
+  {
+    "subject": "Chemical",
+    "predicate": "isa",
+    "object": "Substance"
+  },
+  {
+    "subject": "Classification",
+    "predicate": "isa",
+    "object": "Intellectual Product"
+  },
+  {
+    "subject": "Clinical Attribute",
+    "predicate": "isa",
+    "object": "Organism Attribute"
+  },
+  {
+    "subject": "Clinical Drug",
+    "predicate": "isa",
+    "object": "Manufactured Object"
+  },
+  {
+    "subject": "Conceptual Entity",
+    "predicate": "isa",
+    "object": "Entity"
+  },
+  {
+    "subject": "Congenital Abnormality",
+    "predicate": "isa",
+    "object": "Anatomical Abnormality"
+  },
+  {
+    "subject": "Daily or Recreational Activity",
+    "predicate": "associated_with",
+    "object": "Anatomical Abnormality"
+  },
+  {
+    "subject": "Daily or Recreational Activity",
+    "predicate": "associated_with",
+    "object": "Injury or Poisoning"
+  },
+  {
+    "subject": "Daily or Recreational Activity",
+    "predicate": "associated_with",
+    "object": "Pathologic Function"
+  },
+  {
+    "subject": "Daily or Recreational Activity",
+    "predicate": "isa",
+    "object": "Activity"
+  },
+  {
+    "subject": "Diagnostic Procedure",
+    "predicate": "affects",
+    "object": "Patient or Disabled Group"
+  },
+  {
+    "subject": "Diagnostic Procedure",
+    "predicate": "analyzes",
+    "object": "Body Substance"
+  },
+  {
+    "subject": "Diagnostic Procedure",
+    "predicate": "analyzes",
+    "object": "Chemical"
+  },
+  {
+    "subject": "Diagnostic Procedure",
+    "predicate": "assesses_effect_of",
+    "object": "Chemical"
+  },
+  {
+    "subject": "Diagnostic Procedure",
+    "predicate": "diagnoses",
+    "object": "Anatomical Abnormality"
+  },
+  {
+    "subject": "Diagnostic Procedure",
+    "predicate": "diagnoses",
+    "object": "Injury or Poisoning"
+  },
+  {
+    "subject": "Diagnostic Procedure",
+    "predicate": "diagnoses",
+    "object": "Pathologic Function"
+  },
+  {
+    "subject": "Diagnostic Procedure",
+    "predicate": "isa",
+    "object": "Health Care Activity"
+  },
+  {
+    "subject": "Diagnostic Procedure",
+    "predicate": "measures",
+    "object": "Body Substance"
+  },
+  {
+    "subject": "Diagnostic Procedure",
+    "predicate": "measures",
+    "object": "Chemical"
+  },
+  {
+    "subject": "Diagnostic Procedure",
+    "predicate": "measures",
+    "object": "Natural Phenomenon or Process"
+  },
+  {
+    "subject": "Diagnostic Procedure",
+    "predicate": "measures",
+    "object": "Organism Attribute"
+  },
+  {
+    "subject": "Diagnostic Procedure",
+    "predicate": "measures",
+    "object": "Quantitative Concept"
+  },
+  {
+    "subject": "Diagnostic Procedure",
+    "predicate": "measures",
+    "object": "Temporal Concept"
+  },
+  {
+    "subject": "Diagnostic Procedure",
+    "predicate": "method_of",
+    "object": "Diagnostic Procedure"
+  },
+  {
+    "subject": "Diagnostic Procedure",
+    "predicate": "precedes",
+    "object": "Therapeutic or Preventive Procedure"
+  },
+  {
+    "subject": "Diagnostic Procedure",
+    "predicate": "uses",
+    "object": "Manufactured Object"
+  },
+  {
+    "subject": "Diagnostic Procedure",
+    "predicate": "uses",
+    "object": "Pharmacologic Substance"
+  },
+  {
+    "subject": "Disease or Syndrome",
+    "predicate": "conceptually_related_to",
+    "object": "Experimental Model of Disease"
+  },
+  {
+    "subject": "Disease or Syndrome",
+    "predicate": "isa",
+    "object": "Pathologic Function"
+  },
+  {
+    "subject": "Disease or Syndrome",
+    "predicate": "produces",
+    "object": "Tissue"
+  },
+  {
+    "subject": "Drug Delivery Device",
+    "predicate": "contains",
+    "object": "Clinical Drug"
+  },
+  {
+    "subject": "Drug Delivery Device",
+    "predicate": "isa",
+    "object": "Medical Device"
+  },
+  {
+    "subject": "Educational Activity",
+    "predicate": "isa",
+    "object": "Occupational Activity"
+  },
+  {
+    "subject": "Element, Ion, or Isotope",
+    "predicate": "isa",
+    "object": "Chemical Viewed Structurally"
+  },
+  {
+    "subject": "Embryonic Structure",
+    "predicate": "contains",
+    "object": "Body Substance"
+  },
+  {
+    "subject": "Embryonic Structure",
+    "predicate": "developmental_form_of",
+    "object": "Body Part, Organ, or Organ Component"
+  },
+  {
+    "subject": "Embryonic Structure",
+    "predicate": "developmental_form_of",
+    "object": "Cell"
+  },
+  {
+    "subject": "Embryonic Structure",
+    "predicate": "developmental_form_of",
+    "object": "Embryonic Structure"
+  },
+  {
+    "subject": "Embryonic Structure",
+    "predicate": "developmental_form_of",
+    "object": "Tissue"
+  },
+  {
+    "subject": "Embryonic Structure",
+    "predicate": "interconnects",
+    "object": "Embryonic Structure"
+  },
+  {
+    "subject": "Embryonic Structure",
+    "predicate": "isa",
+    "object": "Anatomical Structure"
+  },
+  {
+    "subject": "Embryonic Structure",
+    "predicate": "location_of",
+    "object": "Biologic Function"
+  },
+  {
+    "subject": "Embryonic Structure",
+    "predicate": "part_of",
+    "object": "Cell"
+  },
+  {
+    "subject": "Embryonic Structure",
+    "predicate": "part_of",
+    "object": "Embryonic Structure"
+  },
+  {
+    "subject": "Embryonic Structure",
+    "predicate": "surrounds",
+    "object": "Cell"
+  },
+  {
+    "subject": "Embryonic Structure",
+    "predicate": "surrounds",
+    "object": "Embryonic Structure"
+  },
+  {
+    "subject": "Entity",
+    "predicate": "issue_in",
+    "object": "Occupation or Discipline"
+  },
+  {
+    "subject": "Environmental Effect of Humans",
+    "predicate": "isa",
+    "object": "Human-caused Phenomenon or Process"
+  },
+  {
+    "subject": "Enzyme",
+    "predicate": "isa",
+    "object": "Biologically Active Substance"
+  },
+  {
+    "subject": "Eukaryote",
+    "predicate": "isa",
+    "object": "Organism"
+  },
+  {
+    "subject": "Event",
+    "predicate": "issue_in",
+    "object": "Occupation or Discipline"
+  },
+  {
+    "subject": "Experimental Model of Disease",
+    "predicate": "isa",
+    "object": "Pathologic Function"
+  },
+  {
+    "subject": "Family Group",
+    "predicate": "isa",
+    "object": "Group"
+  },
+  {
+    "subject": "Finding",
+    "predicate": "associated_with",
+    "object": "Anatomical Abnormality"
+  },
+  {
+    "subject": "Finding",
+    "predicate": "associated_with",
+    "object": "Injury or Poisoning"
+  },
+  {
+    "subject": "Finding",
+    "predicate": "associated_with",
+    "object": "Pathologic Function"
+  },
+  {
+    "subject": "Finding",
+    "predicate": "co-occurs_with",
+    "object": "Finding"
+  },
+  {
+    "subject": "Finding",
+    "predicate": "evaluation_of",
+    "object": "Biologic Function"
+  },
+  {
+    "subject": "Finding",
+    "predicate": "evaluation_of",
+    "object": "Organism Attribute"
+  },
+  {
+    "subject": "Finding",
+    "predicate": "isa",
+    "object": "Conceptual Entity"
+  },
+  {
+    "subject": "Finding",
+    "predicate": "manifestation_of",
+    "object": "Anatomical Abnormality"
+  },
+  {
+    "subject": "Finding",
+    "predicate": "manifestation_of",
+    "object": "Biologic Function"
+  },
+  {
+    "subject": "Finding",
+    "predicate": "manifestation_of",
+    "object": "Injury or Poisoning"
+  },
+  {
+    "subject": "Fish",
+    "predicate": "isa",
+    "object": "Vertebrate"
+  },
+  {
+    "subject": "Food",
+    "predicate": "affects",
+    "object": "Biologic Function"
+  },
+  {
+    "subject": "Food",
+    "predicate": "isa",
+    "object": "Substance"
+  },
+  {
+    "subject": "Fully Formed Anatomical Structure",
+    "predicate": "contains",
+    "object": "Body Substance"
+  },
+  {
+    "subject": "Fully Formed Anatomical Structure",
+    "predicate": "isa",
+    "object": "Anatomical Structure"
+  },
+  {
+    "subject": "Fully Formed Anatomical Structure",
+    "predicate": "location_of",
+    "object": "Anatomical Abnormality"
+  },
+  {
+    "subject": "Fully Formed Anatomical Structure",
+    "predicate": "location_of",
+    "object": "Biologic Function"
+  },
+  {
+    "subject": "Fully Formed Anatomical Structure",
+    "predicate": "location_of",
+    "object": "Injury or Poisoning"
+  },
+  {
+    "subject": "Fully Formed Anatomical Structure",
+    "predicate": "produces",
+    "object": "Biologically Active Substance"
+  },
+  {
+    "subject": "Fully Formed Anatomical Structure",
+    "predicate": "produces",
+    "object": "Body Substance"
+  },
+  {
+    "subject": "Fully Formed Anatomical Structure",
+    "predicate": "produces",
+    "object": "Organic Chemical"
+  },
+  {
+    "subject": "Functional Concept",
+    "predicate": "isa",
+    "object": "Idea or Concept"
+  },
+  {
+    "subject": "Fungus",
+    "predicate": "causes",
+    "object": "Pathologic Function"
+  },
+  {
+    "subject": "Fungus",
+    "predicate": "isa",
+    "object": "Eukaryote"
+  },
+  {
+    "subject": "Fungus",
+    "predicate": "location_of",
+    "object": "Biologically Active Substance"
+  },
+  {
+    "subject": "Gene or Genome",
+    "predicate": "affects",
+    "object": "Physiologic Function"
+  },
+  {
+    "subject": "Gene or Genome",
+    "predicate": "carries_out",
+    "object": "Molecular Function"
+  },
+  {
+    "subject": "Gene or Genome",
+    "predicate": "consists_of",
+    "object": "Gene or Genome"
+  },
+  {
+    "subject": "Gene or Genome",
+    "predicate": "isa",
+    "object": "Fully Formed Anatomical Structure"
+  },
+  {
+    "subject": "Gene or Genome",
+    "predicate": "part_of",
+    "object": "Body Part, Organ, or Organ Component"
+  },
+  {
+    "subject": "Gene or Genome",
+    "predicate": "part_of",
+    "object": "Cell Component"
+  },
+  {
+    "subject": "Gene or Genome",
+    "predicate": "part_of",
+    "object": "Cell"
+  },
+  {
+    "subject": "Gene or Genome",
+    "predicate": "part_of",
+    "object": "Tissue"
+  },
+  {
+    "subject": "Genetic Function",
+    "predicate": "isa",
+    "object": "Molecular Function"
+  },
+  {
+    "subject": "Genetic Function",
+    "predicate": "produces",
+    "object": "Cell Component"
+  },
+  {
+    "subject": "Geographic Area",
+    "predicate": "associated_with",
+    "object": "Anatomical Abnormality"
+  },
+  {
+    "subject": "Geographic Area",
+    "predicate": "associated_with",
+    "object": "Injury or Poisoning"
+  },
+  {
+    "subject": "Geographic Area",
+    "predicate": "associated_with",
+    "object": "Pathologic Function"
+  },
+  {
+    "subject": "Geographic Area",
+    "predicate": "isa",
+    "object": "Spatial Concept"
+  },
+  {
+    "subject": "Governmental or Regulatory Activity",
+    "predicate": "isa",
+    "object": "Occupational Activity"
+  },
+  {
+    "subject": "Group Attribute",
+    "predicate": "isa",
+    "object": "Conceptual Entity"
+  },
+  {
+    "subject": "Group Attribute",
+    "predicate": "property_of",
+    "object": "Group"
+  },
+  {
+    "subject": "Group",
+    "predicate": "exhibits",
+    "object": "Behavior"
+  },
+  {
+    "subject": "Group",
+    "predicate": "interacts_with",
+    "object": "Group"
+  },
+  {
+    "subject": "Group",
+    "predicate": "isa",
+    "object": "Conceptual Entity"
+  },
+  {
+    "subject": "Group",
+    "predicate": "performs",
+    "object": "Activity"
+  },
+  {
+    "subject": "Group",
+    "predicate": "produces",
+    "object": "Intellectual Product"
+  },
+  {
+    "subject": "Group",
+    "predicate": "produces",
+    "object": "Manufactured Object"
+  },
+  {
+    "subject": "Group",
+    "predicate": "uses",
+    "object": "Intellectual Product"
+  },
+  {
+    "subject": "Group",
+    "predicate": "uses",
+    "object": "Manufactured Object"
+  },
+  {
+    "subject": "Hazardous or Poisonous Substance",
+    "predicate": "complicates",
+    "object": "Anatomical Abnormality"
+  },
+  {
+    "subject": "Hazardous or Poisonous Substance",
+    "predicate": "complicates",
+    "object": "Biologic Function"
+  },
+  {
+    "subject": "Hazardous or Poisonous Substance",
+    "predicate": "complicates",
+    "object": "Injury or Poisoning"
+  },
+  {
+    "subject": "Hazardous or Poisonous Substance",
+    "predicate": "disrupts",
+    "object": "Embryonic Structure"
+  },
+  {
+    "subject": "Hazardous or Poisonous Substance",
+    "predicate": "disrupts",
+    "object": "Fully Formed Anatomical Structure"
+  },
+  {
+    "subject": "Hazardous or Poisonous Substance",
+    "predicate": "disrupts",
+    "object": "Physiologic Function"
+  },
+  {
+    "subject": "Hazardous or Poisonous Substance",
+    "predicate": "isa",
+    "object": "Chemical Viewed Functionally"
+  },
+  {
+    "subject": "Health Care Activity",
+    "predicate": "affects",
+    "object": "Biologic Function"
+  },
+  {
+    "subject": "Health Care Activity",
+    "predicate": "isa",
+    "object": "Occupational Activity"
+  },
+  {
+    "subject": "Health Care Related Organization",
+    "predicate": "isa",
+    "object": "Organization"
+  },
+  {
+    "subject": "Health Care Related Organization",
+    "predicate": "manages",
+    "object": "Patient or Disabled Group"
+  },
+  {
+    "subject": "Hormone",
+    "predicate": "isa",
+    "object": "Biologically Active Substance"
+  },
+  {
+    "subject": "Human-caused Phenomenon or Process",
+    "predicate": "isa",
+    "object": "Phenomenon or Process"
+  },
+  {
+    "subject": "Human",
+    "predicate": "isa",
+    "object": "Mammal"
+  },
+  {
+    "subject": "Idea or Concept",
+    "predicate": "conceptual_part_of",
+    "object": "Behavior"
+  },
+  {
+    "subject": "Idea or Concept",
+    "predicate": "isa",
+    "object": "Conceptual Entity"
+  },
+  {
+    "subject": "Idea or Concept",
+    "predicate": "result_of",
+    "object": "Mental Process"
+  },
+  {
+    "subject": "Immunologic Factor",
+    "predicate": "indicates",
+    "object": "Bacterium"
+  },
+  {
+    "subject": "Immunologic Factor",
+    "predicate": "indicates",
+    "object": "Pathologic Function"
+  },
+  {
+    "subject": "Immunologic Factor",
+    "predicate": "indicates",
+    "object": "Virus"
+  },
+  {
+    "subject": "Immunologic Factor",
+    "predicate": "isa",
+    "object": "Biologically Active Substance"
+  },
+  {
+    "subject": "Indicator, Reagent, or Diagnostic Aid",
+    "predicate": "isa",
+    "object": "Chemical Viewed Functionally"
+  },
+  {
+    "subject": "Individual Behavior",
+    "predicate": "associated_with",
+    "object": "Anatomical Abnormality"
+  },
+  {
+    "subject": "Individual Behavior",
+    "predicate": "associated_with",
+    "object": "Injury or Poisoning"
+  },
+  {
+    "subject": "Individual Behavior",
+    "predicate": "associated_with",
+    "object": "Pathologic Function"
+  },
+  {
+    "subject": "Individual Behavior",
+    "predicate": "conceptually_related_to",
+    "object": "Idea or Concept"
+  },
+  {
+    "subject": "Individual Behavior",
+    "predicate": "isa",
+    "object": "Behavior"
+  },
+  {
+    "subject": "Individual Behavior",
+    "predicate": "process_of",
+    "object": "Social Behavior"
+  },
+  {
+    "subject": "Injury or Poisoning",
+    "predicate": "associated_with",
+    "object": "Organism Attribute"
+  },
+  {
+    "subject": "Injury or Poisoning",
+    "predicate": "co-occurs_with",
+    "object": "Injury or Poisoning"
+  },
+  {
+    "subject": "Injury or Poisoning",
+    "predicate": "complicates",
+    "object": "Anatomical Abnormality"
+  },
+  {
+    "subject": "Injury or Poisoning",
+    "predicate": "complicates",
+    "object": "Pathologic Function"
+  },
+  {
+    "subject": "Injury or Poisoning",
+    "predicate": "disrupts",
+    "object": "Embryonic Structure"
+  },
+  {
+    "subject": "Injury or Poisoning",
+    "predicate": "disrupts",
+    "object": "Fully Formed Anatomical Structure"
+  },
+  {
+    "subject": "Injury or Poisoning",
+    "predicate": "disrupts",
+    "object": "Physiologic Function"
+  },
+  {
+    "subject": "Injury or Poisoning",
+    "predicate": "isa",
+    "object": "Phenomenon or Process"
+  },
+  {
+    "subject": "Injury or Poisoning",
+    "predicate": "occurs_in",
+    "object": "Group"
+  },
+  {
+    "subject": "Injury or Poisoning",
+    "predicate": "result_of",
+    "object": "Behavior"
+  },
+  {
+    "subject": "Injury or Poisoning",
+    "predicate": "result_of",
+    "object": "Health Care Activity"
+  },
+  {
+    "subject": "Inorganic Chemical",
+    "predicate": "isa",
+    "object": "Chemical Viewed Structurally"
+  },
+  {
+    "subject": "Intellectual Product",
+    "predicate": "conceptual_part_of",
+    "object": "Diagnostic Procedure"
+  },
+  {
+    "subject": "Intellectual Product",
+    "predicate": "conceptual_part_of",
+    "object": "Intellectual Product"
+  },
+  {
+    "subject": "Intellectual Product",
+    "predicate": "isa",
+    "object": "Conceptual Entity"
+  },
+  {
+    "subject": "Laboratory Procedure",
+    "predicate": "analyzes",
+    "object": "Body Substance"
+  },
+  {
+    "subject": "Laboratory Procedure",
+    "predicate": "analyzes",
+    "object": "Chemical"
+  },
+  {
+    "subject": "Laboratory Procedure",
+    "predicate": "assesses_effect_of",
+    "object": "Chemical"
+  },
+  {
+    "subject": "Laboratory Procedure",
+    "predicate": "assesses_effect_of",
+    "object": "Natural Phenomenon or Process"
+  },
+  {
+    "subject": "Laboratory Procedure",
+    "predicate": "diagnoses",
+    "object": "Anatomical Abnormality"
+  },
+  {
+    "subject": "Laboratory Procedure",
+    "predicate": "diagnoses",
+    "object": "Injury or Poisoning"
+  },
+  {
+    "subject": "Laboratory Procedure",
+    "predicate": "diagnoses",
+    "object": "Pathologic Function"
+  },
+  {
+    "subject": "Laboratory Procedure",
+    "predicate": "isa",
+    "object": "Health Care Activity"
+  },
+  {
+    "subject": "Laboratory Procedure",
+    "predicate": "measures",
+    "object": "Body Substance"
+  },
+  {
+    "subject": "Laboratory Procedure",
+    "predicate": "measures",
+    "object": "Chemical"
+  },
+  {
+    "subject": "Laboratory Procedure",
+    "predicate": "measures",
+    "object": "Natural Phenomenon or Process"
+  },
+  {
+    "subject": "Laboratory Procedure",
+    "predicate": "measures",
+    "object": "Organism Attribute"
+  },
+  {
+    "subject": "Laboratory Procedure",
+    "predicate": "measures",
+    "object": "Quantitative Concept"
+  },
+  {
+    "subject": "Laboratory Procedure",
+    "predicate": "measures",
+    "object": "Temporal Concept"
+  },
+  {
+    "subject": "Laboratory Procedure",
+    "predicate": "method_of",
+    "object": "Diagnostic Procedure"
+  },
+  {
+    "subject": "Laboratory Procedure",
+    "predicate": "method_of",
+    "object": "Laboratory Procedure"
+  },
+  {
+    "subject": "Laboratory Procedure",
+    "predicate": "method_of",
+    "object": "Therapeutic or Preventive Procedure"
+  },
+  {
+    "subject": "Laboratory or Test Result",
+    "predicate": "conceptual_part_of",
+    "object": "Laboratory or Test Result"
+  },
+  {
+    "subject": "Laboratory or Test Result",
+    "predicate": "indicates",
+    "object": "Anatomical Abnormality"
+  },
+  {
+    "subject": "Laboratory or Test Result",
+    "predicate": "indicates",
+    "object": "Biologic Function"
+  },
+  {
+    "subject": "Laboratory or Test Result",
+    "predicate": "indicates",
+    "object": "Injury or Poisoning"
+  },
+  {
+    "subject": "Laboratory or Test Result",
+    "predicate": "isa",
+    "object": "Finding"
+  },
+  {
+    "subject": "Laboratory or Test Result",
+    "predicate": "measurement_of",
+    "object": "Physiologic Function"
+  },
+  {
+    "subject": "Laboratory or Test Result",
+    "predicate": "measurement_of",
+    "object": "Substance"
+  },
+  {
+    "subject": "Laboratory or Test Result",
+    "predicate": "result_of",
+    "object": "Diagnostic Procedure"
+  },
+  {
+    "subject": "Laboratory or Test Result",
+    "predicate": "result_of",
+    "object": "Laboratory Procedure"
+  },
+  {
+    "subject": "Language",
+    "predicate": "isa",
+    "object": "Conceptual Entity"
+  },
+  {
+    "subject": "Machine Activity",
+    "predicate": "isa",
+    "object": "Activity"
+  },
+  {
+    "subject": "Machine Activity",
+    "predicate": "method_of",
+    "object": "Diagnostic Procedure"
+  },
+  {
+    "subject": "Machine Activity",
+    "predicate": "method_of",
+    "object": "Laboratory Procedure"
+  },
+  {
+    "subject": "Machine Activity",
+    "predicate": "method_of",
+    "object": "Therapeutic or Preventive Procedure"
+  },
+  {
+    "subject": "Mammal",
+    "predicate": "isa",
+    "object": "Vertebrate"
+  },
+  {
+    "subject": "Manufactured Object",
+    "predicate": "causes",
+    "object": "Anatomical Abnormality"
+  },
+  {
+    "subject": "Manufactured Object",
+    "predicate": "causes",
+    "object": "Injury or Poisoning"
+  },
+  {
+    "subject": "Manufactured Object",
+    "predicate": "causes",
+    "object": "Pathologic Function"
+  },
+  {
+    "subject": "Manufactured Object",
+    "predicate": "isa",
+    "object": "Physical Object"
+  },
+  {
+    "subject": "Medical Device",
+    "predicate": "isa",
+    "object": "Manufactured Object"
+  },
+  {
+    "subject": "Medical Device",
+    "predicate": "prevents",
+    "object": "Injury or Poisoning"
+  },
+  {
+    "subject": "Medical Device",
+    "predicate": "prevents",
+    "object": "Pathologic Function"
+  },
+  {
+    "subject": "Medical Device",
+    "predicate": "treats",
+    "object": "Anatomical Abnormality"
+  },
+  {
+    "subject": "Medical Device",
+    "predicate": "treats",
+    "object": "Injury or Poisoning"
+  },
+  {
+    "subject": "Medical Device",
+    "predicate": "treats",
+    "object": "Pathologic Function"
+  },
+  {
+    "subject": "Medical Device",
+    "predicate": "treats",
+    "object": "Sign or Symptom"
+  },
+  {
+    "subject": "Mental Process",
+    "predicate": "affects",
+    "object": "Behavior"
+  },
+  {
+    "subject": "Mental Process",
+    "predicate": "isa",
+    "object": "Organism Function"
+  },
+  {
+    "subject": "Mental Process",
+    "predicate": "process_of",
+    "object": "Bacterium"
+  },
+  {
+    "subject": "Mental Process",
+    "predicate": "process_of",
+    "object": "Fungus"
+  },
+  {
+    "subject": "Mental Process",
+    "predicate": "process_of",
+    "object": "Plant"
+  },
+  {
+    "subject": "Mental Process",
+    "predicate": "process_of",
+    "object": "Virus"
+  },
+  {
+    "subject": "Mental Process",
+    "predicate": "result_of",
+    "object": "Behavior"
+  },
+  {
+    "subject": "Mental or Behavioral Dysfunction",
+    "predicate": "affects",
+    "object": "Behavior"
+  },
+  {
+    "subject": "Mental or Behavioral Dysfunction",
+    "predicate": "isa",
+    "object": "Disease or Syndrome"
+  },
+  {
+    "subject": "Mental or Behavioral Dysfunction",
+    "predicate": "process_of",
+    "object": "Bacterium"
+  },
+  {
+    "subject": "Mental or Behavioral Dysfunction",
+    "predicate": "process_of",
+    "object": "Fungus"
+  },
+  {
+    "subject": "Mental or Behavioral Dysfunction",
+    "predicate": "process_of",
+    "object": "Plant"
+  },
+  {
+    "subject": "Mental or Behavioral Dysfunction",
+    "predicate": "process_of",
+    "object": "Virus"
+  },
+  {
+    "subject": "Molecular Biology Research Technique",
+    "predicate": "isa",
+    "object": "Research Activity"
+  },
+  {
+    "subject": "Molecular Biology Research Technique",
+    "predicate": "method_of",
+    "object": "Diagnostic Procedure"
+  },
+  {
+    "subject": "Molecular Biology Research Technique",
+    "predicate": "method_of",
+    "object": "Therapeutic or Preventive Procedure"
+  },
+  {
+    "subject": "Molecular Function",
+    "predicate": "isa",
+    "object": "Physiologic Function"
+  },
+  {
+    "subject": "Molecular Sequence",
+    "predicate": "isa",
+    "object": "Spatial Concept"
+  },
+  {
+    "subject": "Natural Phenomenon or Process",
+    "predicate": "affects",
+    "object": "Natural Phenomenon or Process"
+  },
+  {
+    "subject": "Natural Phenomenon or Process",
+    "predicate": "isa",
+    "object": "Phenomenon or Process"
+  },
+  {
+    "subject": "Natural Phenomenon or Process",
+    "predicate": "process_of",
+    "object": "Natural Phenomenon or Process"
+  },
+  {
+    "subject": "Neoplastic Process",
+    "predicate": "isa",
+    "object": "Disease or Syndrome"
+  },
+  {
+    "subject": "Nucleic Acid, Nucleoside, or Nucleotide",
+    "predicate": "isa",
+    "object": "Organic Chemical"
+  },
+  {
+    "subject": "Nucleotide Sequence",
+    "predicate": "isa",
+    "object": "Molecular Sequence"
+  },
+  {
+    "subject": "Nucleotide Sequence",
+    "predicate": "part_of",
+    "object": "Nucleotide Sequence"
+  },
+  {
+    "subject": "Nucleotide Sequence",
+    "predicate": "property_of",
+    "object": "Gene or Genome"
+  },
+  {
+    "subject": "Nucleotide Sequence",
+    "predicate": "property_of",
+    "object": "Nucleic Acid, Nucleoside, or Nucleotide"
+  },
+  {
+    "subject": "Occupation or Discipline",
+    "predicate": "conceptual_part_of",
+    "object": "Occupation or Discipline"
+  },
+  {
+    "subject": "Occupation or Discipline",
+    "predicate": "isa",
+    "object": "Conceptual Entity"
+  },
+  {
+    "subject": "Occupational Activity",
+    "predicate": "associated_with",
+    "object": "Anatomical Abnormality"
+  },
+  {
+    "subject": "Occupational Activity",
+    "predicate": "associated_with",
+    "object": "Injury or Poisoning"
+  },
+  {
+    "subject": "Occupational Activity",
+    "predicate": "associated_with",
+    "object": "Pathologic Function"
+  },
+  {
+    "subject": "Occupational Activity",
+    "predicate": "isa",
+    "object": "Activity"
+  },
+  {
+    "subject": "Occupational Activity",
+    "predicate": "method_of",
+    "object": "Occupation or Discipline"
+  },
+  {
+    "subject": "Organ or Tissue Function",
+    "predicate": "conceptual_part_of",
+    "object": "Temporal Concept"
+  },
+  {
+    "subject": "Organ or Tissue Function",
+    "predicate": "degree_of",
+    "object": "Organ or Tissue Function"
+  },
+  {
+    "subject": "Organ or Tissue Function",
+    "predicate": "isa",
+    "object": "Physiologic Function"
+  },
+  {
+    "subject": "Organ or Tissue Function",
+    "predicate": "occurs_in",
+    "object": "Organism Function"
+  },
+  {
+    "subject": "Organic Chemical",
+    "predicate": "isa",
+    "object": "Chemical Viewed Structurally"
+  },
+  {
+    "subject": "Organism Attribute",
+    "predicate": "associated_with",
+    "object": "Organism Attribute"
+  },
+  {
+    "subject": "Organism Attribute",
+    "predicate": "degree_of",
+    "object": "Organism Attribute"
+  },
+  {
+    "subject": "Organism Attribute",
+    "predicate": "isa",
+    "object": "Conceptual Entity"
+  },
+  {
+    "subject": "Organism Attribute",
+    "predicate": "manifestation_of",
+    "object": "Physiologic Function"
+  },
+  {
+    "subject": "Organism Attribute",
+    "predicate": "measurement_of",
+    "object": "Physiologic Function"
+  },
+  {
+    "subject": "Organism Attribute",
+    "predicate": "property_of",
+    "object": "Organism"
+  },
+  {
+    "subject": "Organism Attribute",
+    "predicate": "result_of",
+    "object": "Phenomenon or Process"
+  },
+  {
+    "subject": "Organism Function",
+    "predicate": "conceptual_part_of",
+    "object": "Temporal Concept"
+  },
+  {
+    "subject": "Organism Function",
+    "predicate": "degree_of",
+    "object": "Organism Function"
+  },
+  {
+    "subject": "Organism Function",
+    "predicate": "isa",
+    "object": "Physiologic Function"
+  },
+  {
+    "subject": "Organism Function",
+    "predicate": "produces",
+    "object": "Age Group"
+  },
+  {
+    "subject": "Organism Function",
+    "predicate": "produces",
+    "object": "Family Group"
+  },
+  {
+    "subject": "Organism",
+    "predicate": "interacts_with",
+    "object": "Organism"
+  },
+  {
+    "subject": "Organism",
+    "predicate": "isa",
+    "object": "Physical Object"
+  },
+  {
+    "subject": "Organization",
+    "predicate": "carries_out",
+    "object": "Occupational Activity"
+  },
+  {
+    "subject": "Organization",
+    "predicate": "isa",
+    "object": "Conceptual Entity"
+  },
+  {
+    "subject": "Organization",
+    "predicate": "location_of",
+    "object": "Occupational Activity"
+  },
+  {
+    "subject": "Organization",
+    "predicate": "produces",
+    "object": "Intellectual Product"
+  },
+  {
+    "subject": "Pathologic Function",
+    "predicate": "associated_with",
+    "object": "Organism Attribute"
+  },
+  {
+    "subject": "Pathologic Function",
+    "predicate": "associated_with",
+    "object": "Pathologic Function"
+  },
+  {
+    "subject": "Pathologic Function",
+    "predicate": "co-occurs_with",
+    "object": "Anatomical Abnormality"
+  },
+  {
+    "subject": "Pathologic Function",
+    "predicate": "co-occurs_with",
+    "object": "Injury or Poisoning"
+  },
+  {
+    "subject": "Pathologic Function",
+    "predicate": "co-occurs_with",
+    "object": "Pathologic Function"
+  },
+  {
+    "subject": "Pathologic Function",
+    "predicate": "complicates",
+    "object": "Anatomical Abnormality"
+  },
+  {
+    "subject": "Pathologic Function",
+    "predicate": "complicates",
+    "object": "Injury or Poisoning"
+  },
+  {
+    "subject": "Pathologic Function",
+    "predicate": "complicates",
+    "object": "Pathologic Function"
+  },
+  {
+    "subject": "Pathologic Function",
+    "predicate": "degree_of",
+    "object": "Pathologic Function"
+  },
+  {
+    "subject": "Pathologic Function",
+    "predicate": "isa",
+    "object": "Biologic Function"
+  },
+  {
+    "subject": "Pathologic Function",
+    "predicate": "manifestation_of",
+    "object": "Injury or Poisoning"
+  },
+  {
+    "subject": "Pathologic Function",
+    "predicate": "manifestation_of",
+    "object": "Pathologic Function"
+  },
+  {
+    "subject": "Pathologic Function",
+    "predicate": "manifestation_of",
+    "object": "Physiologic Function"
+  },
+  {
+    "subject": "Pathologic Function",
+    "predicate": "occurs_in",
+    "object": "Disease or Syndrome"
+  },
+  {
+    "subject": "Pathologic Function",
+    "predicate": "occurs_in",
+    "object": "Group"
+  },
+  {
+    "subject": "Pathologic Function",
+    "predicate": "occurs_in",
+    "object": "Injury or Poisoning"
+  },
+  {
+    "subject": "Pathologic Function",
+    "predicate": "precedes",
+    "object": "Pathologic Function"
+  },
+  {
+    "subject": "Pathologic Function",
+    "predicate": "result_of",
+    "object": "Behavior"
+  },
+  {
+    "subject": "Pathologic Function",
+    "predicate": "result_of",
+    "object": "Health Care Activity"
+  },
+  {
+    "subject": "Patient or Disabled Group",
+    "predicate": "isa",
+    "object": "Group"
+  },
+  {
+    "subject": "Pharmacologic Substance",
+    "predicate": "complicates",
+    "object": "Anatomical Abnormality"
+  },
+  {
+    "subject": "Pharmacologic Substance",
+    "predicate": "complicates",
+    "object": "Biologic Function"
+  },
+  {
+    "subject": "Pharmacologic Substance",
+    "predicate": "complicates",
+    "object": "Injury or Poisoning"
+  },
+  {
+    "subject": "Pharmacologic Substance",
+    "predicate": "diagnoses",
+    "object": "Pathologic Function"
+  },
+  {
+    "subject": "Pharmacologic Substance",
+    "predicate": "disrupts",
+    "object": "Embryonic Structure"
+  },
+  {
+    "subject": "Pharmacologic Substance",
+    "predicate": "disrupts",
+    "object": "Fully Formed Anatomical Structure"
+  },
+  {
+    "subject": "Pharmacologic Substance",
+    "predicate": "disrupts",
+    "object": "Physiologic Function"
+  },
+  {
+    "subject": "Pharmacologic Substance",
+    "predicate": "isa",
+    "object": "Chemical Viewed Functionally"
+  },
+  {
+    "subject": "Pharmacologic Substance",
+    "predicate": "prevents",
+    "object": "Pathologic Function"
+  },
+  {
+    "subject": "Pharmacologic Substance",
+    "predicate": "treats",
+    "object": "Anatomical Abnormality"
+  },
+  {
+    "subject": "Pharmacologic Substance",
+    "predicate": "treats",
+    "object": "Injury or Poisoning"
+  },
+  {
+    "subject": "Pharmacologic Substance",
+    "predicate": "treats",
+    "object": "Pathologic Function"
+  },
+  {
+    "subject": "Pharmacologic Substance",
+    "predicate": "treats",
+    "object": "Sign or Symptom"
+  },
+  {
+    "subject": "Phenomenon or Process",
+    "predicate": "isa",
+    "object": "Event"
+  },
+  {
+    "subject": "Phenomenon or Process",
+    "predicate": "result_of",
+    "object": "Anatomical Abnormality"
+  },
+  {
+    "subject": "Phenomenon or Process",
+    "predicate": "result_of",
+    "object": "Phenomenon or Process"
+  },
+  {
+    "subject": "Physical Object",
+    "predicate": "isa",
+    "object": "Entity"
+  },
+  {
+    "subject": "Physiologic Function",
+    "predicate": "affects",
+    "object": "Organism Attribute"
+  },
+  {
+    "subject": "Physiologic Function",
+    "predicate": "co-occurs_with",
+    "object": "Physiologic Function"
+  },
+  {
+    "subject": "Physiologic Function",
+    "predicate": "isa",
+    "object": "Biologic Function"
+  },
+  {
+    "subject": "Physiologic Function",
+    "predicate": "occurs_in",
+    "object": "Temporal Concept"
+  },
+  {
+    "subject": "Physiologic Function",
+    "predicate": "precedes",
+    "object": "Physiologic Function"
+  },
+  {
+    "subject": "Plant",
+    "predicate": "isa",
+    "object": "Eukaryote"
+  },
+  {
+    "subject": "Plant",
+    "predicate": "location_of",
+    "object": "Biologically Active Substance"
+  },
+  {
+    "subject": "Population Group",
+    "predicate": "associated_with",
+    "object": "Anatomical Abnormality"
+  },
+  {
+    "subject": "Population Group",
+    "predicate": "associated_with",
+    "object": "Injury or Poisoning"
+  },
+  {
+    "subject": "Population Group",
+    "predicate": "associated_with",
+    "object": "Pathologic Function"
+  },
+  {
+    "subject": "Population Group",
+    "predicate": "isa",
+    "object": "Group"
+  },
+  {
+    "subject": "Professional Society",
+    "predicate": "isa",
+    "object": "Organization"
+  },
+  {
+    "subject": "Professional or Occupational Group",
+    "predicate": "diagnoses",
+    "object": "Pathologic Function"
+  },
+  {
+    "subject": "Professional or Occupational Group",
+    "predicate": "isa",
+    "object": "Group"
+  },
+  {
+    "subject": "Professional or Occupational Group",
+    "predicate": "manages",
+    "object": "Organization"
+  },
+  {
+    "subject": "Professional or Occupational Group",
+    "predicate": "practices",
+    "object": "Occupation or Discipline"
+  },
+  {
+    "subject": "Professional or Occupational Group",
+    "predicate": "treats",
+    "object": "Patient or Disabled Group"
+  },
+  {
+    "subject": "Qualitative Concept",
+    "predicate": "evaluation_of",
+    "object": "Activity"
+  },
+  {
+    "subject": "Qualitative Concept",
+    "predicate": "isa",
+    "object": "Idea or Concept"
+  },
+  {
+    "subject": "Quantitative Concept",
+    "predicate": "conceptual_part_of",
+    "object": "Therapeutic or Preventive Procedure"
+  },
+  {
+    "subject": "Quantitative Concept",
+    "predicate": "isa",
+    "object": "Idea or Concept"
+  },
+  {
+    "subject": "Quantitative Concept",
+    "predicate": "measurement_of",
+    "object": "Physiologic Function"
+  },
+  {
+    "subject": "Quantitative Concept",
+    "predicate": "measurement_of",
+    "object": "Spatial Concept"
+  },
+  {
+    "subject": "Receptor",
+    "predicate": "isa",
+    "object": "Biologically Active Substance"
+  },
+  {
+    "subject": "Regulation or Law",
+    "predicate": "affects",
+    "object": "Group"
+  },
+  {
+    "subject": "Regulation or Law",
+    "predicate": "affects",
+    "object": "Organization"
+  },
+  {
+    "subject": "Regulation or Law",
+    "predicate": "isa",
+    "object": "Intellectual Product"
+  },
+  {
+    "subject": "Reptile",
+    "predicate": "isa",
+    "object": "Vertebrate"
+  },
+  {
+    "subject": "Research Activity",
+    "predicate": "affects",
+    "object": "Mental Process"
+  },
+  {
+    "subject": "Research Activity",
+    "predicate": "isa",
+    "object": "Occupational Activity"
+  },
+  {
+    "subject": "Research Activity",
+    "predicate": "measures",
+    "object": "Body Substance"
+  },
+  {
+    "subject": "Research Activity",
+    "predicate": "measures",
+    "object": "Chemical"
+  },
+  {
+    "subject": "Research Activity",
+    "predicate": "measures",
+    "object": "Natural Phenomenon or Process"
+  },
+  {
+    "subject": "Research Activity",
+    "predicate": "measures",
+    "object": "Organism Attribute"
+  },
+  {
+    "subject": "Research Activity",
+    "predicate": "measures",
+    "object": "Quantitative Concept"
+  },
+  {
+    "subject": "Research Activity",
+    "predicate": "measures",
+    "object": "Temporal Concept"
+  },
+  {
+    "subject": "Research Activity",
+    "predicate": "uses",
+    "object": "Research Device"
+  },
+  {
+    "subject": "Research Device",
+    "predicate": "isa",
+    "object": "Manufactured Object"
+  },
+  {
+    "subject": "Self-help or Relief Organization",
+    "predicate": "isa",
+    "object": "Organization"
+  },
+  {
+    "subject": "Self-help or Relief Organization",
+    "predicate": "manages",
+    "object": "Patient or Disabled Group"
+  },
+  {
+    "subject": "Sign or Symptom",
+    "predicate": "degree_of",
+    "object": "Sign or Symptom"
+  },
+  {
+    "subject": "Sign or Symptom",
+    "predicate": "diagnoses",
+    "object": "Anatomical Abnormality"
+  },
+  {
+    "subject": "Sign or Symptom",
+    "predicate": "diagnoses",
+    "object": "Injury or Poisoning"
+  },
+  {
+    "subject": "Sign or Symptom",
+    "predicate": "diagnoses",
+    "object": "Pathologic Function"
+  },
+  {
+    "subject": "Sign or Symptom",
+    "predicate": "isa",
+    "object": "Finding"
+  },
+  {
+    "subject": "Social Behavior",
+    "predicate": "conceptual_part_of",
+    "object": "Social Behavior"
+  },
+  {
+    "subject": "Social Behavior",
+    "predicate": "isa",
+    "object": "Behavior"
+  },
+  {
+    "subject": "Spatial Concept",
+    "predicate": "isa",
+    "object": "Idea or Concept"
+  },
+  {
+    "subject": "Substance",
+    "predicate": "causes",
+    "object": "Anatomical Abnormality"
+  },
+  {
+    "subject": "Substance",
+    "predicate": "causes",
+    "object": "Injury or Poisoning"
+  },
+  {
+    "subject": "Substance",
+    "predicate": "causes",
+    "object": "Pathologic Function"
+  },
+  {
+    "subject": "Substance",
+    "predicate": "ingredient_of",
+    "object": "Clinical Drug"
+  },
+  {
+    "subject": "Substance",
+    "predicate": "isa",
+    "object": "Physical Object"
+  },
+  {
+    "subject": "Temporal Concept",
+    "predicate": "conceptual_part_of",
+    "object": "Cell Function"
+  },
+  {
+    "subject": "Temporal Concept",
+    "predicate": "conceptual_part_of",
+    "object": "Organ or Tissue Function"
+  },
+  {
+    "subject": "Temporal Concept",
+    "predicate": "conceptual_part_of",
+    "object": "Organism Function"
+  },
+  {
+    "subject": "Temporal Concept",
+    "predicate": "conceptual_part_of",
+    "object": "Temporal Concept"
+  },
+  {
+    "subject": "Temporal Concept",
+    "predicate": "isa",
+    "object": "Idea or Concept"
+  },
+  {
+    "subject": "Therapeutic or Preventive Procedure",
+    "predicate": "affects",
+    "object": "Patient or Disabled Group"
+  },
+  {
+    "subject": "Therapeutic or Preventive Procedure",
+    "predicate": "complicates",
+    "object": "Biologic Function"
+  },
+  {
+    "subject": "Therapeutic or Preventive Procedure",
+    "predicate": "isa",
+    "object": "Health Care Activity"
+  },
+  {
+    "subject": "Therapeutic or Preventive Procedure",
+    "predicate": "method_of",
+    "object": "Therapeutic or Preventive Procedure"
+  },
+  {
+    "subject": "Therapeutic or Preventive Procedure",
+    "predicate": "prevents",
+    "object": "Pathologic Function"
+  },
+  {
+    "subject": "Therapeutic or Preventive Procedure",
+    "predicate": "treats",
+    "object": "Anatomical Abnormality"
+  },
+  {
+    "subject": "Therapeutic or Preventive Procedure",
+    "predicate": "treats",
+    "object": "Injury or Poisoning"
+  },
+  {
+    "subject": "Therapeutic or Preventive Procedure",
+    "predicate": "treats",
+    "object": "Pathologic Function"
+  },
+  {
+    "subject": "Therapeutic or Preventive Procedure",
+    "predicate": "treats",
+    "object": "Sign or Symptom"
+  },
+  {
+    "subject": "Therapeutic or Preventive Procedure",
+    "predicate": "uses",
+    "object": "Food"
+  },
+  {
+    "subject": "Therapeutic or Preventive Procedure",
+    "predicate": "uses",
+    "object": "Manufactured Object"
+  },
+  {
+    "subject": "Therapeutic or Preventive Procedure",
+    "predicate": "uses",
+    "object": "Pharmacologic Substance"
+  },
+  {
+    "subject": "Tissue",
+    "predicate": "adjacent_to",
+    "object": "Body Space or Junction"
+  },
+  {
+    "subject": "Tissue",
+    "predicate": "adjacent_to",
+    "object": "Tissue"
+  },
+  {
+    "subject": "Tissue",
+    "predicate": "conceptual_part_of",
+    "object": "Body System"
+  },
+  {
+    "subject": "Tissue",
+    "predicate": "consists_of",
+    "object": "Tissue"
+  },
+  {
+    "subject": "Tissue",
+    "predicate": "developmental_form_of",
+    "object": "Body Part, Organ, or Organ Component"
+  },
+  {
+    "subject": "Tissue",
+    "predicate": "developmental_form_of",
+    "object": "Tissue"
+  },
+  {
+    "subject": "Tissue",
+    "predicate": "isa",
+    "object": "Fully Formed Anatomical Structure"
+  },
+  {
+    "subject": "Tissue",
+    "predicate": "location_of",
+    "object": "Body Space or Junction"
+  },
+  {
+    "subject": "Tissue",
+    "predicate": "location_of",
+    "object": "Diagnostic Procedure"
+  },
+  {
+    "subject": "Tissue",
+    "predicate": "location_of",
+    "object": "Therapeutic or Preventive Procedure"
+  },
+  {
+    "subject": "Tissue",
+    "predicate": "part_of",
+    "object": "Body Part, Organ, or Organ Component"
+  },
+  {
+    "subject": "Tissue",
+    "predicate": "part_of",
+    "object": "Tissue"
+  },
+  {
+    "subject": "Tissue",
+    "predicate": "surrounds",
+    "object": "Body Space or Junction"
+  },
+  {
+    "subject": "Tissue",
+    "predicate": "surrounds",
+    "object": "Body Substance"
+  },
+  {
+    "subject": "Tissue",
+    "predicate": "surrounds",
+    "object": "Cell Component"
+  },
+  {
+    "subject": "Tissue",
+    "predicate": "surrounds",
+    "object": "Cell"
+  },
+  {
+    "subject": "Tissue",
+    "predicate": "surrounds",
+    "object": "Tissue"
+  },
+  {
+    "subject": "Vertebrate",
+    "predicate": "isa",
+    "object": "Animal"
+  },
+  {
+    "subject": "Virus",
+    "predicate": "causes",
+    "object": "Pathologic Function"
+  },
+  {
+    "subject": "Virus",
+    "predicate": "isa",
+    "object": "Organism"
+  },
+  {
+    "subject": "Virus",
+    "predicate": "location_of",
+    "object": "Biologically Active Substance"
+  },
+  {
+    "subject": "Vitamin",
+    "predicate": "isa",
+    "object": "Biologically Active Substance"
+  }
+]

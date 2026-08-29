@@ -142,6 +142,15 @@ class GraphDataPreparation:
         inverted_dict = {value: key for key, value in self.nodes_index.items()}
         return inverted_dict
 
+    def _as_bool(self, value):
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return value != 0
+        if isinstance(value, str):
+            return value.strip().lower() in {"true", "1", "yes", "y"}
+        return False
+
     def _path_exists(self, path):
         return bool(path) and os.path.exists(path)
 
@@ -433,6 +442,12 @@ class GraphDataPreparation:
 
         unique_predicates = sorted({entry['predicate'] for entry in graph_data})  # Sorted for determinism
         self.predicate_to_id = {predicate: idx for idx, predicate in enumerate(unique_predicates)}
+        unique_old_predicates = sorted({
+            entry.get("old_predicate", entry["predicate"]) for entry in graph_data
+        })
+        self.old_predicate_to_id = {
+            predicate: idx for idx, predicate in enumerate(unique_old_predicates)
+        }
 
 
 
@@ -446,8 +461,14 @@ class GraphDataPreparation:
             obj = entry['object']
             pred = entry['predicate']
             edge_type = self.predicate_to_id[pred]  # Get unique ID for this predicate
+            old_pred = entry.get("old_predicate", pred)
+            edge_old_type = self.old_predicate_to_id[old_pred]
             edge_data = edge_embeddings[pred] if edge_embeddings is not None else None
-            self.nxGraph.add_edge(subject, obj, emb=edge_data, type=edge_type)
+            is_mapped = self._as_bool(entry.get("is_mapped", False))
+            self.nxGraph.add_edge(
+                subject, obj, emb=edge_data, type=edge_type,
+                old_type=edge_old_type, is_mapped=is_mapped
+            )
 
         # Create node to index mapping
         self.nodes_index = {node: i for i, node in enumerate(self.nxGraph.nodes())}
@@ -490,26 +511,41 @@ class GraphDataPreparation:
 
         edge_index = []
         edge_type = []
+        edge_old_type = []
         edge_attr = []
+        edge_is_mapped = []
 
         # Parcourir toutes les arêtes dans MultiDiGraph
         for u, v, key, data in self.nxGraph.edges(keys=True, data=True):
             edge_index.append((self.nodes_index[u], self.nodes_index[v]))
             edge_type.append(data["type"])  # ID unique pour chaque relation
+            edge_old_type.append(data.get("old_type", data["type"]))
             edge_attr.append(data["emb"] if "emb" in data else None)
+            edge_is_mapped.append(data.get("is_mapped", False))
 
         # Conversion en tenseurs PyTorch
         x = torch.stack(node_features).squeeze(1)
         edge_index = torch.tensor(edge_index, dtype=torch.long).t().contiguous()
         edge_type = torch.tensor(edge_type, dtype=torch.long)
+        edge_old_type = torch.tensor(edge_old_type, dtype=torch.long)
         edge_attr = torch.stack(edge_attr).squeeze(1) if edge_attr[0] is not None else None
+        edge_is_mapped = torch.tensor(edge_is_mapped, dtype=torch.bool)
 
         # Convertir en graphe non dirigé si nécessaire
         if not self.is_directed:
             edge_index = to_undirected(edge_index)
 
         # Stocker le graphe sous PyTorch Geometric Data
-        self.built_graph = Data(x=x, edge_index=edge_index, edge_type=edge_type, edge_attr=edge_attr)
+        self.built_graph = Data(
+            x=x,
+            edge_index=edge_index,
+            edge_type=edge_type,
+            edge_old_type=edge_old_type,
+            edge_attr=edge_attr,
+            edge_is_mapped=edge_is_mapped,
+            num_edge_types=len(getattr(self, "predicate_to_id", {})),
+            num_old_edge_types=len(getattr(self, "old_predicate_to_id", {})),
+        )
         return self.built_graph
 
 

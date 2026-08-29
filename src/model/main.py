@@ -2,6 +2,7 @@
 import sys
 import os
 os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
+import json
 import random
 import torch
 import numpy as np
@@ -15,7 +16,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'u
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'data')))
 
 # Imports locaux (sans le préfixe src.)
-from train_optimize_parms import train_GAE,train_Contrastive , train_X_reconstruction, train_DisMult, train_Double_Reconstruction, train_Contrastive
+from train_optimize_parms import train_GAE,train_Contrastive , train_X_reconstruction, train_DisMult, train_DisMult_with_onto, train_Double_Reconstruction, train_Contrastive
 from Dismult import DistMultDecoder
 from GCNDecoder import GCNDecoder
 from GCNEncoder import GCNEncoder
@@ -31,7 +32,7 @@ from MRGAE import MRGAE
 from config import config
 from utils.utils import set_seed
 import copy
-from data_augmentation import relation_based_edge_dropping_balanced, view_partial_features_masking
+from data_augmentation import relation_based_edge_dropping_balanced, random_edge_dropping, view_partial_features_masking
 
 # Initialisation des seeds pour reproductibilité
 def _seed_values(seed_config):
@@ -60,8 +61,132 @@ torch.backends.cudnn.benchmark = False
 
 # Initialisation wandb
 import wandb
-wandb.require("legacy-service")
-wandb.login(key="c278e62d2025b60ff8b984a40f7b62b697f9b4fd", relogin=True)
+_wandb_mode = os.environ.get("WANDB_MODE") or config.get("wandb_mode")
+_wandb_disabled = os.environ.get("WANDB_DISABLED", "").lower() in ("1", "true", "yes")
+if _wandb_mode:
+    os.environ["WANDB_MODE"] = str(_wandb_mode)
+if not _wandb_disabled:
+    wandb.require("legacy-service")
+    if os.environ.get("WANDB_MODE", "").lower() != "offline":
+        wandb.login(key="c278e62d2025b60ff8b984a40f7b62b697f9b4fd", relogin=True)
+
+
+def _prepare_domain_range_tensors(constraints_path, kg_gdp, onto_gdp, device):
+    if not constraints_path or not os.path.exists(constraints_path):
+        print(f"Domain/range constraints file not found: {constraints_path}")
+        return None, None, None
+
+    with open(constraints_path, "r", encoding="utf-8") as file:
+        constraints = json.load(file)
+
+    relation_constraints = constraints.get("relations", {})
+    type_names = set()
+    matched_relations = 0
+    skipped_relations = 0
+
+    for relation_name, values in relation_constraints.items():
+        if relation_name not in kg_gdp.predicate_to_id:
+            skipped_relations += 1
+            continue
+        domain_types = [type_name for type_name in values.get("domain", []) if type_name in onto_gdp.nodes_index]
+        range_types = [type_name for type_name in values.get("range", []) if type_name in onto_gdp.nodes_index]
+        if not domain_types or not range_types:
+            skipped_relations += 1
+            continue
+        matched_relations += 1
+        type_names.update(domain_types)
+        type_names.update(range_types)
+
+    if not type_names or matched_relations == 0:
+        print("No usable domain/range constraints matched the KG relation/type indexes.")
+        return None, None, None
+
+    sorted_type_names = sorted(type_names)
+    type_name_to_position = {type_name: idx for idx, type_name in enumerate(sorted_type_names)}
+    type_ids = torch.tensor(
+        [onto_gdp.nodes_index[type_name] for type_name in sorted_type_names],
+        dtype=torch.long,
+        device=device,
+    )
+
+    num_relations = max(kg_gdp.predicate_to_id.values()) + 1
+    domain_mask = torch.zeros((num_relations, len(sorted_type_names)), dtype=torch.float32, device=device)
+    range_mask = torch.zeros((num_relations, len(sorted_type_names)), dtype=torch.float32, device=device)
+
+    for relation_name, values in relation_constraints.items():
+        if relation_name not in kg_gdp.predicate_to_id:
+            continue
+        relation_id = kg_gdp.predicate_to_id[relation_name]
+        for type_name in values.get("domain", []):
+            if type_name in type_name_to_position:
+                domain_mask[relation_id, type_name_to_position[type_name]] = 1.0
+        for type_name in values.get("range", []):
+            if type_name in type_name_to_position:
+                range_mask[relation_id, type_name_to_position[type_name]] = 1.0
+
+    print(
+        f"Domain/range constraints matched: {matched_relations} relations, "
+        f"{len(sorted_type_names)} ontology type prototypes, skipped {skipped_relations} relations."
+    )
+    return type_ids, domain_mask, range_mask
+
+
+def _prepare_onto_hierarchy_pairs(onto_data, onto_gdp, device):
+    if "isa" not in onto_gdp.predicate_to_id:
+        print("No 'isa' relation found in ontology predicates; hierarchy loss disabled.")
+        return None, None
+
+    isa_relation_id = onto_gdp.predicate_to_id["isa"]
+    isa_mask = onto_data.edge_type == isa_relation_id
+    if isa_mask.sum() == 0:
+        print("No ontology isa edges found; hierarchy loss disabled.")
+        return None, None
+
+    child_ids = onto_data.edge_index[0, isa_mask].to(device)
+    parent_ids = onto_data.edge_index[1, isa_mask].to(device)
+    print(f"Ontology hierarchy pairs: {child_ids.numel()} child-parent isa edges.")
+    return child_ids, parent_ids
+
+
+def _prepare_soft_type_negative_candidates(data, onto_data, domain_range_type_ids,
+                                           domain_mask_by_relation, range_mask_by_relation,
+                                           top_k=5000, temperature=0.1):
+    if domain_range_type_ids is None or domain_mask_by_relation is None or range_mask_by_relation is None:
+        print("Soft type-aware negative sampling disabled: missing domain/range tensors.")
+        return None
+
+    with torch.no_grad():
+        node_embeddings = torch.nn.functional.normalize(data.x, p=2, dim=1)
+        type_embeddings = torch.nn.functional.normalize(onto_data.x[domain_range_type_ids], p=2, dim=1)
+        logits = node_embeddings @ type_embeddings.t()
+        type_probs = torch.softmax(logits / max(temperature, 1e-8), dim=1)
+
+        num_nodes = data.x.size(0)
+        top_k = min(int(top_k), num_nodes)
+        domain_candidates = {}
+        range_candidates = {}
+        matched_relations = 0
+
+        for relation_id in range(domain_mask_by_relation.size(0)):
+            domain_mask = domain_mask_by_relation[relation_id]
+            range_mask = range_mask_by_relation[relation_id]
+            has_domain = domain_mask.sum() > 0
+            has_range = range_mask.sum() > 0
+            if not has_domain and not has_range:
+                continue
+            matched_relations += 1
+            if has_domain:
+                domain_scores = (type_probs * domain_mask).sum(dim=1)
+                domain_candidates[relation_id] = torch.topk(domain_scores, k=top_k).indices.detach().cpu().tolist()
+            if has_range:
+                range_scores = (type_probs * range_mask).sum(dim=1)
+                range_candidates[relation_id] = torch.topk(range_scores, k=top_k).indices.detach().cpu().tolist()
+
+    print(
+        f"Soft type-aware negative candidates prepared for {matched_relations} relations "
+        f"with top_k={top_k}, temperature={temperature}."
+    )
+    return {"domain": domain_candidates, "range": range_candidates}
 
 
 def _ensure_seeded_wandb_init():
@@ -123,6 +248,86 @@ def main():
     data = gdp.prepare_graph_with_type()
     print(data)
     data = data.to(device)
+    if config.get("recons_r_target_relation_field", "predicate") == "old_predicate":
+        data.num_recons_edge_types = int(data.num_old_edge_types)
+    else:
+        data.num_recons_edge_types = int(data.num_edge_types)
+    onto_data = None
+    onto_gdp = None
+    kg_relation_align_ids = None
+    onto_relation_align_ids = None
+    shared_relations = []
+    kg_core_ids = None
+    onto_core_ids = None
+    domain_range_type_ids = None
+    domain_mask_by_relation = None
+    range_mask_by_relation = None
+    onto_hierarchy_child_ids = None
+    onto_hierarchy_parent_ids = None
+    soft_type_negative_candidates = None
+    if "Recons_R_with_onto" in config["training_task"]:
+        print("\n--- Preparing ontology graph from semantic network ---\n")
+        onto_gdp = GraphDataPreparation(
+            config["onto_entities_path"],
+            config["onto_KG_path"],
+            edges_embd_path=config["onto_edges_path"],
+            is_directed=True,
+            model_name_init=plm_embedding_model,
+        )
+        onto_data = onto_gdp.prepare_graph_with_type().to(device)
+        print(onto_data)
+        shared_relations = sorted(set(gdp.predicate_to_id) & set(onto_gdp.predicate_to_id))
+        print(f"Shared KG/ontology relations for alignment: {len(shared_relations)}")
+        if shared_relations:
+            kg_relation_align_ids = torch.tensor(
+                [gdp.predicate_to_id[relation] for relation in shared_relations],
+                dtype=torch.long,
+                device=device,
+            )
+            onto_relation_align_ids = torch.tensor(
+                [onto_gdp.predicate_to_id[relation] for relation in shared_relations],
+                dtype=torch.long,
+                device=device,
+            )
+        shared_core_concepts = [
+            concept for concept in config["core_concepts"]
+            if concept in gdp.nodes_index and concept in onto_gdp.nodes_index
+        ]
+        print(f"Shared KG/ontology core concepts for contrastive loss: {len(shared_core_concepts)}")
+        if shared_core_concepts:
+            kg_core_ids = torch.tensor(
+                [gdp.nodes_index[concept] for concept in shared_core_concepts],
+                dtype=torch.long,
+                device=device,
+            )
+            onto_core_ids = torch.tensor(
+                [onto_gdp.nodes_index[concept] for concept in shared_core_concepts],
+                dtype=torch.long,
+                device=device,
+            )
+        if config.get("lambda_domain_range", 0) != 0 or config.get("negative_sampling_mode") == "soft_type_aware":
+            domain_range_type_ids, domain_mask_by_relation, range_mask_by_relation = _prepare_domain_range_tensors(
+                config.get("domain_range_constraints_path"),
+                gdp,
+                onto_gdp,
+                device,
+            )
+        if config.get("negative_sampling_mode") == "soft_type_aware":
+            soft_type_negative_candidates = _prepare_soft_type_negative_candidates(
+                data,
+                onto_data,
+                domain_range_type_ids,
+                domain_mask_by_relation,
+                range_mask_by_relation,
+                top_k=config.get("soft_type_top_k", 5000),
+                temperature=config.get("soft_type_temperature", 0.1),
+            )
+        if config.get("lambda_onto_hierarchy", 0) != 0:
+            onto_hierarchy_child_ids, onto_hierarchy_parent_ids = _prepare_onto_hierarchy_pairs(
+                onto_data,
+                onto_gdp,
+                device,
+            )
     masked_features_data = None
     removed_edge_types = None
     removed_edge_indices = None
@@ -481,14 +686,23 @@ def main():
                         results.append(performances)
                         wandb.finish()
 
-        elif task == "Recons_R":
+        elif task in ("Recons_R", "Recons_R_with_onto"):
+            use_onto = task == "Recons_R_with_onto"
+            recons_r_mode = config.get("recons_r_training_mode")
             if removed_edge_indices is None:
-                print("\n--- Preparing relation mask ONCE for relation reconstruction ---\n")
-                _, removed_edge_indices, removed_edge_types = relation_based_edge_dropping_balanced(
-                    data, config["total_drop_rate"], max_drop_fraction_per_node=0.3, random_seed=active_seed
-                )
-                removed_edge_indices = removed_edge_indices.to(device)
-                removed_edge_types = removed_edge_types.to(device)
+                if recons_r_mode == "random_static_masked_only":
+                    print("\n--- Preparing random static relation mask ONCE ---\n")
+                    _, removed_edge_indices, removed_edge_types = random_edge_dropping(
+                        data, config["total_drop_rate"], random_seed=active_seed
+                    )
+                elif recons_r_mode in ("removed_only", "random_masked_only", "balanced_static_masked_only"):
+                    print("\n--- Preparing type-balanced static relation mask ONCE ---\n")
+                    _, removed_edge_indices, removed_edge_types = relation_based_edge_dropping_balanced(
+                        data, config["total_drop_rate"], max_drop_fraction_per_node=0.3, random_seed=active_seed
+                    )
+                if removed_edge_indices is not None:
+                    removed_edge_indices = removed_edge_indices.to(device=device, dtype=torch.long)
+                    removed_edge_types = removed_edge_types.to(device)
 
             for out_channels in config["hyperparams_grid"]["out_channels"]:
                 for encoder_ in config["encoders"]:
@@ -511,6 +725,25 @@ def main():
                                 "bases": num_bases,
                                 "out_channels": out_channels,
                                 "training_task": task,
+                                "recons_r_training_mode": config.get("recons_r_training_mode"),
+                                "recons_r_target_relation_field": config.get("recons_r_target_relation_field"),
+                                "lambda_onto": config.get("lambda_onto"),
+                                "lambda_align": config.get("lambda_align"),
+                                "relation_alignment_loss": config.get("relation_alignment_loss"),
+                                "lambda_core_contrastive": config.get("lambda_core_contrastive"),
+                                "core_contrastive_temperature": config.get("core_contrastive_temperature"),
+                                "lambda_core_align": config.get("lambda_core_align"),
+                                "core_alignment_loss": config.get("core_alignment_loss"),
+                                "lambda_domain_range": config.get("lambda_domain_range"),
+                                "domain_range_temperature": config.get("domain_range_temperature"),
+                                "lambda_onto_hierarchy": config.get("lambda_onto_hierarchy"),
+                                "negative_sampling_mode": config.get("negative_sampling_mode"),
+                                "negative_corruption_mode": config.get("negative_corruption_mode"),
+                                "negative_entity_sampling_scope": config.get("negative_entity_sampling_scope"),
+                                "kg_negative_sampling_seed": config.get("kg_negative_sampling_seed"),
+                                "soft_type_negative_ratio": config.get("soft_type_negative_ratio"),
+                                "soft_type_top_k": config.get("soft_type_top_k"),
+                                "soft_type_temperature": config.get("soft_type_temperature"),
                                 "encoders": encoder_,
                                 "decoders": "DisMult",
                                 "message_sens": msg_sens
@@ -522,17 +755,78 @@ def main():
                                 config=run_config,
                                 settings=wandb.Settings(start_method="thread")
                             )
-                            r_decoder = DistMultDecoder(data.num_edge_types, out_channels[-1])
+                            r_decoder = DistMultDecoder(data.num_recons_edge_types, out_channels[-1])
                             autoencoder = MRGAE(encoder,x_decoder = None, r_decoder= r_decoder).to(device)
-                            optimizer = optim.Adam(autoencoder.parameters(), lr=config["learning_rate"])
+                            onto_r_decoder = None
+                            relation_projector = None
+                            core_projector = None
+                            optimizer_params = list(autoencoder.parameters())
+                            if use_onto:
+                                onto_r_decoder = DistMultDecoder(int(onto_data.edge_type.max().item()) + 1, out_channels[-1]).to(device)
+                                optimizer_params += list(onto_r_decoder.parameters())
+                                if kg_relation_align_ids is not None and config.get("lambda_align", 0) != 0:
+                                    relation_projector = torch.nn.Linear(out_channels[-1], out_channels[-1]).to(device)
+                                    optimizer_params += list(relation_projector.parameters())
+                                if kg_core_ids is not None and config.get("lambda_core_align", 0) != 0:
+                                    core_projector = torch.nn.Linear(out_channels[-1], out_channels[-1]).to(device)
+                                    optimizer_params += list(core_projector.parameters())
+                            optimizer = optim.Adam(optimizer_params, lr=config["learning_rate"])
 
                             local_data = copy.deepcopy(data)
 
-                            performances = train_DisMult(
-                                autoencoder, local_data, optimizer, config["num_epochs"], gdp, file_name, device,
-                                save_dir=config["root_save_dir"]+"/"+task, wandb=wandb, seed=config["seed"],
-                                removed_edge_indices=removed_edge_indices, removed_edge_types=removed_edge_types
-                            )
+                            if use_onto:
+                                performances = train_DisMult_with_onto(
+                                    autoencoder, local_data, onto_data, onto_r_decoder, optimizer,
+                                    config["num_epochs"], gdp, file_name, device,
+                                    save_dir=config["root_save_dir"]+"/"+task, wandb=wandb, seed=config["seed"],
+                                    removed_edge_indices=removed_edge_indices, removed_edge_types=removed_edge_types,
+                                    lambda_onto=config["lambda_onto"],
+                                    relation_projector=relation_projector,
+                                    kg_relation_align_ids=kg_relation_align_ids,
+                                    onto_relation_align_ids=onto_relation_align_ids,
+                                    lambda_align=config["lambda_align"],
+                                    relation_alignment_loss=config["relation_alignment_loss"],
+                                    onto_gdp=onto_gdp,
+                                    shared_relations=shared_relations,
+                                    visualizations_dir=os.path.join(config["root_save_dir"], "visualizations", file_name),
+                                    kg_core_ids=kg_core_ids,
+                                    onto_core_ids=onto_core_ids,
+                                    lambda_core_contrastive=config["lambda_core_contrastive"],
+                                    core_contrastive_temperature=config["core_contrastive_temperature"],
+                                    lambda_core_align=config["lambda_core_align"],
+                                    core_alignment_loss=config["core_alignment_loss"],
+                                    core_projector=core_projector,
+                                    domain_range_type_ids=domain_range_type_ids,
+                                    domain_mask_by_relation=domain_mask_by_relation,
+                                    range_mask_by_relation=range_mask_by_relation,
+                                    lambda_domain_range=config["lambda_domain_range"],
+                                    domain_range_temperature=config["domain_range_temperature"],
+                                    onto_hierarchy_child_ids=onto_hierarchy_child_ids,
+                                    onto_hierarchy_parent_ids=onto_hierarchy_parent_ids,
+                                    lambda_onto_hierarchy=config["lambda_onto_hierarchy"],
+                                    negative_sampling_mode=config["negative_sampling_mode"],
+                                    negative_corruption_mode=config["negative_corruption_mode"],
+                                    soft_type_candidates=soft_type_negative_candidates,
+                                    soft_type_negative_ratio=config["soft_type_negative_ratio"],
+                                )
+                            else:
+                                performances = train_DisMult(
+                                    autoencoder, local_data, optimizer, config["num_epochs"], gdp, file_name, device,
+                                    save_dir=config["root_save_dir"]+"/"+task, wandb=wandb, seed=config["seed"],
+                                    removed_edge_indices=removed_edge_indices, removed_edge_types=removed_edge_types,
+                                    domain_range_type_ids=domain_range_type_ids,
+                                    domain_mask_by_relation=domain_mask_by_relation,
+                                    range_mask_by_relation=range_mask_by_relation,
+                                    lambda_domain_range=config["lambda_domain_range"],
+                                    domain_range_temperature=config["domain_range_temperature"],
+                                    onto_hierarchy_child_ids=onto_hierarchy_child_ids,
+                                    onto_hierarchy_parent_ids=onto_hierarchy_parent_ids,
+                                    lambda_onto_hierarchy=config["lambda_onto_hierarchy"],
+                                    negative_sampling_mode=config["negative_sampling_mode"],
+                                    negative_corruption_mode=config["negative_corruption_mode"],
+                                    soft_type_candidates=soft_type_negative_candidates,
+                                    soft_type_negative_ratio=config["soft_type_negative_ratio"],
+                                )
                             # performances = train_GAE(autoencoder, data, optimizer, config["num_epochs"], gdp,save_file = file_name,
                             #              save_dir=config["root_save_dir"],device = device, wandb=wandb)
                             #
@@ -596,6 +890,25 @@ def main():
                             "num_epochs": config["num_epochs"],
                             "out_channels": out_channels,
                             "training_task": task,
+                            "recons_r_training_mode": config.get("recons_r_training_mode"),
+                            "recons_r_target_relation_field": config.get("recons_r_target_relation_field"),
+                            "lambda_onto": config.get("lambda_onto"),
+                            "lambda_align": config.get("lambda_align"),
+                            "relation_alignment_loss": config.get("relation_alignment_loss"),
+                            "lambda_core_contrastive": config.get("lambda_core_contrastive"),
+                            "core_contrastive_temperature": config.get("core_contrastive_temperature"),
+                            "lambda_core_align": config.get("lambda_core_align"),
+                            "core_alignment_loss": config.get("core_alignment_loss"),
+                            "lambda_domain_range": config.get("lambda_domain_range"),
+                            "domain_range_temperature": config.get("domain_range_temperature"),
+                            "lambda_onto_hierarchy": config.get("lambda_onto_hierarchy"),
+                            "negative_sampling_mode": config.get("negative_sampling_mode"),
+                            "negative_corruption_mode": config.get("negative_corruption_mode"),
+                            "negative_entity_sampling_scope": config.get("negative_entity_sampling_scope"),
+                            "kg_negative_sampling_seed": config.get("kg_negative_sampling_seed"),
+                            "soft_type_negative_ratio": config.get("soft_type_negative_ratio"),
+                            "soft_type_top_k": config.get("soft_type_top_k"),
+                            "soft_type_temperature": config.get("soft_type_temperature"),
                             "encoders": encoder_,
                             "decoders": "DisMult",
                             "message_sens": msg_sens
@@ -607,15 +920,75 @@ def main():
                             config=run_config,
                             settings=wandb.Settings(start_method="thread")
                         )
-                        r_decoder = DistMultDecoder(data.num_edge_types, out_channels[-1])
+                        r_decoder = DistMultDecoder(data.num_recons_edge_types, out_channels[-1])
                         autoencoder = MRGAE(encoder, x_decoder=None, r_decoder=r_decoder).to(device)
-                        optimizer = optim.Adam(autoencoder.parameters(), lr=config["learning_rate"])
+                        onto_r_decoder = None
+                        relation_projector = None
+                        core_projector = None
+                        optimizer_params = list(autoencoder.parameters())
+                        if use_onto:
+                            onto_r_decoder = DistMultDecoder(int(onto_data.edge_type.max().item()) + 1, out_channels[-1]).to(device)
+                            optimizer_params += list(onto_r_decoder.parameters())
+                            if kg_relation_align_ids is not None and config.get("lambda_align", 0) != 0:
+                                relation_projector = torch.nn.Linear(out_channels[-1], out_channels[-1]).to(device)
+                                optimizer_params += list(relation_projector.parameters())
+                            if kg_core_ids is not None and config.get("lambda_core_align", 0) != 0:
+                                core_projector = torch.nn.Linear(out_channels[-1], out_channels[-1]).to(device)
+                                optimizer_params += list(core_projector.parameters())
+                        optimizer = optim.Adam(optimizer_params, lr=config["learning_rate"])
 
-                        performances = train_DisMult(
-                            autoencoder, data, optimizer, config["num_epochs"], gdp, file_name,
-                            device, save_dir=config["root_save_dir"]+"/"+task, wandb=wandb, seed=config["seed"],
-                            removed_edge_indices=removed_edge_indices, removed_edge_types=removed_edge_types
-                        )
+                        if use_onto:
+                            performances = train_DisMult_with_onto(
+                                autoencoder, data, onto_data, onto_r_decoder, optimizer, config["num_epochs"], gdp, file_name,
+                                device, save_dir=config["root_save_dir"]+"/"+task, wandb=wandb, seed=config["seed"],
+                                removed_edge_indices=removed_edge_indices, removed_edge_types=removed_edge_types,
+                                lambda_onto=config["lambda_onto"],
+                                relation_projector=relation_projector,
+                                kg_relation_align_ids=kg_relation_align_ids,
+                                onto_relation_align_ids=onto_relation_align_ids,
+                                lambda_align=config["lambda_align"],
+                                relation_alignment_loss=config["relation_alignment_loss"],
+                                onto_gdp=onto_gdp,
+                                shared_relations=shared_relations,
+                                visualizations_dir=os.path.join(config["root_save_dir"], "visualizations", file_name),
+                                kg_core_ids=kg_core_ids,
+                                onto_core_ids=onto_core_ids,
+                                lambda_core_contrastive=config["lambda_core_contrastive"],
+                                core_contrastive_temperature=config["core_contrastive_temperature"],
+                                lambda_core_align=config["lambda_core_align"],
+                                core_alignment_loss=config["core_alignment_loss"],
+                                core_projector=core_projector,
+                                domain_range_type_ids=domain_range_type_ids,
+                                domain_mask_by_relation=domain_mask_by_relation,
+                                range_mask_by_relation=range_mask_by_relation,
+                                lambda_domain_range=config["lambda_domain_range"],
+                                domain_range_temperature=config["domain_range_temperature"],
+                                onto_hierarchy_child_ids=onto_hierarchy_child_ids,
+                                onto_hierarchy_parent_ids=onto_hierarchy_parent_ids,
+                                lambda_onto_hierarchy=config["lambda_onto_hierarchy"],
+                                negative_sampling_mode=config["negative_sampling_mode"],
+                                negative_corruption_mode=config["negative_corruption_mode"],
+                                soft_type_candidates=soft_type_negative_candidates,
+                                soft_type_negative_ratio=config["soft_type_negative_ratio"],
+                            )
+                        else:
+                            performances = train_DisMult(
+                                autoencoder, data, optimizer, config["num_epochs"], gdp, file_name,
+                                device, save_dir=config["root_save_dir"]+"/"+task, wandb=wandb, seed=config["seed"],
+                                removed_edge_indices=removed_edge_indices, removed_edge_types=removed_edge_types,
+                                domain_range_type_ids=domain_range_type_ids,
+                                domain_mask_by_relation=domain_mask_by_relation,
+                                range_mask_by_relation=range_mask_by_relation,
+                                lambda_domain_range=config["lambda_domain_range"],
+                                domain_range_temperature=config["domain_range_temperature"],
+                                onto_hierarchy_child_ids=onto_hierarchy_child_ids,
+                                onto_hierarchy_parent_ids=onto_hierarchy_parent_ids,
+                                lambda_onto_hierarchy=config["lambda_onto_hierarchy"],
+                                negative_sampling_mode=config["negative_sampling_mode"],
+                                negative_corruption_mode=config["negative_corruption_mode"],
+                                soft_type_candidates=soft_type_negative_candidates,
+                                soft_type_negative_ratio=config["soft_type_negative_ratio"],
+                            )
                         results.append(performances)
 
                         wandb.finish()

@@ -1,0 +1,2214 @@
+{
+  "source": "data\\UMLS\\noisy\\org\\SM_network.json",
+  "include_ancestors": true,
+  "include_isa": false,
+  "num_types": 127,
+  "num_relations": 48,
+  "relations": {
+    "adjacent_to": {
+      "domain": [
+        "Anatomical Structure",
+        "Body Location or Region",
+        "Body Part, Organ, or Organ Component",
+        "Body Space or Junction",
+        "Cell",
+        "Cell Component",
+        "Conceptual Entity",
+        "Entity",
+        "Fully Formed Anatomical Structure",
+        "Idea or Concept",
+        "Physical Object",
+        "Spatial Concept",
+        "Tissue"
+      ],
+      "range": [
+        "Anatomical Structure",
+        "Body Location or Region",
+        "Body Part, Organ, or Organ Component",
+        "Body Space or Junction",
+        "Cell",
+        "Cell Component",
+        "Conceptual Entity",
+        "Entity",
+        "Fully Formed Anatomical Structure",
+        "Idea or Concept",
+        "Physical Object",
+        "Spatial Concept",
+        "Tissue"
+      ],
+      "direct_domain": [
+        "Body Location or Region",
+        "Body Part, Organ, or Organ Component",
+        "Body Space or Junction",
+        "Cell",
+        "Cell Component",
+        "Tissue"
+      ],
+      "direct_range": [
+        "Body Location or Region",
+        "Body Part, Organ, or Organ Component",
+        "Body Space or Junction",
+        "Cell",
+        "Cell Component",
+        "Tissue"
+      ],
+      "num_domain": 13,
+      "num_range": 13,
+      "num_direct_domain": 6,
+      "num_direct_range": 6
+    },
+    "affects": {
+      "domain": [
+        "Activity",
+        "Anatomical Abnormality",
+        "Anatomical Structure",
+        "Behavior",
+        "Biologic Function",
+        "Cell Component",
+        "Chemical",
+        "Conceptual Entity",
+        "Diagnostic Procedure",
+        "Disease or Syndrome",
+        "Entity",
+        "Event",
+        "Food",
+        "Fully Formed Anatomical Structure",
+        "Gene or Genome",
+        "Health Care Activity",
+        "Intellectual Product",
+        "Mental Process",
+        "Mental or Behavioral Dysfunction",
+        "Natural Phenomenon or Process",
+        "Occupational Activity",
+        "Organism Function",
+        "Pathologic Function",
+        "Phenomenon or Process",
+        "Physical Object",
+        "Physiologic Function",
+        "Regulation or Law",
+        "Research Activity",
+        "Substance",
+        "Therapeutic or Preventive Procedure"
+      ],
+      "range": [
+        "Activity",
+        "Behavior",
+        "Biologic Function",
+        "Conceptual Entity",
+        "Entity",
+        "Event",
+        "Group",
+        "Mental Process",
+        "Natural Phenomenon or Process",
+        "Organism",
+        "Organism Attribute",
+        "Organism Function",
+        "Organization",
+        "Patient or Disabled Group",
+        "Phenomenon or Process",
+        "Physical Object",
+        "Physiologic Function"
+      ],
+      "direct_domain": [
+        "Anatomical Abnormality",
+        "Behavior",
+        "Biologic Function",
+        "Cell Component",
+        "Chemical",
+        "Diagnostic Procedure",
+        "Food",
+        "Gene or Genome",
+        "Health Care Activity",
+        "Mental Process",
+        "Mental or Behavioral Dysfunction",
+        "Natural Phenomenon or Process",
+        "Physiologic Function",
+        "Regulation or Law",
+        "Research Activity",
+        "Therapeutic or Preventive Procedure"
+      ],
+      "direct_range": [
+        "Behavior",
+        "Biologic Function",
+        "Group",
+        "Mental Process",
+        "Natural Phenomenon or Process",
+        "Organism",
+        "Organism Attribute",
+        "Organization",
+        "Patient or Disabled Group",
+        "Physiologic Function"
+      ],
+      "num_domain": 30,
+      "num_range": 17,
+      "num_direct_domain": 16,
+      "num_direct_range": 10
+    },
+    "analyzes": {
+      "domain": [
+        "Activity",
+        "Diagnostic Procedure",
+        "Event",
+        "Health Care Activity",
+        "Laboratory Procedure",
+        "Occupational Activity"
+      ],
+      "range": [
+        "Body Substance",
+        "Chemical",
+        "Entity",
+        "Physical Object",
+        "Substance"
+      ],
+      "direct_domain": [
+        "Diagnostic Procedure",
+        "Laboratory Procedure"
+      ],
+      "direct_range": [
+        "Body Substance",
+        "Chemical"
+      ],
+      "num_domain": 6,
+      "num_range": 5,
+      "num_direct_domain": 2,
+      "num_direct_range": 2
+    },
+    "assesses_effect_of": {
+      "domain": [
+        "Activity",
+        "Diagnostic Procedure",
+        "Event",
+        "Health Care Activity",
+        "Laboratory Procedure",
+        "Occupational Activity"
+      ],
+      "range": [
+        "Chemical",
+        "Entity",
+        "Event",
+        "Natural Phenomenon or Process",
+        "Phenomenon or Process",
+        "Physical Object",
+        "Substance"
+      ],
+      "direct_domain": [
+        "Diagnostic Procedure",
+        "Laboratory Procedure"
+      ],
+      "direct_range": [
+        "Chemical",
+        "Natural Phenomenon or Process"
+      ],
+      "num_domain": 6,
+      "num_range": 7,
+      "num_direct_domain": 2,
+      "num_direct_range": 2
+    },
+    "associated_with": {
+      "domain": [
+        "Activity",
+        "Anatomical Abnormality",
+        "Anatomical Structure",
+        "Behavior",
+        "Biologic Function",
+        "Biologically Active Substance",
+        "Chemical",
+        "Chemical Viewed Functionally",
+        "Conceptual Entity",
+        "Daily or Recreational Activity",
+        "Entity",
+        "Event",
+        "Finding",
+        "Geographic Area",
+        "Group",
+        "Idea or Concept",
+        "Individual Behavior",
+        "Injury or Poisoning",
+        "Natural Phenomenon or Process",
+        "Occupational Activity",
+        "Organism Attribute",
+        "Pathologic Function",
+        "Phenomenon or Process",
+        "Physical Object",
+        "Population Group",
+        "Spatial Concept",
+        "Substance"
+      ],
+      "range": [
+        "Anatomical Abnormality",
+        "Anatomical Structure",
+        "Biologic Function",
+        "Conceptual Entity",
+        "Entity",
+        "Event",
+        "Geographic Area",
+        "Group",
+        "Group Attribute",
+        "Idea or Concept",
+        "Injury or Poisoning",
+        "Natural Phenomenon or Process",
+        "Occupation or Discipline",
+        "Organism",
+        "Organism Attribute",
+        "Pathologic Function",
+        "Phenomenon or Process",
+        "Physical Object",
+        "Spatial Concept",
+        "Virus"
+      ],
+      "direct_domain": [
+        "Anatomical Abnormality",
+        "Behavior",
+        "Biologically Active Substance",
+        "Daily or Recreational Activity",
+        "Finding",
+        "Geographic Area",
+        "Individual Behavior",
+        "Injury or Poisoning",
+        "Occupational Activity",
+        "Organism Attribute",
+        "Pathologic Function",
+        "Population Group"
+      ],
+      "direct_range": [
+        "Anatomical Abnormality",
+        "Geographic Area",
+        "Group",
+        "Group Attribute",
+        "Injury or Poisoning",
+        "Occupation or Discipline",
+        "Organism Attribute",
+        "Pathologic Function",
+        "Virus"
+      ],
+      "num_domain": 27,
+      "num_range": 20,
+      "num_direct_domain": 12,
+      "num_direct_range": 9
+    },
+    "branch_of": {
+      "domain": [
+        "Anatomical Structure",
+        "Body Part, Organ, or Organ Component",
+        "Entity",
+        "Fully Formed Anatomical Structure",
+        "Physical Object"
+      ],
+      "range": [
+        "Anatomical Structure",
+        "Body Part, Organ, or Organ Component",
+        "Entity",
+        "Fully Formed Anatomical Structure",
+        "Physical Object"
+      ],
+      "direct_domain": [
+        "Body Part, Organ, or Organ Component"
+      ],
+      "direct_range": [
+        "Body Part, Organ, or Organ Component"
+      ],
+      "num_domain": 5,
+      "num_range": 5,
+      "num_direct_domain": 1,
+      "num_direct_range": 1
+    },
+    "carries_out": {
+      "domain": [
+        "Anatomical Structure",
+        "Conceptual Entity",
+        "Entity",
+        "Fully Formed Anatomical Structure",
+        "Gene or Genome",
+        "Organization",
+        "Physical Object"
+      ],
+      "range": [
+        "Activity",
+        "Biologic Function",
+        "Event",
+        "Molecular Function",
+        "Natural Phenomenon or Process",
+        "Occupational Activity",
+        "Phenomenon or Process",
+        "Physiologic Function"
+      ],
+      "direct_domain": [
+        "Gene or Genome",
+        "Organization"
+      ],
+      "direct_range": [
+        "Molecular Function",
+        "Occupational Activity"
+      ],
+      "num_domain": 7,
+      "num_range": 8,
+      "num_direct_domain": 2,
+      "num_direct_range": 2
+    },
+    "causes": {
+      "domain": [
+        "Bacterium",
+        "Entity",
+        "Eukaryote",
+        "Fungus",
+        "Manufactured Object",
+        "Organism",
+        "Physical Object",
+        "Substance",
+        "Virus"
+      ],
+      "range": [
+        "Anatomical Abnormality",
+        "Anatomical Structure",
+        "Biologic Function",
+        "Entity",
+        "Event",
+        "Injury or Poisoning",
+        "Natural Phenomenon or Process",
+        "Pathologic Function",
+        "Phenomenon or Process",
+        "Physical Object"
+      ],
+      "direct_domain": [
+        "Bacterium",
+        "Fungus",
+        "Manufactured Object",
+        "Substance",
+        "Virus"
+      ],
+      "direct_range": [
+        "Anatomical Abnormality",
+        "Injury or Poisoning",
+        "Pathologic Function"
+      ],
+      "num_domain": 9,
+      "num_range": 10,
+      "num_direct_domain": 5,
+      "num_direct_range": 3
+    },
+    "co-occurs_with": {
+      "domain": [
+        "Acquired Abnormality",
+        "Anatomical Abnormality",
+        "Anatomical Structure",
+        "Biologic Function",
+        "Conceptual Entity",
+        "Entity",
+        "Event",
+        "Finding",
+        "Injury or Poisoning",
+        "Natural Phenomenon or Process",
+        "Pathologic Function",
+        "Phenomenon or Process",
+        "Physical Object",
+        "Physiologic Function"
+      ],
+      "range": [
+        "Anatomical Abnormality",
+        "Anatomical Structure",
+        "Biologic Function",
+        "Conceptual Entity",
+        "Entity",
+        "Event",
+        "Finding",
+        "Injury or Poisoning",
+        "Natural Phenomenon or Process",
+        "Pathologic Function",
+        "Phenomenon or Process",
+        "Physical Object",
+        "Physiologic Function"
+      ],
+      "direct_domain": [
+        "Acquired Abnormality",
+        "Anatomical Abnormality",
+        "Finding",
+        "Injury or Poisoning",
+        "Pathologic Function",
+        "Physiologic Function"
+      ],
+      "direct_range": [
+        "Anatomical Abnormality",
+        "Finding",
+        "Injury or Poisoning",
+        "Pathologic Function",
+        "Physiologic Function"
+      ],
+      "num_domain": 14,
+      "num_range": 13,
+      "num_direct_domain": 6,
+      "num_direct_range": 5
+    },
+    "complicates": {
+      "domain": [
+        "Activity",
+        "Anatomical Abnormality",
+        "Anatomical Structure",
+        "Biologic Function",
+        "Biologically Active Substance",
+        "Chemical",
+        "Chemical Viewed Functionally",
+        "Entity",
+        "Event",
+        "Hazardous or Poisonous Substance",
+        "Health Care Activity",
+        "Injury or Poisoning",
+        "Natural Phenomenon or Process",
+        "Occupational Activity",
+        "Pathologic Function",
+        "Pharmacologic Substance",
+        "Phenomenon or Process",
+        "Physical Object",
+        "Substance",
+        "Therapeutic or Preventive Procedure"
+      ],
+      "range": [
+        "Anatomical Abnormality",
+        "Anatomical Structure",
+        "Biologic Function",
+        "Entity",
+        "Event",
+        "Injury or Poisoning",
+        "Natural Phenomenon or Process",
+        "Pathologic Function",
+        "Phenomenon or Process",
+        "Physical Object"
+      ],
+      "direct_domain": [
+        "Anatomical Abnormality",
+        "Biologically Active Substance",
+        "Hazardous or Poisonous Substance",
+        "Injury or Poisoning",
+        "Pathologic Function",
+        "Pharmacologic Substance",
+        "Therapeutic or Preventive Procedure"
+      ],
+      "direct_range": [
+        "Anatomical Abnormality",
+        "Biologic Function",
+        "Injury or Poisoning",
+        "Pathologic Function"
+      ],
+      "num_domain": 20,
+      "num_range": 10,
+      "num_direct_domain": 7,
+      "num_direct_range": 4
+    },
+    "conceptual_part_of": {
+      "domain": [
+        "Activity",
+        "Anatomical Structure",
+        "Behavior",
+        "Biologic Function",
+        "Body Location or Region",
+        "Body Part, Organ, or Organ Component",
+        "Body Space or Junction",
+        "Body Substance",
+        "Body System",
+        "Cell",
+        "Cell Component",
+        "Conceptual Entity",
+        "Entity",
+        "Event",
+        "Finding",
+        "Fully Formed Anatomical Structure",
+        "Functional Concept",
+        "Idea or Concept",
+        "Intellectual Product",
+        "Laboratory or Test Result",
+        "Natural Phenomenon or Process",
+        "Occupation or Discipline",
+        "Organ or Tissue Function",
+        "Organism Function",
+        "Phenomenon or Process",
+        "Physical Object",
+        "Physiologic Function",
+        "Quantitative Concept",
+        "Social Behavior",
+        "Spatial Concept",
+        "Substance",
+        "Temporal Concept",
+        "Tissue"
+      ],
+      "range": [
+        "Activity",
+        "Anatomical Structure",
+        "Behavior",
+        "Biologic Function",
+        "Body Location or Region",
+        "Body System",
+        "Cell Function",
+        "Conceptual Entity",
+        "Diagnostic Procedure",
+        "Entity",
+        "Event",
+        "Finding",
+        "Fully Formed Anatomical Structure",
+        "Functional Concept",
+        "Health Care Activity",
+        "Idea or Concept",
+        "Intellectual Product",
+        "Laboratory or Test Result",
+        "Natural Phenomenon or Process",
+        "Occupation or Discipline",
+        "Occupational Activity",
+        "Organ or Tissue Function",
+        "Organism Function",
+        "Phenomenon or Process",
+        "Physical Object",
+        "Physiologic Function",
+        "Social Behavior",
+        "Spatial Concept",
+        "Temporal Concept",
+        "Therapeutic or Preventive Procedure"
+      ],
+      "direct_domain": [
+        "Body Location or Region",
+        "Body Part, Organ, or Organ Component",
+        "Body Space or Junction",
+        "Body Substance",
+        "Body System",
+        "Cell",
+        "Cell Component",
+        "Idea or Concept",
+        "Intellectual Product",
+        "Laboratory or Test Result",
+        "Occupation or Discipline",
+        "Organ or Tissue Function",
+        "Organism Function",
+        "Quantitative Concept",
+        "Social Behavior",
+        "Temporal Concept",
+        "Tissue"
+      ],
+      "direct_range": [
+        "Behavior",
+        "Body Location or Region",
+        "Body System",
+        "Cell Function",
+        "Diagnostic Procedure",
+        "Fully Formed Anatomical Structure",
+        "Intellectual Product",
+        "Laboratory or Test Result",
+        "Occupation or Discipline",
+        "Organ or Tissue Function",
+        "Organism Function",
+        "Social Behavior",
+        "Temporal Concept",
+        "Therapeutic or Preventive Procedure"
+      ],
+      "num_domain": 33,
+      "num_range": 30,
+      "num_direct_domain": 17,
+      "num_direct_range": 14
+    },
+    "conceptually_related_to": {
+      "domain": [
+        "Activity",
+        "Behavior",
+        "Biologic Function",
+        "Disease or Syndrome",
+        "Event",
+        "Individual Behavior",
+        "Natural Phenomenon or Process",
+        "Pathologic Function",
+        "Phenomenon or Process"
+      ],
+      "range": [
+        "Biologic Function",
+        "Conceptual Entity",
+        "Entity",
+        "Event",
+        "Experimental Model of Disease",
+        "Idea or Concept",
+        "Natural Phenomenon or Process",
+        "Pathologic Function",
+        "Phenomenon or Process"
+      ],
+      "direct_domain": [
+        "Disease or Syndrome",
+        "Individual Behavior"
+      ],
+      "direct_range": [
+        "Experimental Model of Disease",
+        "Idea or Concept"
+      ],
+      "num_domain": 9,
+      "num_range": 9,
+      "num_direct_domain": 2,
+      "num_direct_range": 2
+    },
+    "connected_to": {
+      "domain": [
+        "Anatomical Structure",
+        "Body Location or Region",
+        "Body Part, Organ, or Organ Component",
+        "Body Space or Junction",
+        "Conceptual Entity",
+        "Entity",
+        "Fully Formed Anatomical Structure",
+        "Idea or Concept",
+        "Physical Object",
+        "Spatial Concept"
+      ],
+      "range": [
+        "Anatomical Structure",
+        "Body Location or Region",
+        "Body Part, Organ, or Organ Component",
+        "Body Space or Junction",
+        "Body Substance",
+        "Conceptual Entity",
+        "Entity",
+        "Fully Formed Anatomical Structure",
+        "Idea or Concept",
+        "Physical Object",
+        "Spatial Concept",
+        "Substance",
+        "Tissue"
+      ],
+      "direct_domain": [
+        "Body Location or Region",
+        "Body Part, Organ, or Organ Component",
+        "Body Space or Junction"
+      ],
+      "direct_range": [
+        "Body Location or Region",
+        "Body Part, Organ, or Organ Component",
+        "Body Space or Junction",
+        "Body Substance",
+        "Tissue"
+      ],
+      "num_domain": 10,
+      "num_range": 13,
+      "num_direct_domain": 3,
+      "num_direct_range": 5
+    },
+    "consists_of": {
+      "domain": [
+        "Amino Acid, Peptide, or Protein",
+        "Anatomical Structure",
+        "Body Part, Organ, or Organ Component",
+        "Body Substance",
+        "Cell",
+        "Chemical",
+        "Chemical Viewed Structurally",
+        "Entity",
+        "Fully Formed Anatomical Structure",
+        "Gene or Genome",
+        "Organic Chemical",
+        "Physical Object",
+        "Substance",
+        "Tissue"
+      ],
+      "range": [
+        "Amino Acid, Peptide, or Protein",
+        "Anatomical Structure",
+        "Body Part, Organ, or Organ Component",
+        "Body Substance",
+        "Cell",
+        "Chemical",
+        "Chemical Viewed Structurally",
+        "Entity",
+        "Fully Formed Anatomical Structure",
+        "Gene or Genome",
+        "Organic Chemical",
+        "Physical Object",
+        "Substance",
+        "Tissue"
+      ],
+      "direct_domain": [
+        "Amino Acid, Peptide, or Protein",
+        "Body Part, Organ, or Organ Component",
+        "Body Substance",
+        "Cell",
+        "Gene or Genome",
+        "Tissue"
+      ],
+      "direct_range": [
+        "Amino Acid, Peptide, or Protein",
+        "Body Part, Organ, or Organ Component",
+        "Body Substance",
+        "Cell",
+        "Gene or Genome",
+        "Organic Chemical",
+        "Tissue"
+      ],
+      "num_domain": 14,
+      "num_range": 14,
+      "num_direct_domain": 6,
+      "num_direct_range": 7
+    },
+    "contains": {
+      "domain": [
+        "Anatomical Structure",
+        "Body Space or Junction",
+        "Conceptual Entity",
+        "Drug Delivery Device",
+        "Embryonic Structure",
+        "Entity",
+        "Fully Formed Anatomical Structure",
+        "Idea or Concept",
+        "Manufactured Object",
+        "Medical Device",
+        "Physical Object",
+        "Spatial Concept"
+      ],
+      "range": [
+        "Anatomical Structure",
+        "Body Part, Organ, or Organ Component",
+        "Body Substance",
+        "Clinical Drug",
+        "Entity",
+        "Fully Formed Anatomical Structure",
+        "Manufactured Object",
+        "Physical Object",
+        "Substance",
+        "Tissue"
+      ],
+      "direct_domain": [
+        "Body Space or Junction",
+        "Drug Delivery Device",
+        "Embryonic Structure",
+        "Fully Formed Anatomical Structure"
+      ],
+      "direct_range": [
+        "Body Part, Organ, or Organ Component",
+        "Body Substance",
+        "Clinical Drug",
+        "Tissue"
+      ],
+      "num_domain": 12,
+      "num_range": 10,
+      "num_direct_domain": 4,
+      "num_direct_range": 4
+    },
+    "degree_of": {
+      "domain": [
+        "Biologic Function",
+        "Conceptual Entity",
+        "Entity",
+        "Event",
+        "Finding",
+        "Natural Phenomenon or Process",
+        "Organ or Tissue Function",
+        "Organism Attribute",
+        "Organism Function",
+        "Pathologic Function",
+        "Phenomenon or Process",
+        "Physiologic Function",
+        "Sign or Symptom"
+      ],
+      "range": [
+        "Biologic Function",
+        "Conceptual Entity",
+        "Entity",
+        "Event",
+        "Finding",
+        "Natural Phenomenon or Process",
+        "Organ or Tissue Function",
+        "Organism Attribute",
+        "Organism Function",
+        "Pathologic Function",
+        "Phenomenon or Process",
+        "Physiologic Function",
+        "Sign or Symptom"
+      ],
+      "direct_domain": [
+        "Organ or Tissue Function",
+        "Organism Attribute",
+        "Organism Function",
+        "Pathologic Function",
+        "Sign or Symptom"
+      ],
+      "direct_range": [
+        "Organ or Tissue Function",
+        "Organism Attribute",
+        "Organism Function",
+        "Pathologic Function",
+        "Sign or Symptom"
+      ],
+      "num_domain": 13,
+      "num_range": 13,
+      "num_direct_domain": 5,
+      "num_direct_range": 5
+    },
+    "derivative_of": {
+      "domain": [
+        "Body Substance",
+        "Entity",
+        "Physical Object",
+        "Substance"
+      ],
+      "range": [
+        "Anatomical Structure",
+        "Entity",
+        "Fully Formed Anatomical Structure",
+        "Physical Object",
+        "Tissue"
+      ],
+      "direct_domain": [
+        "Body Substance"
+      ],
+      "direct_range": [
+        "Tissue"
+      ],
+      "num_domain": 4,
+      "num_range": 5,
+      "num_direct_domain": 1,
+      "num_direct_range": 1
+    },
+    "developmental_form_of": {
+      "domain": [
+        "Anatomical Structure",
+        "Body Part, Organ, or Organ Component",
+        "Cell",
+        "Embryonic Structure",
+        "Entity",
+        "Fully Formed Anatomical Structure",
+        "Physical Object",
+        "Tissue"
+      ],
+      "range": [
+        "Anatomical Structure",
+        "Body Part, Organ, or Organ Component",
+        "Cell",
+        "Embryonic Structure",
+        "Entity",
+        "Fully Formed Anatomical Structure",
+        "Physical Object",
+        "Tissue"
+      ],
+      "direct_domain": [
+        "Body Part, Organ, or Organ Component",
+        "Cell",
+        "Embryonic Structure",
+        "Tissue"
+      ],
+      "direct_range": [
+        "Body Part, Organ, or Organ Component",
+        "Cell",
+        "Embryonic Structure",
+        "Tissue"
+      ],
+      "num_domain": 8,
+      "num_range": 8,
+      "num_direct_domain": 4,
+      "num_direct_range": 4
+    },
+    "diagnoses": {
+      "domain": [
+        "Activity",
+        "Chemical",
+        "Chemical Viewed Functionally",
+        "Conceptual Entity",
+        "Diagnostic Procedure",
+        "Entity",
+        "Event",
+        "Finding",
+        "Group",
+        "Health Care Activity",
+        "Laboratory Procedure",
+        "Occupational Activity",
+        "Pharmacologic Substance",
+        "Physical Object",
+        "Professional or Occupational Group",
+        "Sign or Symptom",
+        "Substance"
+      ],
+      "range": [
+        "Anatomical Abnormality",
+        "Anatomical Structure",
+        "Biologic Function",
+        "Entity",
+        "Event",
+        "Injury or Poisoning",
+        "Natural Phenomenon or Process",
+        "Pathologic Function",
+        "Phenomenon or Process",
+        "Physical Object"
+      ],
+      "direct_domain": [
+        "Diagnostic Procedure",
+        "Laboratory Procedure",
+        "Pharmacologic Substance",
+        "Professional or Occupational Group",
+        "Sign or Symptom"
+      ],
+      "direct_range": [
+        "Anatomical Abnormality",
+        "Injury or Poisoning",
+        "Pathologic Function"
+      ],
+      "num_domain": 17,
+      "num_range": 10,
+      "num_direct_domain": 5,
+      "num_direct_range": 3
+    },
+    "disrupts": {
+      "domain": [
+        "Biologically Active Substance",
+        "Chemical",
+        "Chemical Viewed Functionally",
+        "Entity",
+        "Event",
+        "Hazardous or Poisonous Substance",
+        "Injury or Poisoning",
+        "Pharmacologic Substance",
+        "Phenomenon or Process",
+        "Physical Object",
+        "Substance"
+      ],
+      "range": [
+        "Anatomical Structure",
+        "Biologic Function",
+        "Embryonic Structure",
+        "Entity",
+        "Event",
+        "Fully Formed Anatomical Structure",
+        "Natural Phenomenon or Process",
+        "Phenomenon or Process",
+        "Physical Object",
+        "Physiologic Function"
+      ],
+      "direct_domain": [
+        "Biologically Active Substance",
+        "Hazardous or Poisonous Substance",
+        "Injury or Poisoning",
+        "Pharmacologic Substance"
+      ],
+      "direct_range": [
+        "Embryonic Structure",
+        "Fully Formed Anatomical Structure",
+        "Physiologic Function"
+      ],
+      "num_domain": 11,
+      "num_range": 10,
+      "num_direct_domain": 4,
+      "num_direct_range": 3
+    },
+    "evaluation_of": {
+      "domain": [
+        "Conceptual Entity",
+        "Entity",
+        "Finding",
+        "Idea or Concept",
+        "Qualitative Concept"
+      ],
+      "range": [
+        "Activity",
+        "Biologic Function",
+        "Conceptual Entity",
+        "Entity",
+        "Event",
+        "Natural Phenomenon or Process",
+        "Organism Attribute",
+        "Phenomenon or Process"
+      ],
+      "direct_domain": [
+        "Finding",
+        "Qualitative Concept"
+      ],
+      "direct_range": [
+        "Activity",
+        "Biologic Function",
+        "Organism Attribute"
+      ],
+      "num_domain": 5,
+      "num_range": 8,
+      "num_direct_domain": 2,
+      "num_direct_range": 3
+    },
+    "exhibits": {
+      "domain": [
+        "Animal",
+        "Conceptual Entity",
+        "Entity",
+        "Eukaryote",
+        "Group",
+        "Organism",
+        "Physical Object"
+      ],
+      "range": [
+        "Activity",
+        "Behavior",
+        "Event"
+      ],
+      "direct_domain": [
+        "Animal",
+        "Group"
+      ],
+      "direct_range": [
+        "Behavior"
+      ],
+      "num_domain": 7,
+      "num_range": 3,
+      "num_direct_domain": 2,
+      "num_direct_range": 1
+    },
+    "indicates": {
+      "domain": [
+        "Biologically Active Substance",
+        "Chemical",
+        "Chemical Viewed Functionally",
+        "Conceptual Entity",
+        "Entity",
+        "Finding",
+        "Immunologic Factor",
+        "Laboratory or Test Result",
+        "Physical Object",
+        "Substance"
+      ],
+      "range": [
+        "Anatomical Abnormality",
+        "Anatomical Structure",
+        "Bacterium",
+        "Biologic Function",
+        "Entity",
+        "Event",
+        "Injury or Poisoning",
+        "Natural Phenomenon or Process",
+        "Organism",
+        "Pathologic Function",
+        "Phenomenon or Process",
+        "Physical Object",
+        "Virus"
+      ],
+      "direct_domain": [
+        "Immunologic Factor",
+        "Laboratory or Test Result"
+      ],
+      "direct_range": [
+        "Anatomical Abnormality",
+        "Bacterium",
+        "Biologic Function",
+        "Injury or Poisoning",
+        "Pathologic Function",
+        "Virus"
+      ],
+      "num_domain": 10,
+      "num_range": 13,
+      "num_direct_domain": 2,
+      "num_direct_range": 6
+    },
+    "ingredient_of": {
+      "domain": [
+        "Entity",
+        "Physical Object",
+        "Substance"
+      ],
+      "range": [
+        "Clinical Drug",
+        "Entity",
+        "Manufactured Object",
+        "Physical Object"
+      ],
+      "direct_domain": [
+        "Substance"
+      ],
+      "direct_range": [
+        "Clinical Drug"
+      ],
+      "num_domain": 3,
+      "num_range": 4,
+      "num_direct_domain": 1,
+      "num_direct_range": 1
+    },
+    "interacts_with": {
+      "domain": [
+        "Chemical",
+        "Conceptual Entity",
+        "Entity",
+        "Group",
+        "Organism",
+        "Physical Object",
+        "Substance"
+      ],
+      "range": [
+        "Chemical",
+        "Conceptual Entity",
+        "Entity",
+        "Group",
+        "Organism",
+        "Physical Object",
+        "Substance"
+      ],
+      "direct_domain": [
+        "Chemical",
+        "Group",
+        "Organism"
+      ],
+      "direct_range": [
+        "Chemical",
+        "Group",
+        "Organism"
+      ],
+      "num_domain": 7,
+      "num_range": 7,
+      "num_direct_domain": 3,
+      "num_direct_range": 3
+    },
+    "interconnects": {
+      "domain": [
+        "Anatomical Structure",
+        "Body Part, Organ, or Organ Component",
+        "Body Space or Junction",
+        "Conceptual Entity",
+        "Embryonic Structure",
+        "Entity",
+        "Fully Formed Anatomical Structure",
+        "Idea or Concept",
+        "Physical Object",
+        "Spatial Concept"
+      ],
+      "range": [
+        "Anatomical Structure",
+        "Body Space or Junction",
+        "Cell",
+        "Conceptual Entity",
+        "Embryonic Structure",
+        "Entity",
+        "Fully Formed Anatomical Structure",
+        "Idea or Concept",
+        "Physical Object",
+        "Spatial Concept"
+      ],
+      "direct_domain": [
+        "Body Part, Organ, or Organ Component",
+        "Body Space or Junction",
+        "Embryonic Structure"
+      ],
+      "direct_range": [
+        "Body Space or Junction",
+        "Cell",
+        "Embryonic Structure"
+      ],
+      "num_domain": 10,
+      "num_range": 10,
+      "num_direct_domain": 3,
+      "num_direct_range": 3
+    },
+    "issue_in": {
+      "domain": [
+        "Entity",
+        "Event"
+      ],
+      "range": [
+        "Conceptual Entity",
+        "Entity",
+        "Occupation or Discipline"
+      ],
+      "direct_domain": [
+        "Entity",
+        "Event"
+      ],
+      "direct_range": [
+        "Occupation or Discipline"
+      ],
+      "num_domain": 2,
+      "num_range": 3,
+      "num_direct_domain": 2,
+      "num_direct_range": 1
+    },
+    "location_of": {
+      "domain": [
+        "Anatomical Abnormality",
+        "Anatomical Structure",
+        "Bacterium",
+        "Body Location or Region",
+        "Body Part, Organ, or Organ Component",
+        "Body Space or Junction",
+        "Cell",
+        "Cell Component",
+        "Conceptual Entity",
+        "Embryonic Structure",
+        "Entity",
+        "Eukaryote",
+        "Fully Formed Anatomical Structure",
+        "Fungus",
+        "Idea or Concept",
+        "Organism",
+        "Organization",
+        "Physical Object",
+        "Plant",
+        "Spatial Concept",
+        "Tissue",
+        "Virus"
+      ],
+      "range": [
+        "Activity",
+        "Anatomical Abnormality",
+        "Anatomical Structure",
+        "Bacterium",
+        "Biologic Function",
+        "Biologically Active Substance",
+        "Body Location or Region",
+        "Body Part, Organ, or Organ Component",
+        "Body Space or Junction",
+        "Body Substance",
+        "Cell Component",
+        "Chemical",
+        "Chemical Viewed Functionally",
+        "Conceptual Entity",
+        "Diagnostic Procedure",
+        "Entity",
+        "Eukaryote",
+        "Event",
+        "Fully Formed Anatomical Structure",
+        "Fungus",
+        "Health Care Activity",
+        "Idea or Concept",
+        "Injury or Poisoning",
+        "Natural Phenomenon or Process",
+        "Occupational Activity",
+        "Organism",
+        "Pathologic Function",
+        "Phenomenon or Process",
+        "Physical Object",
+        "Spatial Concept",
+        "Substance",
+        "Therapeutic or Preventive Procedure",
+        "Tissue",
+        "Virus"
+      ],
+      "direct_domain": [
+        "Anatomical Abnormality",
+        "Anatomical Structure",
+        "Bacterium",
+        "Body Location or Region",
+        "Body Part, Organ, or Organ Component",
+        "Body Space or Junction",
+        "Cell",
+        "Cell Component",
+        "Embryonic Structure",
+        "Fully Formed Anatomical Structure",
+        "Fungus",
+        "Organization",
+        "Plant",
+        "Tissue",
+        "Virus"
+      ],
+      "direct_range": [
+        "Anatomical Abnormality",
+        "Bacterium",
+        "Biologic Function",
+        "Biologically Active Substance",
+        "Body Location or Region",
+        "Body Part, Organ, or Organ Component",
+        "Body Space or Junction",
+        "Body Substance",
+        "Cell Component",
+        "Diagnostic Procedure",
+        "Fungus",
+        "Injury or Poisoning",
+        "Occupational Activity",
+        "Pathologic Function",
+        "Therapeutic or Preventive Procedure",
+        "Tissue",
+        "Virus"
+      ],
+      "num_domain": 22,
+      "num_range": 34,
+      "num_direct_domain": 15,
+      "num_direct_range": 17
+    },
+    "manages": {
+      "domain": [
+        "Conceptual Entity",
+        "Entity",
+        "Group",
+        "Health Care Related Organization",
+        "Organization",
+        "Professional or Occupational Group",
+        "Self-help or Relief Organization"
+      ],
+      "range": [
+        "Conceptual Entity",
+        "Entity",
+        "Group",
+        "Organization",
+        "Patient or Disabled Group"
+      ],
+      "direct_domain": [
+        "Health Care Related Organization",
+        "Professional or Occupational Group",
+        "Self-help or Relief Organization"
+      ],
+      "direct_range": [
+        "Organization",
+        "Patient or Disabled Group"
+      ],
+      "num_domain": 7,
+      "num_range": 5,
+      "num_direct_domain": 3,
+      "num_direct_range": 2
+    },
+    "manifestation_of": {
+      "domain": [
+        "Activity",
+        "Anatomical Abnormality",
+        "Anatomical Structure",
+        "Behavior",
+        "Biologic Function",
+        "Conceptual Entity",
+        "Entity",
+        "Event",
+        "Finding",
+        "Natural Phenomenon or Process",
+        "Organism Attribute",
+        "Pathologic Function",
+        "Phenomenon or Process",
+        "Physical Object"
+      ],
+      "range": [
+        "Anatomical Abnormality",
+        "Anatomical Structure",
+        "Biologic Function",
+        "Disease or Syndrome",
+        "Entity",
+        "Event",
+        "Injury or Poisoning",
+        "Mental Process",
+        "Mental or Behavioral Dysfunction",
+        "Natural Phenomenon or Process",
+        "Organism Function",
+        "Pathologic Function",
+        "Phenomenon or Process",
+        "Physical Object",
+        "Physiologic Function"
+      ],
+      "direct_domain": [
+        "Anatomical Abnormality",
+        "Behavior",
+        "Finding",
+        "Organism Attribute",
+        "Pathologic Function"
+      ],
+      "direct_range": [
+        "Anatomical Abnormality",
+        "Biologic Function",
+        "Injury or Poisoning",
+        "Mental Process",
+        "Mental or Behavioral Dysfunction",
+        "Pathologic Function",
+        "Physiologic Function"
+      ],
+      "num_domain": 14,
+      "num_range": 15,
+      "num_direct_domain": 5,
+      "num_direct_range": 7
+    },
+    "measurement_of": {
+      "domain": [
+        "Conceptual Entity",
+        "Entity",
+        "Finding",
+        "Idea or Concept",
+        "Laboratory or Test Result",
+        "Organism Attribute",
+        "Quantitative Concept"
+      ],
+      "range": [
+        "Biologic Function",
+        "Conceptual Entity",
+        "Entity",
+        "Event",
+        "Idea or Concept",
+        "Natural Phenomenon or Process",
+        "Phenomenon or Process",
+        "Physical Object",
+        "Physiologic Function",
+        "Spatial Concept",
+        "Substance"
+      ],
+      "direct_domain": [
+        "Laboratory or Test Result",
+        "Organism Attribute",
+        "Quantitative Concept"
+      ],
+      "direct_range": [
+        "Physiologic Function",
+        "Spatial Concept",
+        "Substance"
+      ],
+      "num_domain": 7,
+      "num_range": 11,
+      "num_direct_domain": 3,
+      "num_direct_range": 3
+    },
+    "measures": {
+      "domain": [
+        "Activity",
+        "Diagnostic Procedure",
+        "Event",
+        "Health Care Activity",
+        "Laboratory Procedure",
+        "Occupational Activity",
+        "Research Activity"
+      ],
+      "range": [
+        "Body Substance",
+        "Chemical",
+        "Conceptual Entity",
+        "Entity",
+        "Event",
+        "Idea or Concept",
+        "Natural Phenomenon or Process",
+        "Organism Attribute",
+        "Phenomenon or Process",
+        "Physical Object",
+        "Quantitative Concept",
+        "Substance",
+        "Temporal Concept"
+      ],
+      "direct_domain": [
+        "Diagnostic Procedure",
+        "Laboratory Procedure",
+        "Research Activity"
+      ],
+      "direct_range": [
+        "Body Substance",
+        "Chemical",
+        "Natural Phenomenon or Process",
+        "Organism Attribute",
+        "Quantitative Concept",
+        "Temporal Concept"
+      ],
+      "num_domain": 7,
+      "num_range": 13,
+      "num_direct_domain": 3,
+      "num_direct_range": 6
+    },
+    "method_of": {
+      "domain": [
+        "Activity",
+        "Diagnostic Procedure",
+        "Event",
+        "Health Care Activity",
+        "Laboratory Procedure",
+        "Machine Activity",
+        "Molecular Biology Research Technique",
+        "Occupational Activity",
+        "Research Activity",
+        "Therapeutic or Preventive Procedure"
+      ],
+      "range": [
+        "Activity",
+        "Conceptual Entity",
+        "Diagnostic Procedure",
+        "Entity",
+        "Event",
+        "Health Care Activity",
+        "Laboratory Procedure",
+        "Occupation or Discipline",
+        "Occupational Activity",
+        "Therapeutic or Preventive Procedure"
+      ],
+      "direct_domain": [
+        "Diagnostic Procedure",
+        "Laboratory Procedure",
+        "Machine Activity",
+        "Molecular Biology Research Technique",
+        "Occupational Activity",
+        "Therapeutic or Preventive Procedure"
+      ],
+      "direct_range": [
+        "Diagnostic Procedure",
+        "Laboratory Procedure",
+        "Occupation or Discipline",
+        "Therapeutic or Preventive Procedure"
+      ],
+      "num_domain": 10,
+      "num_range": 10,
+      "num_direct_domain": 6,
+      "num_direct_range": 4
+    },
+    "occurs_in": {
+      "domain": [
+        "Anatomical Abnormality",
+        "Anatomical Structure",
+        "Biologic Function",
+        "Entity",
+        "Event",
+        "Injury or Poisoning",
+        "Natural Phenomenon or Process",
+        "Organ or Tissue Function",
+        "Pathologic Function",
+        "Phenomenon or Process",
+        "Physical Object",
+        "Physiologic Function"
+      ],
+      "range": [
+        "Biologic Function",
+        "Conceptual Entity",
+        "Disease or Syndrome",
+        "Entity",
+        "Event",
+        "Group",
+        "Idea or Concept",
+        "Injury or Poisoning",
+        "Natural Phenomenon or Process",
+        "Organism Function",
+        "Pathologic Function",
+        "Phenomenon or Process",
+        "Physiologic Function",
+        "Temporal Concept"
+      ],
+      "direct_domain": [
+        "Anatomical Abnormality",
+        "Injury or Poisoning",
+        "Organ or Tissue Function",
+        "Pathologic Function",
+        "Physiologic Function"
+      ],
+      "direct_range": [
+        "Disease or Syndrome",
+        "Group",
+        "Injury or Poisoning",
+        "Organism Function",
+        "Temporal Concept"
+      ],
+      "num_domain": 12,
+      "num_range": 14,
+      "num_direct_domain": 5,
+      "num_direct_range": 5
+    },
+    "part_of": {
+      "domain": [
+        "Anatomical Structure",
+        "Body Part, Organ, or Organ Component",
+        "Body Space or Junction",
+        "Body Substance",
+        "Cell",
+        "Cell Component",
+        "Conceptual Entity",
+        "Embryonic Structure",
+        "Entity",
+        "Fully Formed Anatomical Structure",
+        "Gene or Genome",
+        "Idea or Concept",
+        "Molecular Sequence",
+        "Nucleotide Sequence",
+        "Physical Object",
+        "Spatial Concept",
+        "Substance",
+        "Tissue"
+      ],
+      "range": [
+        "Anatomical Structure",
+        "Body Part, Organ, or Organ Component",
+        "Body Substance",
+        "Cell",
+        "Cell Component",
+        "Conceptual Entity",
+        "Embryonic Structure",
+        "Entity",
+        "Fully Formed Anatomical Structure",
+        "Idea or Concept",
+        "Molecular Sequence",
+        "Nucleotide Sequence",
+        "Organism",
+        "Physical Object",
+        "Spatial Concept",
+        "Substance",
+        "Tissue"
+      ],
+      "direct_domain": [
+        "Anatomical Structure",
+        "Body Part, Organ, or Organ Component",
+        "Body Space or Junction",
+        "Body Substance",
+        "Cell",
+        "Cell Component",
+        "Embryonic Structure",
+        "Gene or Genome",
+        "Nucleotide Sequence",
+        "Tissue"
+      ],
+      "direct_range": [
+        "Body Part, Organ, or Organ Component",
+        "Body Substance",
+        "Cell",
+        "Cell Component",
+        "Embryonic Structure",
+        "Nucleotide Sequence",
+        "Organism",
+        "Tissue"
+      ],
+      "num_domain": 18,
+      "num_range": 17,
+      "num_direct_domain": 10,
+      "num_direct_range": 8
+    },
+    "performs": {
+      "domain": [
+        "Conceptual Entity",
+        "Entity",
+        "Group"
+      ],
+      "range": [
+        "Activity",
+        "Event"
+      ],
+      "direct_domain": [
+        "Group"
+      ],
+      "direct_range": [
+        "Activity"
+      ],
+      "num_domain": 3,
+      "num_range": 2,
+      "num_direct_domain": 1,
+      "num_direct_range": 1
+    },
+    "practices": {
+      "domain": [
+        "Conceptual Entity",
+        "Entity",
+        "Group",
+        "Professional or Occupational Group"
+      ],
+      "range": [
+        "Conceptual Entity",
+        "Entity",
+        "Occupation or Discipline"
+      ],
+      "direct_domain": [
+        "Professional or Occupational Group"
+      ],
+      "direct_range": [
+        "Occupation or Discipline"
+      ],
+      "num_domain": 4,
+      "num_range": 3,
+      "num_direct_domain": 1,
+      "num_direct_range": 1
+    },
+    "precedes": {
+      "domain": [
+        "Activity",
+        "Biologic Function",
+        "Diagnostic Procedure",
+        "Event",
+        "Health Care Activity",
+        "Natural Phenomenon or Process",
+        "Occupational Activity",
+        "Pathologic Function",
+        "Phenomenon or Process",
+        "Physiologic Function"
+      ],
+      "range": [
+        "Activity",
+        "Biologic Function",
+        "Event",
+        "Health Care Activity",
+        "Natural Phenomenon or Process",
+        "Occupational Activity",
+        "Pathologic Function",
+        "Phenomenon or Process",
+        "Physiologic Function",
+        "Therapeutic or Preventive Procedure"
+      ],
+      "direct_domain": [
+        "Diagnostic Procedure",
+        "Pathologic Function",
+        "Physiologic Function"
+      ],
+      "direct_range": [
+        "Pathologic Function",
+        "Physiologic Function",
+        "Therapeutic or Preventive Procedure"
+      ],
+      "num_domain": 10,
+      "num_range": 10,
+      "num_direct_domain": 3,
+      "num_direct_range": 3
+    },
+    "prevents": {
+      "domain": [
+        "Activity",
+        "Chemical",
+        "Chemical Viewed Functionally",
+        "Entity",
+        "Event",
+        "Health Care Activity",
+        "Manufactured Object",
+        "Medical Device",
+        "Occupational Activity",
+        "Pharmacologic Substance",
+        "Physical Object",
+        "Substance",
+        "Therapeutic or Preventive Procedure"
+      ],
+      "range": [
+        "Biologic Function",
+        "Event",
+        "Injury or Poisoning",
+        "Natural Phenomenon or Process",
+        "Pathologic Function",
+        "Phenomenon or Process"
+      ],
+      "direct_domain": [
+        "Medical Device",
+        "Pharmacologic Substance",
+        "Therapeutic or Preventive Procedure"
+      ],
+      "direct_range": [
+        "Injury or Poisoning",
+        "Pathologic Function"
+      ],
+      "num_domain": 13,
+      "num_range": 6,
+      "num_direct_domain": 3,
+      "num_direct_range": 2
+    },
+    "process_of": {
+      "domain": [
+        "Activity",
+        "Behavior",
+        "Biologic Function",
+        "Disease or Syndrome",
+        "Event",
+        "Individual Behavior",
+        "Mental Process",
+        "Mental or Behavioral Dysfunction",
+        "Natural Phenomenon or Process",
+        "Organism Function",
+        "Pathologic Function",
+        "Phenomenon or Process",
+        "Physiologic Function"
+      ],
+      "range": [
+        "Activity",
+        "Bacterium",
+        "Behavior",
+        "Entity",
+        "Eukaryote",
+        "Event",
+        "Fungus",
+        "Natural Phenomenon or Process",
+        "Organism",
+        "Phenomenon or Process",
+        "Physical Object",
+        "Plant",
+        "Social Behavior",
+        "Virus"
+      ],
+      "direct_domain": [
+        "Biologic Function",
+        "Individual Behavior",
+        "Mental Process",
+        "Mental or Behavioral Dysfunction",
+        "Natural Phenomenon or Process"
+      ],
+      "direct_range": [
+        "Bacterium",
+        "Fungus",
+        "Natural Phenomenon or Process",
+        "Organism",
+        "Plant",
+        "Social Behavior",
+        "Virus"
+      ],
+      "num_domain": 13,
+      "num_range": 14,
+      "num_direct_domain": 5,
+      "num_direct_range": 7
+    },
+    "produces": {
+      "domain": [
+        "Anatomical Structure",
+        "Biologic Function",
+        "Conceptual Entity",
+        "Disease or Syndrome",
+        "Entity",
+        "Event",
+        "Fully Formed Anatomical Structure",
+        "Genetic Function",
+        "Group",
+        "Molecular Function",
+        "Natural Phenomenon or Process",
+        "Organism Function",
+        "Organization",
+        "Pathologic Function",
+        "Phenomenon or Process",
+        "Physical Object",
+        "Physiologic Function"
+      ],
+      "range": [
+        "Age Group",
+        "Anatomical Structure",
+        "Biologically Active Substance",
+        "Body Substance",
+        "Cell Component",
+        "Chemical",
+        "Chemical Viewed Functionally",
+        "Chemical Viewed Structurally",
+        "Conceptual Entity",
+        "Entity",
+        "Family Group",
+        "Fully Formed Anatomical Structure",
+        "Group",
+        "Intellectual Product",
+        "Manufactured Object",
+        "Organic Chemical",
+        "Physical Object",
+        "Substance",
+        "Tissue"
+      ],
+      "direct_domain": [
+        "Biologic Function",
+        "Disease or Syndrome",
+        "Fully Formed Anatomical Structure",
+        "Genetic Function",
+        "Group",
+        "Organism Function",
+        "Organization"
+      ],
+      "direct_range": [
+        "Age Group",
+        "Biologically Active Substance",
+        "Body Substance",
+        "Cell Component",
+        "Family Group",
+        "Intellectual Product",
+        "Manufactured Object",
+        "Organic Chemical",
+        "Tissue"
+      ],
+      "num_domain": 17,
+      "num_range": 19,
+      "num_direct_domain": 7,
+      "num_direct_range": 9
+    },
+    "property_of": {
+      "domain": [
+        "Amino Acid Sequence",
+        "Conceptual Entity",
+        "Entity",
+        "Group Attribute",
+        "Idea or Concept",
+        "Molecular Sequence",
+        "Nucleotide Sequence",
+        "Organism Attribute",
+        "Spatial Concept"
+      ],
+      "range": [
+        "Amino Acid, Peptide, or Protein",
+        "Anatomical Structure",
+        "Chemical",
+        "Chemical Viewed Structurally",
+        "Conceptual Entity",
+        "Entity",
+        "Fully Formed Anatomical Structure",
+        "Gene or Genome",
+        "Group",
+        "Nucleic Acid, Nucleoside, or Nucleotide",
+        "Organic Chemical",
+        "Organism",
+        "Physical Object",
+        "Substance"
+      ],
+      "direct_domain": [
+        "Amino Acid Sequence",
+        "Group Attribute",
+        "Nucleotide Sequence",
+        "Organism Attribute"
+      ],
+      "direct_range": [
+        "Amino Acid, Peptide, or Protein",
+        "Gene or Genome",
+        "Group",
+        "Nucleic Acid, Nucleoside, or Nucleotide",
+        "Organism"
+      ],
+      "num_domain": 9,
+      "num_range": 14,
+      "num_direct_domain": 4,
+      "num_direct_range": 5
+    },
+    "result_of": {
+      "domain": [
+        "Acquired Abnormality",
+        "Activity",
+        "Anatomical Abnormality",
+        "Anatomical Structure",
+        "Behavior",
+        "Biologic Function",
+        "Conceptual Entity",
+        "Entity",
+        "Event",
+        "Finding",
+        "Idea or Concept",
+        "Injury or Poisoning",
+        "Laboratory or Test Result",
+        "Mental Process",
+        "Natural Phenomenon or Process",
+        "Organism Attribute",
+        "Organism Function",
+        "Pathologic Function",
+        "Phenomenon or Process",
+        "Physical Object",
+        "Physiologic Function"
+      ],
+      "range": [
+        "Activity",
+        "Anatomical Abnormality",
+        "Anatomical Structure",
+        "Behavior",
+        "Biologic Function",
+        "Diagnostic Procedure",
+        "Entity",
+        "Event",
+        "Health Care Activity",
+        "Laboratory Procedure",
+        "Mental Process",
+        "Natural Phenomenon or Process",
+        "Occupational Activity",
+        "Organism Function",
+        "Phenomenon or Process",
+        "Physical Object",
+        "Physiologic Function"
+      ],
+      "direct_domain": [
+        "Acquired Abnormality",
+        "Anatomical Abnormality",
+        "Behavior",
+        "Idea or Concept",
+        "Injury or Poisoning",
+        "Laboratory or Test Result",
+        "Mental Process",
+        "Organism Attribute",
+        "Pathologic Function",
+        "Phenomenon or Process"
+      ],
+      "direct_range": [
+        "Anatomical Abnormality",
+        "Behavior",
+        "Diagnostic Procedure",
+        "Health Care Activity",
+        "Laboratory Procedure",
+        "Mental Process",
+        "Phenomenon or Process"
+      ],
+      "num_domain": 21,
+      "num_range": 17,
+      "num_direct_domain": 10,
+      "num_direct_range": 7
+    },
+    "surrounds": {
+      "domain": [
+        "Anatomical Structure",
+        "Body Part, Organ, or Organ Component",
+        "Body Space or Junction",
+        "Body Substance",
+        "Cell Component",
+        "Conceptual Entity",
+        "Embryonic Structure",
+        "Entity",
+        "Fully Formed Anatomical Structure",
+        "Idea or Concept",
+        "Physical Object",
+        "Spatial Concept",
+        "Substance",
+        "Tissue"
+      ],
+      "range": [
+        "Anatomical Structure",
+        "Body Part, Organ, or Organ Component",
+        "Body Space or Junction",
+        "Body Substance",
+        "Cell",
+        "Cell Component",
+        "Conceptual Entity",
+        "Embryonic Structure",
+        "Entity",
+        "Fully Formed Anatomical Structure",
+        "Idea or Concept",
+        "Physical Object",
+        "Spatial Concept",
+        "Substance",
+        "Tissue"
+      ],
+      "direct_domain": [
+        "Body Part, Organ, or Organ Component",
+        "Body Space or Junction",
+        "Body Substance",
+        "Cell Component",
+        "Embryonic Structure",
+        "Tissue"
+      ],
+      "direct_range": [
+        "Body Part, Organ, or Organ Component",
+        "Body Space or Junction",
+        "Body Substance",
+        "Cell",
+        "Cell Component",
+        "Embryonic Structure",
+        "Tissue"
+      ],
+      "num_domain": 14,
+      "num_range": 15,
+      "num_direct_domain": 6,
+      "num_direct_range": 7
+    },
+    "traverses": {
+      "domain": [
+        "Anatomical Structure",
+        "Body Location or Region",
+        "Body Part, Organ, or Organ Component",
+        "Conceptual Entity",
+        "Entity",
+        "Fully Formed Anatomical Structure",
+        "Idea or Concept",
+        "Physical Object",
+        "Spatial Concept"
+      ],
+      "range": [
+        "Anatomical Structure",
+        "Body Location or Region",
+        "Body Part, Organ, or Organ Component",
+        "Conceptual Entity",
+        "Entity",
+        "Fully Formed Anatomical Structure",
+        "Idea or Concept",
+        "Physical Object",
+        "Spatial Concept"
+      ],
+      "direct_domain": [
+        "Body Location or Region",
+        "Body Part, Organ, or Organ Component"
+      ],
+      "direct_range": [
+        "Body Location or Region",
+        "Body Part, Organ, or Organ Component"
+      ],
+      "num_domain": 9,
+      "num_range": 9,
+      "num_direct_domain": 2,
+      "num_direct_range": 2
+    },
+    "treats": {
+      "domain": [
+        "Activity",
+        "Chemical",
+        "Chemical Viewed Functionally",
+        "Conceptual Entity",
+        "Entity",
+        "Event",
+        "Group",
+        "Health Care Activity",
+        "Manufactured Object",
+        "Medical Device",
+        "Occupational Activity",
+        "Pharmacologic Substance",
+        "Physical Object",
+        "Professional or Occupational Group",
+        "Substance",
+        "Therapeutic or Preventive Procedure"
+      ],
+      "range": [
+        "Anatomical Abnormality",
+        "Anatomical Structure",
+        "Biologic Function",
+        "Conceptual Entity",
+        "Entity",
+        "Event",
+        "Finding",
+        "Group",
+        "Injury or Poisoning",
+        "Natural Phenomenon or Process",
+        "Pathologic Function",
+        "Patient or Disabled Group",
+        "Phenomenon or Process",
+        "Physical Object",
+        "Sign or Symptom"
+      ],
+      "direct_domain": [
+        "Medical Device",
+        "Pharmacologic Substance",
+        "Professional or Occupational Group",
+        "Therapeutic or Preventive Procedure"
+      ],
+      "direct_range": [
+        "Anatomical Abnormality",
+        "Injury or Poisoning",
+        "Pathologic Function",
+        "Patient or Disabled Group",
+        "Sign or Symptom"
+      ],
+      "num_domain": 16,
+      "num_range": 15,
+      "num_direct_domain": 4,
+      "num_direct_range": 5
+    },
+    "tributary_of": {
+      "domain": [
+        "Anatomical Structure",
+        "Body Part, Organ, or Organ Component",
+        "Entity",
+        "Fully Formed Anatomical Structure",
+        "Physical Object"
+      ],
+      "range": [
+        "Anatomical Structure",
+        "Body Part, Organ, or Organ Component",
+        "Entity",
+        "Fully Formed Anatomical Structure",
+        "Physical Object"
+      ],
+      "direct_domain": [
+        "Body Part, Organ, or Organ Component"
+      ],
+      "direct_range": [
+        "Body Part, Organ, or Organ Component"
+      ],
+      "num_domain": 5,
+      "num_range": 5,
+      "num_direct_domain": 1,
+      "num_direct_range": 1
+    },
+    "uses": {
+      "domain": [
+        "Activity",
+        "Conceptual Entity",
+        "Diagnostic Procedure",
+        "Entity",
+        "Event",
+        "Group",
+        "Health Care Activity",
+        "Occupational Activity",
+        "Research Activity",
+        "Therapeutic or Preventive Procedure"
+      ],
+      "range": [
+        "Chemical",
+        "Chemical Viewed Functionally",
+        "Conceptual Entity",
+        "Entity",
+        "Food",
+        "Intellectual Product",
+        "Manufactured Object",
+        "Pharmacologic Substance",
+        "Physical Object",
+        "Research Device",
+        "Substance"
+      ],
+      "direct_domain": [
+        "Diagnostic Procedure",
+        "Group",
+        "Research Activity",
+        "Therapeutic or Preventive Procedure"
+      ],
+      "direct_range": [
+        "Food",
+        "Intellectual Product",
+        "Manufactured Object",
+        "Pharmacologic Substance",
+        "Research Device"
+      ],
+      "num_domain": 10,
+      "num_range": 11,
+      "num_direct_domain": 4,
+      "num_direct_range": 5
+    }
+  }
+}
