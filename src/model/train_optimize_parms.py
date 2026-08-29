@@ -276,6 +276,9 @@ def _extract_node_embeddings_by_global_id(node_embeddings, batch_n_id, global_id
 
 
 def _calculate_relation_micro_metrics(predictions, true_labels):
+    if len(predictions) == 0 or len(true_labels) == 0:
+        print("Warning: no relation reconstruction predictions collected for this epoch.")
+        return 0.0, 0.0, 0.0, 0.0
     accuracy = accuracy_score(true_labels, predictions)
     precision = precision_score(true_labels, predictions, average="micro", zero_division=0)
     recall = recall_score(true_labels, predictions, average="micro", zero_division=0)
@@ -1050,6 +1053,9 @@ def train_DisMult(model, data, optimizer,num_epochs,gdp, save_file,device,
                             all_negative_triplets = torch.cat((negative_triplets, negative_triplets_removed), dim=0)
                 else:
                     raise ValueError(f"Unknown recons_r_training_mode: {recons_r_training_mode}")
+                if all_positive_triplets.size(0) == 0 or all_negative_triplets.size(0) == 0:
+                    main_pbar.update(1)
+                    continue
                 if negative_tracking_state is not None:
                     _update_negative_tracking_state(
                         negative_tracking_state,

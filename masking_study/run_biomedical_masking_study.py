@@ -18,6 +18,7 @@ DEFAULT_DB = REPO_ROOT / "masking_study" / "biomedical_masking_study.jsonl"
 DEFAULT_SUMMARY = REPO_ROOT / "masking_study" / "biomedical_masking_study.csv"
 DEFAULT_RUNS_DIR = REPO_ROOT / "masking_study" / "runs"
 WANDB_PROJECT = "Masking_Study_BioMedical_Recons_R"
+RELATION_MASK_RATE = 0.3
 
 SEEDS = [0, 42, 123, 100, 2026]
 CHANNELS = [[384, 384], [256, 256], [512, 512]]
@@ -301,6 +302,8 @@ def configure_model(config, experiment, run_dir, num_epochs=None):
         "negative_sampling_mode": "uniform",
         "negative_corruption_mode": "entity_only",
         "negative_entity_sampling_scope": "batch",
+        "total_drop_rate": RELATION_MASK_RATE,
+        "max_masking_percentage": RELATION_MASK_RATE,
         "kg_negative_sampling_seed": None,
         "track_kg_negative_sampling": False,
         "track_onto_negative_sampling": False,

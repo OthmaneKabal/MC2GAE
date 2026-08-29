@@ -212,6 +212,9 @@ def get_positives(batch):
         r = edge_type[i]
         positives.append((h.item(), r.item(), t.item()))
 
+    if not positives:
+        return torch.empty((0, 3), dtype=torch.long, device=edge_index.device)
+
     # Convert positives to tensor
     positive_tensor = torch.tensor(positives, dtype=torch.long, device=edge_index.device)
     return positive_tensor
