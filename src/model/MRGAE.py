@@ -18,6 +18,7 @@ class MRGAE(nn.Module):
         super(MRGAE, self).__init__()
         self.encoder = encoder
         self.x_decoder = x_decoder
+        self.x_mask_token = None
         # self.reset_parameters()
         self.r_decoder = r_decoder
         # self.options = options
@@ -35,6 +36,18 @@ class MRGAE(nn.Module):
 
 
 
+
+
+    def init_x_mask_token(self, in_channels, device=None):
+        self.x_mask_token = nn.Parameter(torch.zeros(1, in_channels, device=device))
+
+    def init_structural_mask_scorer(self, in_channels, hidden_channels=None, device=None):
+        hidden_channels = hidden_channels or in_channels
+        self.structural_mask_scorer = nn.Sequential(
+            nn.Linear(in_channels, hidden_channels),
+            nn.PReLU(),
+            nn.Linear(hidden_channels, 1),
+        ).to(device)
 
 
     def reset_parameters(self):

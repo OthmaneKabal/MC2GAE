@@ -237,13 +237,16 @@ def save_model(model, optimizer, epoch, save_dir="ckpt",file_name = "_",
         file_name = f"{file_name}_best_loss.pth"
 
     checkpoint_path = os.path.join(save_dir, file_name)
-
-
+    torch_save_path = checkpoint_path
+    if os.name == "nt":
+        abs_path = os.path.abspath(checkpoint_path)
+        if len(abs_path) >= 240 and not abs_path.startswith("\\\\?\\"):
+            torch_save_path = "\\\\?\\" + abs_path
     torch.save({
         'epoch': epoch + 1,
         'model_state_dict': model.state_dict(),
         'optimizer_state_dict': optimizer.state_dict(),
-    }, checkpoint_path)
+    }, torch_save_path)
     print(f"Model saved at '{checkpoint_path}'")
 
 

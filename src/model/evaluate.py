@@ -35,6 +35,10 @@ from MRGAE import MRGAE
 from utils.utils import save_model, load_model_checkpoint, load_gold_standard_labels, \
     save_model_with_hyperparams, set_seed, load_model_from_checkpoint
 from config import config
+_CONFIG_SEED = config.get("seed", 42)
+_MODULE_SEED = config.get("active_seed")
+if _MODULE_SEED is None:
+    _MODULE_SEED = _CONFIG_SEED[0] if isinstance(_CONFIG_SEED, (list, tuple)) else _CONFIG_SEED
 import torch
 from torch import optim
 from torch_geometric.data import Data
@@ -63,15 +67,29 @@ os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
 import torch
 torch.use_deterministic_algorithms(True)
 
-torch.manual_seed(42)
+torch.manual_seed(_MODULE_SEED)
 import numpy as np
-np.random.seed(42)
+np.random.seed(_MODULE_SEED)
 import random
-random.seed(42)
+random.seed(_MODULE_SEED)
 torch.backends.cudnn.deterministic = True
 torch.use_deterministic_algorithms(True)
 os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
 torch.backends.cudnn.benchmark = False
+
+
+def _first_seed(seed_config):
+    if isinstance(seed_config, (list, tuple)):
+        return seed_config[0]
+    return seed_config
+
+
+def _active_seed(local_config=None, default=42):
+    cfg = local_config if local_config is not None else config
+    active_seed = cfg.get("active_seed")
+    if active_seed is not None:
+        return active_seed
+    return _first_seed(cfg.get("seed", default))
 
 def extract_params(filename):
     # Utilise une expression régulière pour extraire les valeurs de bases et channels
@@ -243,7 +261,7 @@ def generate_Bert_Embeddings(Entities_embd_path, gs_path, core_concepts, model_n
 
 def generate_gs_embeddgs_from_model_mini_batch(model, data,gs_path, core_concepts, gdp, config, is_encoder = False):
     model.eval()
-    set_seed(42)
+    set_seed(_active_seed(config))
     data_loader = GraphDataLoader(data, num_neighbors=config["num_neighbors"],
                                      batch_size=config["batch_size"], shuffle=config["shuffle"]).get_loader()
 
@@ -330,7 +348,8 @@ def generate_one_node_term_embedding(model, graph, gdp, term, config):
 
 ### New Version ---> Embeds a list of terms by batching
 
-def generate_batch_term_embeddings(model, graph, gdp, terms, batch_size, num_neighbors, seed=42):
+def generate_batch_term_embeddings(model, graph, gdp, terms, batch_size, num_neighbors, seed=None):
+    seed = _active_seed(config) if seed is None else seed
     set_seed(seed)
     model.eval()
     with torch.no_grad():
@@ -374,7 +393,8 @@ def generate_batch_term_embeddings(model, graph, gdp, terms, batch_size, num_nei
 
 
 ### New Version ---> Embeds a list of terms from a given GS and CC
-def generate_batch_GS_term_embeddings(model, graph, gdp, gs_path, core_concepts, batch_size = config['test_batch_size'], num_neighbors = config['num_neighbors'], seed=42):
+def generate_batch_GS_term_embeddings(model, graph, gdp, gs_path, core_concepts, batch_size = config['test_batch_size'], num_neighbors = config['num_neighbors'], seed=None):
+    seed = _active_seed(config) if seed is None else seed
     set_seed(seed)
 
 
@@ -492,7 +512,8 @@ def evaluate_classification(gs_path, classifications, export_preds_path = None):
 
 
 def evaluate(model, data,gs_path, core_concepts, gdp, config,is_encoder = False, export_preds_path = None):
-    gs_embeddings, core_concepts_embeddings = generate_batch_GS_term_embeddings(model, data, gdp, gs_path, core_concepts,batch_size = config['test_batch_size'], num_neighbors = config['num_neighbors'], seed=42)
+    eval_seed = _active_seed(config)
+    gs_embeddings, core_concepts_embeddings = generate_batch_GS_term_embeddings(model, data, gdp, gs_path, core_concepts,batch_size = config['test_batch_size'], num_neighbors = config['num_neighbors'], seed=eval_seed)
     # print(core_concepts_embeddings["operating system"])
     classifications = classify_terms_by_cosine_similarity(gs_embeddings, core_concepts_embeddings, with_other = False)
     metrics_df = evaluate_classification(gs_path, classifications, export_preds_path = export_preds_path)
@@ -504,7 +525,8 @@ def evaluate(model, data,gs_path, core_concepts, gdp, config,is_encoder = False,
 
 
 def assign_top_k_pseudo_labels_batched(model, data, core_concepts, gdp, config, top_k = 10, output_path = None):
-    Node_embeddings, core_concepts_embeddings = generate_batch_GS_term_embeddings(model, data, gdp, "whole_graph", core_concepts,batch_size = config['test_batch_size'], num_neighbors = config['num_neighbors'], seed=42)
+    eval_seed = _active_seed(config)
+    Node_embeddings, core_concepts_embeddings = generate_batch_GS_term_embeddings(model, data, gdp, "whole_graph", core_concepts,batch_size = config['test_batch_size'], num_neighbors = config['num_neighbors'], seed=eval_seed)
     # print(core_concepts_embeddings["operating system"])
     classifications = classify_terms_by_cosine_similarity(Node_embeddings, core_concepts_embeddings, with_other = False, with_similarity = True)
     top_k_by_class = defaultdict(list)
@@ -1049,7 +1071,7 @@ def generate_all_top_k_dataframes(model, data, core_concepts, gdp, config, k_lis
         core_concepts,
         batch_size=config['test_batch_size'],
         num_neighbors=config['num_neighbors'],
-        seed=42
+        seed=_active_seed(config)
     )
 
     # 2. Calculer les similarités une seule fois

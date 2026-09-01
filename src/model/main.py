@@ -16,7 +16,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'u
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'data')))
 
 # Imports locaux (sans le préfixe src.)
-from train_optimize_parms import train_GAE,train_Contrastive , train_X_reconstruction, train_DisMult, train_DisMult_with_onto, train_Double_Reconstruction, train_Contrastive
+from train_optimize_parms import train_GAE, train_Contrastive, train_X_reconstruction, train_GraphMAE_X_reconstruction, train_DisMult, train_DisMult_with_onto, train_Double_Reconstruction, train_Contrastive
 from Dismult import DistMultDecoder
 from GCNDecoder import GCNDecoder
 from GCNEncoder import GCNEncoder
@@ -339,7 +339,7 @@ def main():
     for task in config["training_task"]:
         save_dir = config["root_save_dir"] + f"/{task}"
         msg_sens = config["message_sens"][0]
-        if task == "Recons_X":
+        if task in ("Recons_X", "GraphMAE_Recons_X"):
 
             for out_channels in config["hyperparams_grid"]["out_channels"]:
                 for encoder_ in config["encoders"]:
@@ -446,6 +446,14 @@ def main():
                                     "bases": num_bases,
                                     "out_channels": out_channels,
                                     "training_task": config["training_task"],
+                                    "graphmae_mask_rate": config.get("graphmae_mask_rate"),
+                                    "graphmae_replace_rate": config.get("graphmae_replace_rate"),
+                                    "graphmae_loss_fn": config.get("graphmae_loss_fn"),
+                                    "graphmae_sce_alpha": config.get("graphmae_sce_alpha"),
+                                    "graphmae_decoder_remask": config.get("graphmae_decoder_remask"),
+                                    "graphmae_structure_masking": config.get("graphmae_structure_masking"),
+                                    "graphmae_structure_alpha": config.get("graphmae_structure_alpha"),
+                                    "graphmae_structure_schedule": config.get("graphmae_structure_schedule"),
                                     "encoders": encoder_,
                                     "decoders": decoder_,
                                     "message_sens": msg_sens
@@ -461,10 +469,20 @@ def main():
                                 # print(decoder)
                                 # exit(-1)
                                 autoencoder = MRGAE(encoder, decoder, projections=config["projections"]).to(device)
+                                if task == "GraphMAE_Recons_X":
+                                    autoencoder.init_x_mask_token(data.num_features, device=device)
+                                    if config.get("graphmae_structure_masking") == "learnable":
+                                        autoencoder.init_structural_mask_scorer(
+                                            data.num_features,
+                                            hidden_channels=config.get("graphmae_learnable_scorer_hidden"),
+                                            device=device,
+                                        )
                                 optimizer = optim.Adam(autoencoder.parameters(), lr=config["learning_rate"])
                                 local_data = copy.deepcopy(data)
-                                performances = train_X_reconstruction(autoencoder, local_data, optimizer, config["num_epochs"],
-                                            gdp, file_name,device, config,loss_fct=["MSE"], save_dir = save_dir,
+                                train_x_fn = train_GraphMAE_X_reconstruction if task == "GraphMAE_Recons_X" else train_X_reconstruction
+                                train_x_loss = [config.get("graphmae_loss_fn", "SCE")] if task == "GraphMAE_Recons_X" else ["MSE"]
+                                performances = train_x_fn(autoencoder, local_data, optimizer, config["num_epochs"],
+                                            gdp, file_name,device, config,loss_fct=train_x_loss, save_dir = save_dir,
                                             wandb=wandb, seed = config["seed"])
                                 results.append(performances)
                                 wandb.finish()
@@ -550,6 +568,14 @@ def main():
                                 "num_epochs": 100,
                                 "out_channels": out_channels,
                                 "training_task": config["training_task"],
+                                "graphmae_mask_rate": config.get("graphmae_mask_rate"),
+                                "graphmae_replace_rate": config.get("graphmae_replace_rate"),
+                                "graphmae_loss_fn": config.get("graphmae_loss_fn"),
+                                "graphmae_sce_alpha": config.get("graphmae_sce_alpha"),
+                                "graphmae_decoder_remask": config.get("graphmae_decoder_remask"),
+                                "graphmae_structure_masking": config.get("graphmae_structure_masking"),
+                                "graphmae_structure_alpha": config.get("graphmae_structure_alpha"),
+                                "graphmae_structure_schedule": config.get("graphmae_structure_schedule"),
                                 "encoders": encoder_,
                                 "decoders": decoder_,
                                 "message_sens": msg_sens
@@ -564,9 +590,19 @@ def main():
                             local_data = copy.deepcopy(data)
 
                             autoencoder = MRGAE(encoder, decoder, projections=config["projections"]).to(device)
+                            if task == "GraphMAE_Recons_X":
+                                autoencoder.init_x_mask_token(data.num_features, device=device)
+                                if config.get("graphmae_structure_masking") == "learnable":
+                                    autoencoder.init_structural_mask_scorer(
+                                        data.num_features,
+                                        hidden_channels=config.get("graphmae_learnable_scorer_hidden"),
+                                        device=device,
+                                    )
                             optimizer = optim.Adam(autoencoder.parameters(), lr=config["learning_rate"])
-                            performances = train_X_reconstruction(autoencoder, local_data, optimizer, config["num_epochs"],
-                                            gdp, file_name, device, config,save_dir=save_dir, loss_fct=["MSE"],
+                            train_x_fn = train_GraphMAE_X_reconstruction if task == "GraphMAE_Recons_X" else train_X_reconstruction
+                            train_x_loss = [config.get("graphmae_loss_fn", "SCE")] if task == "GraphMAE_Recons_X" else ["MSE"]
+                            performances = train_x_fn(autoencoder, local_data, optimizer, config["num_epochs"],
+                                            gdp, file_name, device, config,save_dir=save_dir, loss_fct=train_x_loss,
                                         wandb=wandb, seed = config["seed"])
                             results.append(performances)
 

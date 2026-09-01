@@ -37,6 +37,8 @@ import random
 import numpy as np
 import torch
 import copy
+import math
+import networkx as nx
 def _first_seed(seed_config):
     if isinstance(seed_config, (list, tuple)):
         return seed_config[0]
@@ -144,6 +146,9 @@ def _full_graph_batch(data):
 
 
 def _sample_recons_r_mask(data, mode, seed_value, device):
+    if mode == "mapped_random_dynamic":
+        print("\nUsing mapped/random dynamic edge masking.\n")
+        return _sample_mapped_random_dynamic_mask(data, seed_value, device)
     if mode in ("random_static_masked_only", "random_dynamic_masked_only"):
         print("\nUsing random edge masking.\n")
         _, removed_edge_indices, removed_edge_types = random_edge_dropping(
@@ -155,6 +160,138 @@ def _sample_recons_r_mask(data, mode, seed_value, device):
             data, config["total_drop_rate"], max_drop_fraction_per_node=0.3, random_seed=seed_value
         )
     return removed_edge_indices.to(device=device, dtype=torch.long), removed_edge_types.to(device)
+
+
+def _sample_mapped_random_dynamic_mask(data, seed_value, device):
+    if not hasattr(data, "edge_is_mapped") or data.edge_is_mapped is None:
+        raise ValueError("mapped_random_dynamic requires edge_is_mapped loaded from the KG JSON field 'is_mapped'.")
+
+    total_edges = int(data.edge_index.size(1))
+    total_drop_rate = float(config.get("total_drop_rate", 0.0))
+    mapped_fraction = float(config.get("mapped_random_dynamic_mapped_fraction", 0.5))
+    if not 0 <= total_drop_rate <= 1:
+        raise ValueError("total_drop_rate must be between 0 and 1.")
+    if not 0 <= mapped_fraction <= 1:
+        raise ValueError("mapped_random_dynamic_mapped_fraction must be between 0 and 1.")
+
+    num_edges_to_drop = int(total_edges * total_drop_rate)
+    if num_edges_to_drop <= 0:
+        empty = torch.empty(0, dtype=torch.long, device=device)
+        return empty, empty
+
+    mapped_mask = data.edge_is_mapped.bool().detach().cpu()
+    mapped_pool = torch.where(mapped_mask)[0]
+    other_pool = torch.where(~mapped_mask)[0]
+
+    mapped_budget = int(round(num_edges_to_drop * mapped_fraction))
+    other_budget = num_edges_to_drop - mapped_budget
+    generator = torch.Generator(device="cpu").manual_seed(int(seed_value))
+
+    def take(pool, count):
+        count = min(int(count), int(pool.numel()))
+        if count <= 0:
+            return torch.empty(0, dtype=torch.long)
+        order = torch.randperm(pool.numel(), generator=generator)[:count]
+        return pool[order]
+
+    selected_mapped = take(mapped_pool, mapped_budget)
+    selected_other = take(other_pool, other_budget)
+    missing = num_edges_to_drop - int(selected_mapped.numel()) - int(selected_other.numel())
+    if missing > 0:
+        selected = torch.cat((selected_mapped, selected_other), dim=0)
+        selected_mask = torch.zeros(total_edges, dtype=torch.bool)
+        selected_mask[selected] = True
+        fallback_pool = torch.where(~selected_mask)[0]
+        selected = torch.cat((selected, take(fallback_pool, missing)), dim=0)
+    else:
+        selected = torch.cat((selected_mapped, selected_other), dim=0)
+
+    selected = selected.to(device=device, dtype=torch.long)
+    removed_edge_types = data.edge_type[selected].to(device)
+    actual_mapped_count = int(data.edge_is_mapped[selected].bool().sum().item())
+    actual_other_count = int(selected.numel()) - actual_mapped_count
+    print(
+        f"mapped_random_dynamic mask: total={selected.numel()}, "
+        f"mapped={actual_mapped_count}, other={actual_other_count}, "
+        f"mapped_fraction={mapped_fraction}"
+    )
+    return selected, removed_edge_types
+
+
+def _edge_curriculum_rate(final_rate, epoch, max_epoch):
+    schedule = str(config.get("edge_curriculum_schedule", "linear")).lower()
+    initial_rate = float(config.get("edge_curriculum_initial_rate", 0.05))
+    initial_rate = min(max(initial_rate, 0.0), final_rate)
+    progress = min(max((epoch + 1) / max(max_epoch, 1), 0.0), 1.0)
+    if schedule in ("constant", "none", "static"):
+        return final_rate
+    if schedule == "root":
+        progress = math.sqrt(progress)
+    elif schedule == "geometric":
+        lambda0 = max(initial_rate / max(final_rate, 1e-12), 1e-6)
+        progress = 2 ** (math.log2(lambda0) - math.log2(lambda0) * progress)
+        return final_rate * progress
+    return initial_rate + (final_rate - initial_rate) * progress
+
+
+def _sample_edge_curriculum_dynamic_mask(model, data, epoch, num_epochs, seed_value, device, target_attr):
+    final_rate = float(config.get("total_drop_rate", 0.0))
+    if not 0 <= final_rate <= 1:
+        raise ValueError("total_drop_rate must be between 0 and 1.")
+
+    total_edges = int(data.edge_index.size(1))
+    current_rate = _edge_curriculum_rate(final_rate, epoch, num_epochs)
+    num_edges_to_drop = int(total_edges * current_rate)
+    if current_rate > 0 and num_edges_to_drop == 0:
+        num_edges_to_drop = 1
+    num_edges_to_drop = min(num_edges_to_drop, total_edges)
+    if num_edges_to_drop <= 0:
+        empty = torch.empty(0, dtype=torch.long, device=device)
+        return empty, empty, current_rate
+
+    split_ratio = float(config.get("edge_curriculum_split_ratio", 0.5))
+    if not 0 <= split_ratio <= 1:
+        raise ValueError("edge_curriculum_split_ratio must be between 0 and 1.")
+    curriculum_count = int(round(num_edges_to_drop * split_ratio))
+    random_count = num_edges_to_drop - curriculum_count
+
+    scoring_batch = copy.copy(data).to(device)
+    _apply_relation_target(scoring_batch, target_attr, _target_relation_count(data, target_attr))
+    was_training = model.training
+    model.eval()
+    with torch.no_grad():
+        z = _encode_nodes(model, scoring_batch)
+        edge_scores = torch.sigmoid(model.r_decoder(z, scoring_batch.edge_index, scoring_batch.edge_type))
+    if was_training:
+        model.train()
+
+    cpu_scores = edge_scores.detach().cpu()
+    selected_parts = []
+    selected_mask = torch.zeros(total_edges, dtype=torch.bool)
+
+    if curriculum_count > 0:
+        # Easy edges have high confidence, i.e. low residual 1 - p(edge).
+        easy_edges = torch.topk(cpu_scores, k=curriculum_count, largest=True).indices.to(torch.long)
+        selected_parts.append(easy_edges)
+        selected_mask[easy_edges] = True
+
+    if random_count > 0:
+        remaining = torch.where(~selected_mask)[0]
+        generator = torch.Generator(device="cpu").manual_seed(int(seed_value))
+        random_count = min(random_count, int(remaining.numel()))
+        if random_count > 0:
+            random_edges = remaining[torch.randperm(remaining.numel(), generator=generator)[:random_count]]
+            selected_parts.append(random_edges)
+
+    selected = torch.cat(selected_parts, dim=0) if selected_parts else torch.empty(0, dtype=torch.long)
+    selected = selected.to(device=device, dtype=torch.long)
+    removed_edge_types = getattr(data, target_attr)[selected].to(device)
+    print(
+        f"edge_curriculum_dynamic mask: total={selected.numel()}, "
+        f"curriculum={curriculum_count}, random={max(int(selected.numel()) - curriculum_count, 0)}, "
+        f"rate={current_rate:.4f}, split_ratio={split_ratio}"
+    )
+    return selected, removed_edge_types, current_rate
 
 
 def _mapped_edge_indices(data, device):
@@ -407,6 +544,254 @@ def _evaluate_preserving_train_rng(model, data, gs_path, core_concepts, gdp, con
         return evaluate(model, data, gs_path, core_concepts, gdp, config)
     finally:
         _restore_rng_state(rng_state)
+
+
+def _resolve_existing_path(path_value):
+    if path_value is None:
+        return None
+    candidates = [
+        os.path.abspath(path_value),
+        os.path.abspath(os.path.join(os.getcwd(), path_value)),
+        os.path.abspath(os.path.join(os.path.dirname(__file__), path_value)),
+    ]
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    candidates.append(os.path.abspath(os.path.join(repo_root, path_value)))
+    for candidate in candidates:
+        if os.path.exists(candidate):
+            return candidate
+    return os.path.abspath(path_value)
+
+
+def _linear_probe_metrics(logits, labels):
+    preds = logits.argmax(dim=1).detach().cpu().numpy()
+    y_true = labels.detach().cpu().numpy()
+    return {
+        "accuracy": accuracy_score(y_true, preds),
+        "f1_macro": f1_score(y_true, preds, average="macro", zero_division=0),
+        "f1_micro": f1_score(y_true, preds, average="micro", zero_division=0),
+        "f1_weighted": f1_score(y_true, preds, average="weighted", zero_division=0),
+        "precision_macro": precision_score(y_true, preds, average="macro", zero_division=0),
+        "recall_macro": recall_score(y_true, preds, average="macro", zero_division=0),
+    }
+
+
+def _extract_common_node_embeddings(model, data, gdp, terms, device):
+    node_index = getattr(gdp, "nodes_index", {})
+    lower_node_index = {str(term).lower(): idx for term, idx in node_index.items()}
+    selected_node_ids = []
+    selected_rows = []
+    missing_terms = []
+    for row_idx, term in enumerate(terms):
+        term_text = str(term)
+        node_id = node_index.get(term_text, lower_node_index.get(term_text.lower()))
+        if node_id is None:
+            missing_terms.append(term_text)
+            continue
+        selected_node_ids.append(int(node_id))
+        selected_rows.append(row_idx)
+
+    if not selected_node_ids:
+        raise ValueError("Linear probe found no common_nodes terms in the graph.")
+
+    was_training = model.training
+    model.eval()
+    full_batch = _full_graph_batch(data).to(device)
+    with torch.no_grad():
+        embeddings = _encode_nodes(model, full_batch).detach().cpu()
+    if was_training:
+        model.train()
+
+    selected_node_ids = torch.tensor(selected_node_ids, dtype=torch.long)
+    selected_rows = torch.tensor(selected_rows, dtype=torch.long)
+    return embeddings[selected_node_ids], selected_rows, missing_terms
+
+
+def _train_one_linear_probe(embeddings, labels, train_idx, val_idx, test_idx, cfg, device, split_seed):
+    set_seed(split_seed)
+    embeddings = embeddings.to(device)
+    labels = labels.to(device)
+    train_idx = train_idx.to(device)
+    val_idx = val_idx.to(device)
+    test_idx = test_idx.to(device)
+
+    classifier = torch.nn.Linear(embeddings.size(1), int(labels.max().item()) + 1).to(device)
+    optimizer = torch.optim.Adam(
+        classifier.parameters(),
+        lr=float(cfg.get("linear_probe_lr", 0.01)),
+        weight_decay=float(cfg.get("linear_probe_weight_decay", 0.0)),
+    )
+    criterion = torch.nn.CrossEntropyLoss()
+    best_val_f1 = -1.0
+    best_state = None
+    best_epoch = 0
+    patience = int(cfg.get("linear_probe_patience", 50))
+    bad_epochs = 0
+
+    for epoch in range(int(cfg.get("linear_probe_epochs", 300))):
+        classifier.train()
+        optimizer.zero_grad()
+        loss = criterion(classifier(embeddings[train_idx]), labels[train_idx])
+        loss.backward()
+        optimizer.step()
+
+        classifier.eval()
+        with torch.no_grad():
+            val_metrics = _linear_probe_metrics(classifier(embeddings[val_idx]), labels[val_idx])
+        if val_metrics["f1_macro"] > best_val_f1:
+            best_val_f1 = val_metrics["f1_macro"]
+            best_state = copy.deepcopy(classifier.state_dict())
+            best_epoch = epoch + 1
+            bad_epochs = 0
+        else:
+            bad_epochs += 1
+        if patience > 0 and bad_epochs >= patience:
+            break
+
+    if best_state is not None:
+        classifier.load_state_dict(best_state)
+    classifier.eval()
+    with torch.no_grad():
+        train_metrics = _linear_probe_metrics(classifier(embeddings[train_idx]), labels[train_idx])
+        val_metrics = _linear_probe_metrics(classifier(embeddings[val_idx]), labels[val_idx])
+        test_metrics = _linear_probe_metrics(classifier(embeddings[test_idx]), labels[test_idx])
+
+    return {
+        "split_seed": int(split_seed),
+        "best_epoch": int(best_epoch),
+        **{f"train_{key}": value for key, value in train_metrics.items()},
+        **{f"val_{key}": value for key, value in val_metrics.items()},
+        **{f"test_{key}": value for key, value in test_metrics.items()},
+    }
+
+
+def _run_linear_probe_on_best_loss(model, data, gdp, cfg, device, save_file, wandb=None):
+    if not cfg.get("run_linear_probe_on_best_loss", False):
+        return {}
+
+    gs_path = _resolve_existing_path(cfg.get("linear_probe_gs_path"))
+    splits_dir = _resolve_existing_path(cfg.get("linear_probe_splits_dir"))
+    if not gs_path or not os.path.exists(gs_path):
+        raise FileNotFoundError(f"Linear probe GS file not found: {cfg.get('linear_probe_gs_path')}")
+    if not splits_dir or not os.path.isdir(splits_dir):
+        raise FileNotFoundError(f"Linear probe splits dir not found: {cfg.get('linear_probe_splits_dir')}")
+
+    gs_df = pd.read_excel(gs_path)
+    required_cols = {"idx", "term", "label"}
+    missing_cols = required_cols - set(gs_df.columns)
+    if missing_cols:
+        raise ValueError(f"Linear probe GS missing columns: {sorted(missing_cols)}")
+
+    embeddings, available_rows, missing_terms = _extract_common_node_embeddings(
+        model, data, gdp, gs_df["term"].tolist(), device
+    )
+    label_names = sorted(gs_df["label"].astype(str).unique())
+    label_to_id = {label: idx for idx, label in enumerate(label_names)}
+    labels = torch.tensor([label_to_id[str(label)] for label in gs_df["label"]], dtype=torch.long)
+    labels = labels[available_rows]
+    row_to_embedding_pos = {int(row_id): pos for pos, row_id in enumerate(available_rows.tolist())}
+
+    split_results = []
+    for split_seed in cfg.get("linear_probe_split_seeds", [42, 123, 456, 789, 2024]):
+        split_seed = int(split_seed)
+        train_rows = np.load(os.path.join(splits_dir, f"train_idx_{split_seed}.npy"))
+        val_rows = np.load(os.path.join(splits_dir, f"val_idx_{split_seed}.npy"))
+        test_rows = np.load(os.path.join(splits_dir, f"test_idx_{split_seed}.npy"))
+
+        def map_rows(rows):
+            mapped = [row_to_embedding_pos[int(row)] for row in rows if int(row) in row_to_embedding_pos]
+            return torch.tensor(mapped, dtype=torch.long)
+
+        train_idx = map_rows(train_rows)
+        val_idx = map_rows(val_rows)
+        test_idx = map_rows(test_rows)
+        if train_idx.numel() == 0 or val_idx.numel() == 0 or test_idx.numel() == 0:
+            raise ValueError(f"Linear probe split {split_seed} has an empty mapped train/val/test set.")
+
+        result = _train_one_linear_probe(
+            embeddings, labels, train_idx, val_idx, test_idx, cfg, device, split_seed
+        )
+        split_results.append(result)
+        print(
+            f"Linear probe split {split_seed}: "
+            f"test_acc={result['test_accuracy']:.4f}, test_f1_macro={result['test_f1_macro']:.4f}"
+        )
+        if wandb is not None:
+            wandb.log({
+                "linear_probe_split_seed": split_seed,
+                "linear_probe_test_accuracy": result["test_accuracy"],
+                "linear_probe_test_f1_macro": result["test_f1_macro"],
+                "linear_probe_test_f1_weighted": result["test_f1_weighted"],
+                "linear_probe_test_precision_macro": result["test_precision_macro"],
+                "linear_probe_test_recall_macro": result["test_recall_macro"],
+            })
+
+    summary = {
+        "linear_probe_num_terms": int(embeddings.size(0)),
+        "linear_probe_missing_terms": int(len(missing_terms)),
+        "linear_probe_label_names": label_names,
+    }
+    for metric in [
+        "test_accuracy", "test_f1_macro", "test_f1_micro", "test_f1_weighted",
+        "test_precision_macro", "test_recall_macro",
+    ]:
+        values = [float(result[metric]) for result in split_results]
+        summary[f"linear_probe_{metric}_mean"] = float(np.mean(values))
+        summary[f"linear_probe_{metric}_std"] = float(np.std(values))
+
+    for result in split_results:
+        split_seed = result["split_seed"]
+        summary[f"linear_probe_split_{split_seed}_test_accuracy"] = result["test_accuracy"]
+        summary[f"linear_probe_split_{split_seed}_test_f1_macro"] = result["test_f1_macro"]
+        summary[f"linear_probe_split_{split_seed}_test_precision_macro"] = result["test_precision_macro"]
+        summary[f"linear_probe_split_{split_seed}_test_recall_macro"] = result["test_recall_macro"]
+        summary[f"linear_probe_split_{split_seed}_best_epoch"] = result["best_epoch"]
+    if wandb is not None:
+        wandb.log(summary)
+    return summary
+
+
+def _prefixed_metrics(prefix, metrics):
+    return {f"{prefix}{key}": value for key, value in (metrics or {}).items()}
+
+
+def _attach_best_loss_evaluations(model, data, gdp, device, save_file, best_metrics,
+                                  best_loss_model_state, best_loss_unsup_metrics, wandb=None, cfg=None):
+    cfg = cfg or config
+    if best_loss_model_state is not None:
+        gs_path = _resolve_existing_path(cfg.get("Gs_path_no_other"))
+        if not gs_path or not os.path.exists(gs_path):
+            raise FileNotFoundError(f"Best-loss unsupervised GS file not found: {cfg.get('Gs_path_no_other')}")
+
+        current_state = copy.deepcopy(model.state_dict())
+        model.load_state_dict(best_loss_model_state)
+        try:
+            common_nodes_metrics = _evaluate_preserving_train_rng(
+                model, data, gs_path, cfg["core_concepts"], gdp, cfg
+            )
+        finally:
+            model.load_state_dict(current_state)
+        relation_and_loss_metrics = {
+            key: value
+            for key, value in (best_loss_unsup_metrics or {}).items()
+            if key.startswith("R_") or key in ("best_loss", "best_loss_epoch")
+        }
+        best_loss_unsup_metrics = {
+            **common_nodes_metrics,
+            **relation_and_loss_metrics,
+            "best_loss_eval_gs_path": gs_path,
+        }
+
+    if best_loss_unsup_metrics:
+        best_metrics.update(_prefixed_metrics("best_loss_unsup_", best_loss_unsup_metrics))
+    if best_loss_model_state is not None and cfg.get("run_linear_probe_on_best_loss", False):
+        current_state = copy.deepcopy(model.state_dict())
+        model.load_state_dict(best_loss_model_state)
+        linear_probe_metrics = _run_linear_probe_on_best_loss(
+            model, data, gdp, cfg, device, save_file, wandb=wandb
+        )
+        best_metrics.update(linear_probe_metrics)
+        model.load_state_dict(current_state)
+    return best_metrics
 
 
 def _new_negative_tracking_state():
@@ -742,6 +1127,8 @@ def train_DisMult(model, data, optimizer,num_epochs,gdp, save_file,device,
     best_accuracy = 0
     best_metrics = {}
     best_epoch = 0
+    best_loss_model_state = None
+    best_loss_unsup_metrics = None
     best_visual_state = None
     recons_r_training_mode = config.get("recons_r_training_mode", "all_batch_edges")
     relation_target_attr = _relation_target_attr()
@@ -820,8 +1207,12 @@ def train_DisMult(model, data, optimizer,num_epochs,gdp, save_file,device,
             removed_edge_indices, removed_edge_types = _sample_recons_r_mask(data, "balanced_static_masked_only", seed, device)
         elif recons_r_training_mode == "random_static_masked_only":
             removed_edge_indices, removed_edge_types = _sample_recons_r_mask(data, recons_r_training_mode, seed, device)
-        elif recons_r_training_mode in ("random_dynamic_masked_only", "balanced_dynamic_masked_only"):
+        elif recons_r_training_mode in ("random_dynamic_masked_only", "balanced_dynamic_masked_only", "mapped_random_dynamic"):
             removed_edge_indices, removed_edge_types = _sample_recons_r_mask(data, recons_r_training_mode, seed, device)
+        elif recons_r_training_mode == "edge_curriculum_dynamic":
+            print("\nUsing edge curriculum dynamic masking.\n")
+            removed_edge_indices = torch.empty(0, dtype=torch.long, device=device)
+            removed_edge_types = torch.empty(0, dtype=torch.long, device=device)
         else:
             raise ValueError(f"Unknown recons_r_training_mode: {recons_r_training_mode}")
     else:
@@ -919,10 +1310,16 @@ def train_DisMult(model, data, optimizer,num_epochs,gdp, save_file,device,
     for epoch in range(num_epochs):
         if _step_limit_reached(global_step):
             break
-        if recons_r_training_mode in ("random_dynamic_masked_only", "balanced_dynamic_masked_only"):
+        edge_curriculum_rate = None
+        if recons_r_training_mode in ("random_dynamic_masked_only", "balanced_dynamic_masked_only", "mapped_random_dynamic"):
             dynamic_seed = int(seed) + epoch
             removed_edge_indices, removed_edge_types = _sample_recons_r_mask(
                 data, recons_r_training_mode, dynamic_seed, device
+            )
+        elif recons_r_training_mode == "edge_curriculum_dynamic":
+            dynamic_seed = int(seed) + epoch
+            removed_edge_indices, removed_edge_types, edge_curriculum_rate = _sample_edge_curriculum_dynamic_mask(
+                model, data, epoch, num_epochs, dynamic_seed, device, relation_target_attr
             )
         model.train()
         total_loss = 0
@@ -989,7 +1386,8 @@ def train_DisMult(model, data, optimizer,num_epochs,gdp, save_file,device,
                 if recons_r_training_mode in (
                     "removed_only", "random_masked_only", "balanced_static_masked_only",
                     "random_static_masked_only", "random_dynamic_masked_only",
-                    "balanced_dynamic_masked_only", "mapped_only", "mapped_visible"
+                    "balanced_dynamic_masked_only", "mapped_random_dynamic",
+                    "edge_curriculum_dynamic", "mapped_only", "mapped_visible"
                 ):
                     all_positive_triplets = get_positives(removed_batch)
                     if negative_replay_records is not None:
@@ -1280,6 +1678,16 @@ def train_DisMult(model, data, optimizer,num_epochs,gdp, save_file,device,
 
             if avg_loss < best_loss:
                 best_loss = avg_loss
+                best_loss_model_state = copy.deepcopy(model.state_dict())
+                best_loss_unsup_metrics = {
+                    **metrics,
+                    "R_accuracy": R_accuracy,
+                    "R_precision": R_precision,
+                    "R_recall": R_recall,
+                    "R_f1": R_f1,
+                    "best_loss": avg_loss,
+                    "best_loss_epoch": epoch + 1,
+                }
                 save_model(model, optimizer, epoch, save_dir = save_dir, file_name = save_file, is_best_acc=False)
                 print(f'Model saved with Avg Loss: {best_loss:.4f}\n')
             if metrics["accuracy"] > best_accuracy:
@@ -1308,7 +1716,8 @@ def train_DisMult(model, data, optimizer,num_epochs,gdp, save_file,device,
                        "onto_hierarchy_loss": avg_onto_hierarchy_loss,
                        **_wandb_classification_metrics(metrics),
                        "R_accuracy": R_accuracy, "R_precision": R_precision,
-                       "R_recall": R_recall, "R_f1": R_f1,})
+                       "R_recall": R_recall, "R_f1": R_f1,
+                       "edge_curriculum_rate": edge_curriculum_rate,})
 
     if use_onto and visualizations_dir is not None:
         if best_visual_state is not None:
@@ -1336,6 +1745,12 @@ def train_DisMult(model, data, optimizer,num_epochs,gdp, save_file,device,
             prefix=save_file,
         )
 
+    best_metrics = _attach_best_loss_evaluations(
+        model, data, gdp, device, save_file,
+        best_metrics, best_loss_model_state, best_loss_unsup_metrics,
+        wandb=wandb,
+        cfg=config,
+    )
     return _finalize_best_result(best_metrics, save_file)
 
 
@@ -1403,9 +1818,19 @@ def train_X_reconstruction(model, data ,optimizer, num_epochs, gdp, save_file,de
     best_accuracy = 0
     best_metrics = {}
     best_epoch = 0
-    print("\nmask_features...\n")
-    masked_features_data = view_partial_features_masking(data, max_masking_percentage=config["max_masking_percentage"],
-                                                         random_seed=seed)
+    best_loss_model_state = None
+    best_loss_unsup_metrics = None
+    use_feature_masking = bool(config.get("recons_x_feature_masking", True))
+    if use_feature_masking:
+        print("\nmask_features...\n")
+        masked_features_data = view_partial_features_masking(
+            data,
+            max_masking_percentage=config["max_masking_percentage"],
+            random_seed=seed,
+        )
+    else:
+        print("\nReconstructing all node features without feature masking.\n")
+        masked_features_data = data
     set_seed(seed)
     G1_data_loader = GraphDataLoader(masked_features_data, num_neighbors=config["num_neighbors"],
                                      batch_size=config["batch_size"], shuffle=config["shuffle"], seed=seed).get_loader()
@@ -1421,9 +1846,10 @@ def train_X_reconstruction(model, data ,optimizer, num_epochs, gdp, save_file,de
             total_mse_loss = 0
         if "PCSE" in loss_fct:
             total_cos_loss = 0
-        if "SCE" in loss_fct:
-            total_sce_loss = 0
+            if "SCE" in loss_fct:
+                total_sce_loss = 0
         steps_this_epoch = 0
+        epoch_loss = 0.0
 
         print("\nMSE_Recons_X\n")
         with tqdm(total=len(G1_data_loader), desc=f"Epoch {epoch + 1}/{num_epochs}",
@@ -1465,12 +1891,12 @@ def train_X_reconstruction(model, data ,optimizer, num_epochs, gdp, save_file,de
                 optimizer.step()
                 global_step += 1
                 steps_this_epoch += 1
-                total_loss += loss.item()
+                epoch_loss += loss.item()
                 batch_pbar.set_postfix(batch_loss=loss.item())
                 batch_pbar.update(1)
                 if _step_limit_reached(global_step):
                     break
-            avg_loss = total_loss / max(steps_this_epoch, 1)
+            avg_loss = epoch_loss / max(steps_this_epoch, 1)
 
             print("Evaluation\n")
             metrics = evaluate(model, data, config["Gs_path_no_other"], config["core_concepts"], gdp, config)
@@ -1478,6 +1904,12 @@ def train_X_reconstruction(model, data ,optimizer, num_epochs, gdp, save_file,de
             print(metrics)
             if avg_loss < best_loss:
                 best_loss = avg_loss
+                best_loss_model_state = copy.deepcopy(model.state_dict())
+                best_loss_unsup_metrics = {
+                    **metrics,
+                    "best_loss": avg_loss,
+                    "best_loss_epoch": epoch + 1,
+                }
                 save_model(model, optimizer, epoch, save_dir = save_dir, file_name = save_file, is_best_acc=False)
 
                 print(f'Model saved with Avg Loss: {best_loss:.4f}\n')
@@ -1490,8 +1922,294 @@ def train_X_reconstruction(model, data ,optimizer, num_epochs, gdp, save_file,de
                 save_model(model, optimizer, epoch, save_dir=save_dir,file_name= save_file , is_best_acc=True)
                 print(f'Model saved with Accuracy: {best_accuracy:.4f}\n')
             wandb.log({"epoch": epoch + 1, "step": global_step, "mce loss": avg_loss,
+                       "recons_x_feature_masking": use_feature_masking,
                        **_wandb_classification_metrics(metrics)})
 
+    best_metrics = _attach_best_loss_evaluations(
+        model, data, gdp, device, save_file,
+        best_metrics, best_loss_model_state, best_loss_unsup_metrics,
+        wandb=wandb,
+        cfg=config,
+    )
+    return _finalize_best_result(best_metrics, save_file)
+
+
+def _normalize_scores(scores):
+    scores = scores.float()
+    finite_mask = torch.isfinite(scores)
+    if not finite_mask.all():
+        scores = torch.where(finite_mask, scores, torch.zeros_like(scores))
+    if scores.numel() == 0:
+        return scores
+    min_value = scores.min()
+    max_value = scores.max()
+    if (max_value - min_value).abs() < 1e-12:
+        return torch.zeros_like(scores)
+    return (scores - min_value) / (max_value - min_value)
+
+
+def _graphmae_structural_focus_rate(mask_rate, epoch, max_epoch, mode):
+    mode = str(mode or "linear").lower()
+    progress = min(max((epoch + 1) / max(max_epoch, 1), 0.0), 1.0)
+    if mode in ("none", "constant", "static"):
+        return mask_rate
+    if mode == "root":
+        return mask_rate * math.sqrt(progress)
+    if mode == "geometric":
+        lambda0 = 0.05
+        return mask_rate * (2 ** (math.log2(lambda0) - math.log2(lambda0) * progress))
+    return mask_rate * progress
+
+
+def _compute_graphmae_structural_scores(data, strategy, device):
+    strategy = str(strategy or "random").lower()
+    num_nodes = int(data.x.size(0))
+    if strategy == "degree":
+        edge_index = data.edge_index.detach().cpu()
+        degree = torch.zeros(num_nodes, dtype=torch.float)
+        if edge_index.numel() > 0:
+            degree.scatter_add_(0, edge_index[0], torch.ones(edge_index.size(1)))
+            degree.scatter_add_(0, edge_index[1], torch.ones(edge_index.size(1)))
+        return _normalize_scores(degree).to(device)
+
+    if strategy == "pagerank":
+        graph = nx.Graph()
+        graph.add_nodes_from(range(num_nodes))
+        edges = data.edge_index.detach().cpu().t().tolist()
+        graph.add_edges_from(edges)
+        if graph.number_of_edges() == 0:
+            return torch.zeros(num_nodes, dtype=torch.float, device=device)
+        pagerank = nx.pagerank(graph)
+        scores = torch.tensor([pagerank.get(node_id, 0.0) for node_id in range(num_nodes)], dtype=torch.float)
+        return _normalize_scores(scores).to(device)
+
+    return None
+
+
+def _get_batch_candidate_nodes(batch):
+    if not hasattr(batch, "input_id"):
+        return torch.arange(batch.x.size(0), device=batch.x.device)
+    return torch.where(torch.isin(batch.n_id, batch.input_id))[0]
+
+
+def _graphmae_mask_batch(batch, mask_rate, replace_rate, seed_value, config=None,
+                         epoch=0, max_epoch=1, structural_scores=None, model=None):
+    config = config or {}
+    strategy = str(config.get("graphmae_structure_masking", "random")).lower()
+    candidate_nodes = _get_batch_candidate_nodes(batch)
+    num_candidates = int(candidate_nodes.numel())
+    if num_candidates == 0:
+        return batch, candidate_nodes, candidate_nodes, candidate_nodes, None
+
+    num_mask_nodes = int(mask_rate * num_candidates)
+    if mask_rate > 0 and num_mask_nodes == 0:
+        num_mask_nodes = 1
+    num_mask_nodes = min(num_mask_nodes, num_candidates)
+
+    generator = torch.Generator(device="cpu").manual_seed(int(seed_value))
+    keep_nodes = candidate_nodes
+    learnable_scores = None
+
+    if strategy == "learnable":
+        if model is None or not hasattr(model, "structural_mask_scorer"):
+            raise ValueError("struct_node_learnable_masking requires model.init_structural_mask_scorer(data.num_features).")
+        learnable_scores = torch.sigmoid(model.structural_mask_scorer(batch.x).squeeze(-1))
+        candidate_scores = learnable_scores[candidate_nodes].detach()
+    elif strategy in ("pagerank", "degree") and structural_scores is not None:
+        if hasattr(batch, "n_id"):
+            candidate_scores = structural_scores[batch.n_id[candidate_nodes]]
+        else:
+            candidate_scores = structural_scores[candidate_nodes]
+    else:
+        candidate_scores = None
+
+    if candidate_scores is None:
+        perm = torch.randperm(num_candidates, generator=generator, device="cpu").to(batch.x.device)
+        mask_nodes = candidate_nodes[perm[:num_mask_nodes]]
+        keep_nodes = candidate_nodes[perm[num_mask_nodes:]]
+    else:
+        focus_rate = _graphmae_structural_focus_rate(
+            mask_rate,
+            epoch,
+            max_epoch,
+            config.get("graphmae_structure_schedule", "linear"),
+        )
+        num_focus_nodes = int(focus_rate * num_candidates)
+        if focus_rate > 0 and num_focus_nodes == 0:
+            num_focus_nodes = 1
+        num_focus_nodes = min(num_focus_nodes, num_candidates)
+
+        random_scores = torch.rand(num_candidates, generator=generator, device="cpu").to(batch.x.device)
+        if num_focus_nodes > 0:
+            focus_positions = torch.topk(candidate_scores, k=num_focus_nodes, largest=True).indices
+            random_scores[focus_positions] = random_scores[focus_positions] + float(config.get("graphmae_structure_alpha", 1.0))
+        mask_positions = torch.topk(random_scores, k=num_mask_nodes, largest=True).indices
+        mask_nodes = candidate_nodes[mask_positions]
+        keep_mask = torch.ones(num_candidates, dtype=torch.bool, device=batch.x.device)
+        keep_mask[mask_positions] = False
+        keep_nodes = candidate_nodes[keep_mask]
+
+    graphmae_batch = copy.deepcopy(batch)
+    graphmae_batch.x = batch.x.clone()
+
+    num_noise_nodes = int(replace_rate * num_mask_nodes)
+    num_token_nodes = num_mask_nodes - num_noise_nodes
+    mask_perm = torch.randperm(num_mask_nodes, generator=generator, device="cpu").to(batch.x.device)
+    token_nodes = mask_nodes[mask_perm[:num_token_nodes]]
+    noise_nodes = mask_nodes[mask_perm[num_token_nodes:]]
+
+    if noise_nodes.numel() > 0:
+        noise_perm = torch.randperm(batch.x.size(0), generator=generator, device="cpu").to(batch.x.device)
+        graphmae_batch.x[noise_nodes] = batch.x[noise_perm[:noise_nodes.numel()]]
+    if token_nodes.numel() > 0:
+        graphmae_batch.x[token_nodes] = 0.0
+
+    return graphmae_batch, mask_nodes, token_nodes, keep_nodes, learnable_scores
+
+
+def train_GraphMAE_X_reconstruction(model, data, optimizer, num_epochs, gdp, save_file, device, config,
+                                    loss_fct=None, save_dir="train_GraphMAE_X_reconstruction",
+                                    wandb=None, seed=None):
+    seed = _resolve_seed(seed)
+    loss_fct = loss_fct or [config.get("graphmae_loss_fn", "SCE")]
+
+    if getattr(model, "x_mask_token", None) is None:
+        raise ValueError("GraphMAE_Recons_X requires model.init_x_mask_token(data.num_features) before optimizer creation.")
+
+    mask_rate = float(config.get("graphmae_mask_rate", config.get("max_masking_percentage", 0.3)))
+    replace_rate = float(config.get("graphmae_replace_rate", 0.0))
+    structure_strategy = str(config.get("graphmae_structure_masking", "random")).lower()
+    if not 0 <= mask_rate <= 1:
+        raise ValueError("graphmae_mask_rate must be between 0 and 1.")
+    if not 0 <= replace_rate <= 1:
+        raise ValueError("graphmae_replace_rate must be between 0 and 1.")
+    if structure_strategy not in ("random", "pagerank", "degree", "learnable"):
+        raise ValueError("graphmae_structure_masking must be one of: random, pagerank, degree, learnable.")
+
+    best_loss = float("inf")
+    best_accuracy = 0
+    best_metrics = {}
+    best_loss_model_state = None
+    best_loss_unsup_metrics = None
+
+    set_seed(seed)
+    data_loader = GraphDataLoader(
+        data,
+        num_neighbors=config["num_neighbors"],
+        batch_size=config["batch_size"],
+        shuffle=config["shuffle"],
+        seed=seed,
+    ).get_loader()
+    structural_scores = None
+    if structure_strategy in ("pagerank", "degree"):
+        print(f"\nComputing GraphMAE structural node scores: {structure_strategy}\n")
+        structural_scores = _compute_graphmae_structural_scores(data, structure_strategy, device)
+
+    global_step = 0
+    for epoch in range(num_epochs):
+        if _step_limit_reached(global_step):
+            break
+        model.train()
+        total_epoch_loss = 0.0
+        steps_this_epoch = 0
+
+        print("\nGraphMAE_Recons_X dynamic feature masking\n")
+        with tqdm(total=len(data_loader), desc=f"Epoch {epoch + 1}/{num_epochs}", unit="batch") as batch_pbar:
+            for batch_idx, batch in enumerate(data_loader):
+                batch = batch.to(device)
+                graphmae_batch, mask_nodes, token_nodes, keep_nodes, learnable_scores = _graphmae_mask_batch(
+                    batch,
+                    mask_rate=mask_rate,
+                    replace_rate=replace_rate,
+                    seed_value=int(seed) + epoch * max(len(data_loader), 1) + batch_idx,
+                    config=config,
+                    epoch=epoch,
+                    max_epoch=num_epochs,
+                    structural_scores=structural_scores,
+                    model=model,
+                )
+                if mask_nodes.numel() == 0:
+                    continue
+
+                if token_nodes.numel() > 0:
+                    graphmae_batch.x[token_nodes] = graphmae_batch.x[token_nodes] + model.x_mask_token
+
+                optimizer.zero_grad()
+                embeddings, r_embd = _encode(model, graphmae_batch)
+                if structure_strategy == "learnable" and learnable_scores is not None and keep_nodes.numel() > 0:
+                    embeddings = embeddings.clone()
+                    embeddings[keep_nodes] = embeddings[keep_nodes] * learnable_scores[keep_nodes].unsqueeze(-1)
+                decoder_embeddings = embeddings
+                decoder_name = type(model.x_decoder).__name__
+                if config.get("graphmae_decoder_remask", True) and decoder_name not in ("MLPDecoder", "Linear"):
+                    decoder_embeddings = embeddings.clone()
+                    decoder_embeddings[mask_nodes] = 0.0
+
+                if isinstance(model.x_decoder, TransGCNDecoder):
+                    reconstructed_x = model.decode_x(graphmae_batch, decoder_embeddings, r_embd)
+                else:
+                    reconstructed_x = model.decode_x(graphmae_batch, decoder_embeddings)
+
+                target_x = data.x[graphmae_batch.n_id[mask_nodes]].to(device)
+                pred_x = reconstructed_x[mask_nodes]
+
+                loss = 0.0
+                if "MSE" in loss_fct:
+                    loss = loss + mse_loss_fnc(target_x, pred_x)
+                if "SCE" in loss_fct:
+                    loss = loss + sce_loss_fnc(target_x, pred_x, alpha=config.get("graphmae_sce_alpha", 3))
+                if "PCSE" in loss_fct:
+                    loss = loss + similarity_pair_loss(target_x, pred_x, embeddings[mask_nodes])
+
+                loss.backward()
+                optimizer.step()
+                global_step += 1
+                steps_this_epoch += 1
+                total_epoch_loss += loss.item()
+                batch_pbar.set_postfix(batch_loss=loss.item(), masked=int(mask_nodes.numel()))
+                batch_pbar.update(1)
+                if _step_limit_reached(global_step):
+                    break
+
+        avg_loss = total_epoch_loss / max(steps_this_epoch, 1)
+        print("Evaluation\n")
+        metrics = evaluate(model, data, config["Gs_path_no_other"], config["core_concepts"], gdp, config)
+        print(metrics)
+
+        if avg_loss < best_loss:
+            best_loss = avg_loss
+            best_loss_model_state = copy.deepcopy(model.state_dict())
+            best_loss_unsup_metrics = {
+                **metrics,
+                "best_loss": avg_loss,
+                "best_loss_epoch": epoch + 1,
+            }
+            save_model(model, optimizer, epoch, save_dir=save_dir, file_name=save_file, is_best_acc=False)
+            print(f"Model saved with Avg Loss: {best_loss:.4f}\n")
+        if metrics["accuracy"] > best_accuracy:
+            best_accuracy = metrics["accuracy"]
+            best_metrics = _record_best_result(metrics, save_file, epoch, status="abnormal")
+            save_model(model, optimizer, epoch, save_dir=save_dir, file_name=save_file, is_best_acc=True)
+            print(f"Model saved with Accuracy: {best_accuracy:.4f}\n")
+        if wandb is not None:
+            wandb.log({
+                "epoch": epoch + 1,
+                "step": global_step,
+                "graphmae_x_loss": avg_loss,
+                "graphmae_mask_rate": mask_rate,
+                "graphmae_replace_rate": replace_rate,
+                "graphmae_structure_masking": structure_strategy,
+                "graphmae_structure_alpha": config.get("graphmae_structure_alpha", 1.0),
+                "graphmae_structure_schedule": config.get("graphmae_structure_schedule", "linear"),
+                **_wandb_classification_metrics(metrics),
+            })
+
+    best_metrics = _attach_best_loss_evaluations(
+        model, data, gdp, device, save_file,
+        best_metrics, best_loss_model_state, best_loss_unsup_metrics,
+        wandb=wandb,
+        cfg=config,
+    )
     return _finalize_best_result(best_metrics, save_file)
 
 

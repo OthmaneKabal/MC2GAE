@@ -9,8 +9,8 @@ config = {
     "max_masking_percentage": 0.3,
     "total_drop_rate": 0,
     "learning_rate": 0.001,
-    "batch_size": 1024,
-    "test_batch_size":1024,
+    "batch_size": 256,
+    "test_batch_size":256,
     # "cosine_loss_weight": 0.5,
     "shuffle": False,
     "num_neighbors": [-1,-1],
@@ -27,7 +27,7 @@ config = {
     "Edges_path_cs": "../outputs/PredicatesBertEmbeddingAugmented_cs__.pickle",
     "KG_path": "../../data/UMLS/noisy/org/MM_mapped_nci_All_R_KG.json",   #KG_NCI_vf.json",MM_mapped_nci_KG
 
-    "Gs_path_no_other": "../../data/UMLS/MM_mapped_nci_GS.xlsx",#nci_mm_GS_vf
+    "Gs_path_no_other": "../../data/UMLS/common_nodes.xlsx",#nci_mm_GS_vf
      "KG_path_cs": "../../data/augmented_graph/augmented_graph_is_rules.json",
     "dataset": "gt2kg_mapped_and_old_rel_norm",
     ####
@@ -56,8 +56,30 @@ config = {
 ],
 
     "training_task" : ["Recons_R_with_onto"],
+    "graphmae_mask_rate": 0.3,
+    "graphmae_replace_rate": 0.0,
+    "graphmae_loss_fn": "SCE",
+    "graphmae_sce_alpha": 3,
+    "graphmae_decoder_remask": True,
+    "graphmae_structure_masking": "random",  # "random", "pagerank", "degree", or "learnable"
+    "graphmae_structure_alpha": 1.0,
+    "graphmae_structure_schedule": "linear",  # "linear", "root", "geometric", or "constant"
+    "graphmae_learnable_scorer_hidden": None,
+    "recons_x_feature_masking": True,
+    "run_linear_probe_on_best_loss": False,
+    "linear_probe_gs_path": "../../data/UMLS/common_nodes.xlsx",
+    "linear_probe_splits_dir": "../../data/UMLS/splits/umls_kg_splits",
+    "linear_probe_split_seeds": [42, 123, 456, 789, 2024],
+    "linear_probe_epochs": 300,
+    "linear_probe_lr": 0.01,
+    "linear_probe_weight_decay": 0.0,
+    "linear_probe_patience": 50,
     "recons_r_training_mode": "all_batch_edges",  # "random_masked_only"/"removed_only" reconstruct only randomly masked edges; "mapped_only" hides mapped edges; "mapped_visible" keeps mapped edges visible; "all_batch_edges" is previous behavior
     "recons_r_target_relation_field": "predicate",  # "predicate" or "old_predicate" for mapping-guided controls
+    "mapped_random_dynamic_mapped_fraction": 0.5,  # fraction of the masked edge budget sampled from is_mapped=True edges
+    "edge_curriculum_split_ratio": 0.5,  # fraction of masked edges selected by model confidence; the rest is random
+    "edge_curriculum_initial_rate": 0.05,
+    "edge_curriculum_schedule": "linear",  # "linear", "root", "geometric", or "constant"
     "onto_KG_path": "../../data/UMLS/noisy/org/SM_network.json",
     "onto_entities_path": "outputs/SM_network/sentence-transformers_all-MiniLM-L6-v2_entities.pickle",
     "onto_edges_path": "outputs/SM_network/sentence-transformers_all-MiniLM-L6-v2_predicates.pickle",
@@ -140,11 +162,11 @@ config = {
     "gt2kg_mapped_and_old_rel_norm": "../../data/UMLS/noisy/org/GT2KG_mapped_and_old_rel_norm.json",
         },
     "GS_path_map" : {
-    "umls_clean": "../../data/UMLS/MM_mapped_nci_GS.xlsx",
-    "umls_noisy": "../../data/UMLS/MM_mapped_nci_GS.xlsx",
-    "umls_mitigated": "../../data/UMLS/MM_mapped_nci_GS.xlsx",
-    "umls_noisy_mapped": "../../data/UMLS/MM_mapped_nci_GS.xlsx",
-    "gt2kg_mapped_and_old_rel_norm": "../../data/UMLS/MM_mapped_nci_GS.xlsx",
+    "umls_clean": "../../data/UMLS/common_nodes.xlsx",
+    "umls_noisy": "../../data/UMLS/common_nodes.xlsx",
+    "umls_mitigated": "../../data/UMLS/common_nodes.xlsx",
+    "umls_noisy_mapped": "../../data/UMLS/common_nodes.xlsx",
+    "gt2kg_mapped_and_old_rel_norm": "../../data/UMLS/common_nodes.xlsx",
     "CS": "../../data/Cs/GS_vf.xlsx",
     "CS_augmented": "../../data/Cs/GS_vf.xlsx"
         },
