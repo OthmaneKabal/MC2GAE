@@ -167,7 +167,7 @@ def build_jobs(args):
 
 def build_run_dir(out_root, job, index):
     channels_tag = "-".join(str(value) for value in job["channels"])
-    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     return out_root / (
         f"mm__{job['mode']}__c{channels_tag}__s{job['seed']}__"
         f"{mask_rate_tag(job['mask_rate'])}__j{index:04d}__{stamp}"
@@ -288,7 +288,6 @@ def run_suite(args):
             while next_index < len(pending) and len(running) < args.max_parallel:
                 job = pending[next_index]
                 run_dir = build_run_dir(out_root, job, next_index)
-                run_dir.mkdir(parents=True, exist_ok=True)
                 command = build_command(args, job, run_dir)
                 start_record = {
                     "event": "start",
