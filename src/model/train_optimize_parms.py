@@ -255,6 +255,9 @@ def _sample_recons_r_mask(data, mode, seed_value, device):
     if mode == "mapped_random_dynamic":
         print("\nUsing mapped/random dynamic edge masking.\n")
         return _sample_mapped_random_dynamic_mask(data, seed_value, device)
+    if mode == "balanced_dynamic_masked_only":
+        print("\nUsing fast type-balanced dynamic edge masking.\n")
+        return _sample_global_balanced_mask(data, seed_value, device)
     if mode in ("random_static_masked_only", "random_dynamic_masked_only"):
         print("\nUsing random edge masking.\n")
         _, removed_edge_indices, removed_edge_types = random_edge_dropping(
@@ -267,6 +270,26 @@ def _sample_recons_r_mask(data, mode, seed_value, device):
         )
     removed_edge_indices = removed_edge_indices.to(device=device, dtype=torch.long)
     return removed_edge_indices, _selected_edge_types(data, removed_edge_indices, device)
+
+
+def _sample_global_balanced_mask(data, seed_value, device):
+    total_drop_rate = _validate_rate("total_drop_rate", config.get("total_drop_rate", 0.0))
+    total_edges = int(data.edge_index.size(1))
+    count = int(total_edges * total_drop_rate)
+    if count <= 0:
+        return _empty_edge_selection(device)
+
+    generator = torch.Generator(device="cpu").manual_seed(int(seed_value))
+    pool = torch.arange(total_edges, dtype=torch.long)
+    edge_types = _edge_type_values_for_selection(data)
+    selected = _take_balanced_from_pool(pool, count, edge_types, generator)
+    selected = selected.to(device=device, dtype=torch.long)
+    removed_edge_types = _selected_edge_types(data, selected, device)
+    print(
+        f"fast_balanced_dynamic mask: total={selected.numel()}, "
+        f"drop_rate={total_drop_rate}"
+    )
+    return selected, removed_edge_types
 
 
 def _sample_mapped_only_dynamic_mask(data, seed_value, device, strategy="random"):
