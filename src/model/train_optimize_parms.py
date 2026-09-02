@@ -145,7 +145,113 @@ def _full_graph_batch(data):
     return batch
 
 
+def _validate_rate(name, value):
+    value = float(value)
+    if not 0 <= value <= 1:
+        raise ValueError(f"{name} must be between 0 and 1.")
+    return value
+
+
+def _empty_edge_selection(device):
+    return torch.empty(0, dtype=torch.long, device=device), torch.empty(0, dtype=torch.long, device=device)
+
+
+def _edge_type_values_for_selection(data):
+    target_attr = _relation_target_attr()
+    if target_attr == "edge_old_type":
+        if not hasattr(data, "edge_old_type") or data.edge_old_type is None:
+            raise ValueError("Balanced old_predicate masking requires data.edge_old_type.")
+        return data.edge_old_type.detach().cpu()
+    return data.edge_type.detach().cpu()
+
+
+def _take_random_from_pool(pool, count, generator):
+    count = min(int(count), int(pool.numel()))
+    if count <= 0:
+        return torch.empty(0, dtype=torch.long)
+    order = torch.randperm(pool.numel(), generator=generator)[:count]
+    return pool[order]
+
+
+def _take_balanced_from_pool(pool, count, edge_types, generator):
+    count = min(int(count), int(pool.numel()))
+    if count <= 0:
+        return torch.empty(0, dtype=torch.long)
+    if pool.numel() == 0:
+        return torch.empty(0, dtype=torch.long)
+
+    pool_types = edge_types[pool]
+    unique_types, counts = torch.unique(pool_types, return_counts=True)
+    selected_chunks = []
+    selected_mask = torch.zeros(pool.numel(), dtype=torch.bool)
+
+    raw_targets = counts.float() * (count / float(pool.numel()))
+    targets = torch.floor(raw_targets).long()
+    remainder = count - int(targets.sum().item())
+    if remainder > 0:
+        fractional_order = torch.argsort(raw_targets - targets.float(), descending=True)
+        for pos in fractional_order[:remainder]:
+            targets[pos] += 1
+
+    for type_value, target in zip(unique_types.tolist(), targets.tolist()):
+        if target <= 0:
+            continue
+        positions = torch.where(pool_types == int(type_value))[0]
+        chosen_positions = _take_random_from_pool(positions, target, generator)
+        selected_mask[chosen_positions] = True
+        selected_chunks.append(pool[chosen_positions])
+
+    selected = torch.cat(selected_chunks, dim=0) if selected_chunks else torch.empty(0, dtype=torch.long)
+    missing = count - int(selected.numel())
+    if missing > 0:
+        fallback_pool = pool[~selected_mask]
+        selected = torch.cat((selected, _take_random_from_pool(fallback_pool, missing, generator)), dim=0)
+    return selected[:count]
+
+
+def _sample_pool_by_strategy(pool, count, edge_types, generator, strategy):
+    strategy = str(strategy).lower()
+    if strategy == "balanced":
+        return _take_balanced_from_pool(pool, count, edge_types, generator)
+    if strategy == "random":
+        return _take_random_from_pool(pool, count, generator)
+    raise ValueError(f"Unknown mapped masking strategy: {strategy}")
+
+
+def _mapped_and_other_pools(data):
+    if not hasattr(data, "edge_is_mapped") or data.edge_is_mapped is None:
+        raise ValueError("Mapped masking modes require edge_is_mapped loaded from the KG JSON field 'is_mapped'.")
+    mapped_mask = data.edge_is_mapped.bool().detach().cpu()
+    return torch.where(mapped_mask)[0], torch.where(~mapped_mask)[0]
+
+
+def _selected_edge_types(data, selected, device):
+    if selected.numel() == 0:
+        return torch.empty(0, dtype=torch.long, device=device)
+    target_attr = _relation_target_attr()
+    edge_types = data.edge_old_type if target_attr == "edge_old_type" else data.edge_type
+    return edge_types[selected.to(edge_types.device)].to(device)
+
+
 def _sample_recons_r_mask(data, mode, seed_value, device):
+    if mode == "all_mapped_plus_random_dynamic":
+        print("\nUsing all-mapped plus random non-mapped dynamic edge masking.\n")
+        return _sample_all_mapped_plus_dynamic_mask(data, seed_value, device, strategy="random")
+    if mode == "all_mapped_plus_balanced_dynamic":
+        print("\nUsing all-mapped plus balanced non-mapped dynamic edge masking.\n")
+        return _sample_all_mapped_plus_dynamic_mask(data, seed_value, device, strategy="balanced")
+    if mode in ("mapped_only_dynamic_random", "mapped_selector_dynamic_random"):
+        print("\nUsing mapped-only dynamic random edge masking.\n")
+        return _sample_mapped_only_dynamic_mask(data, seed_value, device, strategy="random")
+    if mode in ("mapped_only_dynamic_balanced", "mapped_selector_dynamic_balanced"):
+        print("\nUsing mapped-only dynamic balanced edge masking.\n")
+        return _sample_mapped_only_dynamic_mask(data, seed_value, device, strategy="balanced")
+    if mode == "mapped_mix_dynamic_random":
+        print("\nUsing mapped/non-mapped mix dynamic random edge masking.\n")
+        return _sample_mapped_mix_dynamic_mask(data, seed_value, device, strategy="random")
+    if mode == "mapped_mix_dynamic_balanced":
+        print("\nUsing mapped/non-mapped mix dynamic balanced edge masking.\n")
+        return _sample_mapped_mix_dynamic_mask(data, seed_value, device, strategy="balanced")
     if mode == "mapped_random_dynamic":
         print("\nUsing mapped/random dynamic edge masking.\n")
         return _sample_mapped_random_dynamic_mask(data, seed_value, device)
@@ -159,7 +265,71 @@ def _sample_recons_r_mask(data, mode, seed_value, device):
         _, removed_edge_indices, removed_edge_types = relation_based_edge_dropping_balanced(
             data, config["total_drop_rate"], max_drop_fraction_per_node=0.3, random_seed=seed_value
         )
-    return removed_edge_indices.to(device=device, dtype=torch.long), removed_edge_types.to(device)
+    removed_edge_indices = removed_edge_indices.to(device=device, dtype=torch.long)
+    return removed_edge_indices, _selected_edge_types(data, removed_edge_indices, device)
+
+
+def _sample_mapped_only_dynamic_mask(data, seed_value, device, strategy="random"):
+    mapped_rate = _validate_rate("mapped_only_dynamic_rate", config.get("mapped_only_dynamic_rate", 0.5))
+    mapped_pool, _ = _mapped_and_other_pools(data)
+    count = int(mapped_pool.numel() * mapped_rate)
+    if count <= 0:
+        return _empty_edge_selection(device)
+
+    generator = torch.Generator(device="cpu").manual_seed(int(seed_value))
+    edge_types = _edge_type_values_for_selection(data)
+    selected = _sample_pool_by_strategy(mapped_pool, count, edge_types, generator, strategy)
+    selected = selected.to(device=device, dtype=torch.long)
+    removed_edge_types = _selected_edge_types(data, selected, device)
+    print(
+        f"mapped_only_dynamic_{strategy} mask: total={selected.numel()}, "
+        f"mapped={selected.numel()}, mapped_rate={mapped_rate}"
+    )
+    return selected, removed_edge_types
+
+
+def _sample_mapped_mix_dynamic_mask(data, seed_value, device, strategy="random"):
+    mapped_rate = _validate_rate("mapped_mix_mapped_rate", config.get("mapped_mix_mapped_rate", 0.5))
+    non_mapped_rate = _validate_rate("mapped_mix_non_mapped_rate", config.get("mapped_mix_non_mapped_rate", 0.5))
+    mapped_pool, other_pool = _mapped_and_other_pools(data)
+    mapped_count = int(mapped_pool.numel() * mapped_rate)
+    other_count = int(other_pool.numel() * non_mapped_rate)
+    if mapped_count <= 0 and other_count <= 0:
+        return _empty_edge_selection(device)
+
+    generator = torch.Generator(device="cpu").manual_seed(int(seed_value))
+    edge_types = _edge_type_values_for_selection(data)
+    selected_mapped = _sample_pool_by_strategy(mapped_pool, mapped_count, edge_types, generator, strategy)
+    selected_other = _sample_pool_by_strategy(other_pool, other_count, edge_types, generator, strategy)
+    selected = torch.cat((selected_mapped, selected_other), dim=0).to(device=device, dtype=torch.long)
+    removed_edge_types = _selected_edge_types(data, selected, device)
+    print(
+        f"mapped_mix_dynamic_{strategy} mask: total={selected.numel()}, "
+        f"mapped={selected_mapped.numel()}, other={selected_other.numel()}, "
+        f"mapped_rate={mapped_rate}, non_mapped_rate={non_mapped_rate}"
+    )
+    return selected, removed_edge_types
+
+
+def _sample_all_mapped_plus_dynamic_mask(data, seed_value, device, strategy="random"):
+    non_mapped_rate = _validate_rate(
+        "all_mapped_plus_non_mapped_rate",
+        config.get("all_mapped_plus_non_mapped_rate", 0.1),
+    )
+    mapped_pool, other_pool = _mapped_and_other_pools(data)
+    other_count = int(other_pool.numel() * non_mapped_rate)
+
+    generator = torch.Generator(device="cpu").manual_seed(int(seed_value))
+    edge_types = _edge_type_values_for_selection(data)
+    selected_other = _sample_pool_by_strategy(other_pool, other_count, edge_types, generator, strategy)
+    selected = torch.cat((mapped_pool, selected_other), dim=0).to(device=device, dtype=torch.long)
+    removed_edge_types = _selected_edge_types(data, selected, device)
+    print(
+        f"all_mapped_plus_{strategy}_dynamic mask: total={selected.numel()}, "
+        f"mapped={mapped_pool.numel()}, other={selected_other.numel()}, "
+        f"non_mapped_rate={non_mapped_rate}"
+    )
+    return selected, removed_edge_types
 
 
 def _sample_mapped_random_dynamic_mask(data, seed_value, device):
@@ -207,7 +377,7 @@ def _sample_mapped_random_dynamic_mask(data, seed_value, device):
         selected = torch.cat((selected_mapped, selected_other), dim=0)
 
     selected = selected.to(device=device, dtype=torch.long)
-    removed_edge_types = data.edge_type[selected].to(device)
+    removed_edge_types = _selected_edge_types(data, selected, device)
     actual_mapped_count = int(data.edge_is_mapped[selected].bool().sum().item())
     actual_other_count = int(selected.numel()) - actual_mapped_count
     print(
@@ -1197,7 +1367,7 @@ def train_DisMult(model, data, optimizer,num_epochs,gdp, save_file,device,
     if recons_r_training_mode in ("mapped_only", "mapped_visible"):
         print("\nUsing mapped relation mask from JSON field 'is_mapped'...\n")
         removed_edge_indices = _mapped_edge_indices(data, device)
-        removed_edge_types = data.edge_type[removed_edge_indices].to(device)
+        removed_edge_types = _selected_edge_types(data, removed_edge_indices, device)
     elif removed_edge_indices is None:
         if recons_r_training_mode in ("all_batch_edges",):
             print("\nReconstructing whole graph without masking.\n")
@@ -1207,7 +1377,13 @@ def train_DisMult(model, data, optimizer,num_epochs,gdp, save_file,device,
             removed_edge_indices, removed_edge_types = _sample_recons_r_mask(data, "balanced_static_masked_only", seed, device)
         elif recons_r_training_mode == "random_static_masked_only":
             removed_edge_indices, removed_edge_types = _sample_recons_r_mask(data, recons_r_training_mode, seed, device)
-        elif recons_r_training_mode in ("random_dynamic_masked_only", "balanced_dynamic_masked_only", "mapped_random_dynamic"):
+        elif recons_r_training_mode in (
+            "random_dynamic_masked_only", "balanced_dynamic_masked_only", "mapped_random_dynamic",
+            "all_mapped_plus_random_dynamic", "all_mapped_plus_balanced_dynamic",
+            "mapped_only_dynamic_random", "mapped_only_dynamic_balanced",
+            "mapped_selector_dynamic_random", "mapped_selector_dynamic_balanced",
+            "mapped_mix_dynamic_random", "mapped_mix_dynamic_balanced",
+        ):
             removed_edge_indices, removed_edge_types = _sample_recons_r_mask(data, recons_r_training_mode, seed, device)
         elif recons_r_training_mode == "edge_curriculum_dynamic":
             print("\nUsing edge curriculum dynamic masking.\n")
@@ -1311,7 +1487,13 @@ def train_DisMult(model, data, optimizer,num_epochs,gdp, save_file,device,
         if _step_limit_reached(global_step):
             break
         edge_curriculum_rate = None
-        if recons_r_training_mode in ("random_dynamic_masked_only", "balanced_dynamic_masked_only", "mapped_random_dynamic"):
+        if recons_r_training_mode in (
+            "random_dynamic_masked_only", "balanced_dynamic_masked_only", "mapped_random_dynamic",
+            "all_mapped_plus_random_dynamic", "all_mapped_plus_balanced_dynamic",
+            "mapped_only_dynamic_random", "mapped_only_dynamic_balanced",
+            "mapped_selector_dynamic_random", "mapped_selector_dynamic_balanced",
+            "mapped_mix_dynamic_random", "mapped_mix_dynamic_balanced",
+        ):
             dynamic_seed = int(seed) + epoch
             removed_edge_indices, removed_edge_types = _sample_recons_r_mask(
                 data, recons_r_training_mode, dynamic_seed, device
@@ -1387,6 +1569,10 @@ def train_DisMult(model, data, optimizer,num_epochs,gdp, save_file,device,
                     "removed_only", "random_masked_only", "balanced_static_masked_only",
                     "random_static_masked_only", "random_dynamic_masked_only",
                     "balanced_dynamic_masked_only", "mapped_random_dynamic",
+                    "all_mapped_plus_random_dynamic", "all_mapped_plus_balanced_dynamic",
+                    "mapped_only_dynamic_random", "mapped_only_dynamic_balanced",
+                    "mapped_selector_dynamic_random", "mapped_selector_dynamic_balanced",
+                    "mapped_mix_dynamic_random", "mapped_mix_dynamic_balanced",
                     "edge_curriculum_dynamic", "mapped_only", "mapped_visible"
                 ):
                     all_positive_triplets = get_positives(removed_batch)

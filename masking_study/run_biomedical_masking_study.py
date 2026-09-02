@@ -33,6 +33,19 @@ SHORT_GRAPH_NAMES = {
     "MM_mapped_nci_All_R_KG": "mm",
 }
 SHORT_MODE_NAMES = {
+    "canonicalized_whole_graph": "c_whole",
+    "canonicalized_random_dynamic": "c_rdyn",
+    "canonicalized_balanced_dynamic": "c_bdyn",
+    "canonicalized_mapped_only": "c_map",
+    "mapped_only_dynamic_random": "modr",
+    "mapped_only_dynamic_balanced": "modb",
+    "mapped_selector_old_predicate": "ms_old",
+    "mapped_selector_dynamic_random": "msdr",
+    "mapped_selector_dynamic_balanced": "msdb",
+    "mapped_mix_dynamic_random": "mixr",
+    "mapped_mix_dynamic_balanced": "mixb",
+    "all_mapped_plus_random_dynamic": "amprd",
+    "all_mapped_plus_balanced_dynamic": "ampbd",
     "mapped_random_dynamic_15_15": "mrd15_15",
     "mapped_random_dynamic_20_10": "mrd20_10",
     "mapped_random_dynamic_20_30": "mrd20_30",
@@ -51,7 +64,21 @@ SHORT_MODE_NAMES = {
     "struct_node_learnable_masking": "s_lrn",
     "edge_curriculum_dynamic": "e_cur",
 }
-NO_MASK_RATE_MODES = {"whole_graph", "recons_x_whole_graph"}
+NO_MASK_RATE_MODES = {
+    "whole_graph",
+    "recons_x_whole_graph",
+    "canonicalized_whole_graph",
+    "canonicalized_mapped_only",
+    "mapped_selector_old_predicate",
+    "mapped_only_dynamic_random",
+    "mapped_only_dynamic_balanced",
+    "mapped_selector_dynamic_random",
+    "mapped_selector_dynamic_balanced",
+    "mapped_mix_dynamic_random",
+    "mapped_mix_dynamic_balanced",
+    "all_mapped_plus_random_dynamic",
+    "all_mapped_plus_balanced_dynamic",
+}
 
 GRAPHS = {
     "MM_mapped_nci_All_R_KG": {
@@ -158,6 +185,30 @@ BASELINE_MODES = [
 
 MAPPING_GUIDED_MODES = [
     {
+        "name": "canonicalized_whole_graph",
+        "recons_r_training_mode": "all_batch_edges",
+        "target_relation_field": "predicate",
+        "description": "Canonicalized graph: reconstruct all canonical predicates without masking.",
+    },
+    {
+        "name": "canonicalized_random_dynamic",
+        "recons_r_training_mode": "random_dynamic_masked_only",
+        "target_relation_field": "predicate",
+        "description": "Canonicalized graph: dynamic random masking, reconstruct canonical predicates.",
+    },
+    {
+        "name": "canonicalized_balanced_dynamic",
+        "recons_r_training_mode": "balanced_dynamic_masked_only",
+        "target_relation_field": "predicate",
+        "description": "Canonicalized graph: dynamic balanced masking, reconstruct canonical predicates.",
+    },
+    {
+        "name": "canonicalized_mapped_only",
+        "recons_r_training_mode": "mapped_only",
+        "target_relation_field": "predicate",
+        "description": "Canonicalized graph: mask all mapped edges and reconstruct canonical predicates.",
+    },
+    {
         "name": "mapping_guided_mapped_predicate",
         "recons_r_training_mode": "mapped_only",
         "target_relation_field": "predicate",
@@ -168,6 +219,60 @@ MAPPING_GUIDED_MODES = [
         "recons_r_training_mode": "mapped_only",
         "target_relation_field": "old_predicate",
         "description": "Mask mapped edges but reconstruct old predicates.",
+    },
+    {
+        "name": "mapped_selector_old_predicate",
+        "recons_r_training_mode": "mapped_only",
+        "target_relation_field": "old_predicate",
+        "description": "Canonicalized graph: use is_mapped only as mask selector, reconstruct original old predicates.",
+    },
+    {
+        "name": "mapped_selector_dynamic_random",
+        "recons_r_training_mode": "mapped_selector_dynamic_random",
+        "target_relation_field": "old_predicate",
+        "description": "Canonicalized graph: dynamically sample mapped edges at mapped_only_dynamic_rate and reconstruct old predicates.",
+    },
+    {
+        "name": "mapped_selector_dynamic_balanced",
+        "recons_r_training_mode": "mapped_selector_dynamic_balanced",
+        "target_relation_field": "old_predicate",
+        "description": "Canonicalized graph: dynamically balanced-sample mapped edges and reconstruct old predicates.",
+    },
+    {
+        "name": "mapped_only_dynamic_random",
+        "recons_r_training_mode": "mapped_only_dynamic_random",
+        "target_relation_field": "predicate",
+        "description": "Canonicalized graph: dynamically mask a fraction of mapped edges, leaving the rest visible.",
+    },
+    {
+        "name": "mapped_only_dynamic_balanced",
+        "recons_r_training_mode": "mapped_only_dynamic_balanced",
+        "target_relation_field": "predicate",
+        "description": "Canonicalized graph: dynamically balanced-mask a fraction of mapped edges, leaving the rest visible.",
+    },
+    {
+        "name": "mapped_mix_dynamic_random",
+        "recons_r_training_mode": "mapped_mix_dynamic_random",
+        "target_relation_field": "predicate",
+        "description": "Canonicalized graph: dynamically mask mapped_rate of mapped edges and non_mapped_rate of other edges, random in both pools.",
+    },
+    {
+        "name": "mapped_mix_dynamic_balanced",
+        "recons_r_training_mode": "mapped_mix_dynamic_balanced",
+        "target_relation_field": "predicate",
+        "description": "Canonicalized graph: dynamically mask mapped_rate of mapped edges and non_mapped_rate of other edges, balanced in both pools.",
+    },
+    {
+        "name": "all_mapped_plus_random_dynamic",
+        "recons_r_training_mode": "all_mapped_plus_random_dynamic",
+        "target_relation_field": "predicate",
+        "description": "Canonicalized graph: mask all mapped edges plus a dynamic random fraction of non-mapped edges.",
+    },
+    {
+        "name": "all_mapped_plus_balanced_dynamic",
+        "recons_r_training_mode": "all_mapped_plus_balanced_dynamic",
+        "target_relation_field": "predicate",
+        "description": "Canonicalized graph: mask all mapped edges plus a dynamic balanced fraction of non-mapped edges.",
     },
     {
         "name": "mapped_random_dynamic_15_15",
@@ -246,6 +351,10 @@ def mode_uses_mask_rate(mode_name):
     return mode_name not in NO_MASK_RATE_MODES
 
 
+def effective_mask_rate(mode_name, mask_rate):
+    return float(mask_rate) if mode_uses_mask_rate(mode_name) else None
+
+
 def capture_rng_state():
     import numpy as np
     import torch
@@ -294,6 +403,10 @@ def experiment_key(record):
         record.get("recons_r_training_mode"),
         record.get("target_relation_field"),
         record.get("mapped_random_dynamic_mapped_fraction"),
+        record.get("mapped_only_dynamic_rate"),
+        record.get("mapped_mix_mapped_rate"),
+        record.get("mapped_mix_non_mapped_rate"),
+        record.get("all_mapped_plus_non_mapped_rate"),
         record.get("edge_curriculum_split_ratio"),
         record.get("edge_curriculum_initial_rate"),
         record.get("edge_curriculum_schedule"),
@@ -352,6 +465,10 @@ def update_summary_csv(summary_path, finish_record):
         "recons_r_training_mode": finish_record.get("recons_r_training_mode"),
         "target_relation_field": finish_record.get("target_relation_field"),
         "mapped_random_dynamic_mapped_fraction": finish_record.get("mapped_random_dynamic_mapped_fraction"),
+        "mapped_only_dynamic_rate": finish_record.get("mapped_only_dynamic_rate"),
+        "mapped_mix_mapped_rate": finish_record.get("mapped_mix_mapped_rate"),
+        "mapped_mix_non_mapped_rate": finish_record.get("mapped_mix_non_mapped_rate"),
+        "all_mapped_plus_non_mapped_rate": finish_record.get("all_mapped_plus_non_mapped_rate"),
         "edge_curriculum_split_ratio": finish_record.get("edge_curriculum_split_ratio"),
         "edge_curriculum_initial_rate": finish_record.get("edge_curriculum_initial_rate"),
         "edge_curriculum_schedule": finish_record.get("edge_curriculum_schedule"),
@@ -466,6 +583,10 @@ def configure_model(config, experiment, run_dir, args, num_epochs=None):
         "recons_r_training_mode": mode_cfg["recons_r_training_mode"],
         "recons_r_target_relation_field": mode_cfg["target_relation_field"],
         "mapped_random_dynamic_mapped_fraction": mode_cfg.get("mapped_random_dynamic_mapped_fraction", 0.5),
+        "mapped_only_dynamic_rate": mode_cfg.get("mapped_only_dynamic_rate", args.mapped_only_dynamic_rate),
+        "mapped_mix_mapped_rate": mode_cfg.get("mapped_mix_mapped_rate", args.mapped_mix_mapped_rate),
+        "mapped_mix_non_mapped_rate": mode_cfg.get("mapped_mix_non_mapped_rate", args.mapped_mix_non_mapped_rate),
+        "all_mapped_plus_non_mapped_rate": mode_cfg.get("all_mapped_plus_non_mapped_rate", args.all_mapped_plus_non_mapped_rate),
         "edge_curriculum_split_ratio": args.edge_curriculum_split_ratio,
         "edge_curriculum_initial_rate": args.edge_curriculum_initial_rate,
         "edge_curriculum_schedule": args.edge_curriculum_schedule,
@@ -551,6 +672,7 @@ def run_single(args):
     install_dropout_hook(model_main, args.dropout)
 
     uses_mask_rate = mode_uses_mask_rate(args.mode)
+    record_mask_rate = effective_mask_rate(args.mode, args.mask_rate)
     mask_tag = f"__mask{args.mask_rate:g}" if uses_mask_rate else ""
     run_name = (
         f"{args.graph}__{args.mode}__"
@@ -575,6 +697,17 @@ def run_single(args):
     }
     if uses_mask_rate:
         wandb_config["mask_rate"] = args.mask_rate
+    if args.mode in ("mapped_only_dynamic_random", "mapped_only_dynamic_balanced",
+                     "mapped_selector_dynamic_random", "mapped_selector_dynamic_balanced"):
+        wandb_config["mapped_only_dynamic_rate"] = mode_cfg.get("mapped_only_dynamic_rate", args.mapped_only_dynamic_rate)
+    if args.mode in ("mapped_mix_dynamic_random", "mapped_mix_dynamic_balanced"):
+        wandb_config["mapped_mix_mapped_rate"] = mode_cfg.get("mapped_mix_mapped_rate", args.mapped_mix_mapped_rate)
+        wandb_config["mapped_mix_non_mapped_rate"] = mode_cfg.get("mapped_mix_non_mapped_rate", args.mapped_mix_non_mapped_rate)
+    if args.mode in ("all_mapped_plus_random_dynamic", "all_mapped_plus_balanced_dynamic"):
+        wandb_config["all_mapped_plus_non_mapped_rate"] = mode_cfg.get(
+            "all_mapped_plus_non_mapped_rate",
+            args.all_mapped_plus_non_mapped_rate,
+        )
     if mode_cfg.get("training_task", args.training_task) == "Recons_R_with_onto":
         wandb_config["ontology_reconstruction"] = True
         wandb_config["lambda_onto"] = args.lambda_onto
@@ -639,6 +772,10 @@ def run_single(args):
         "description": mode_cfg["description"],
         "recons_r_training_mode": mode_cfg["recons_r_training_mode"],
         "target_relation_field": mode_cfg["target_relation_field"],
+        "mapped_only_dynamic_rate": mode_cfg.get("mapped_only_dynamic_rate", args.mapped_only_dynamic_rate),
+        "mapped_mix_mapped_rate": mode_cfg.get("mapped_mix_mapped_rate", args.mapped_mix_mapped_rate),
+        "mapped_mix_non_mapped_rate": mode_cfg.get("mapped_mix_non_mapped_rate", args.mapped_mix_non_mapped_rate),
+        "all_mapped_plus_non_mapped_rate": mode_cfg.get("all_mapped_plus_non_mapped_rate", args.all_mapped_plus_non_mapped_rate),
         "graphmae_structure_masking": mode_cfg.get("graphmae_structure_masking", args.graphmae_structure_masking),
         "graphmae_structure_alpha": args.graphmae_structure_alpha,
         "graphmae_structure_schedule": args.graphmae_structure_schedule,
@@ -647,7 +784,7 @@ def run_single(args):
         "edge_curriculum_schedule": args.edge_curriculum_schedule,
         "recons_x_feature_masking": mode_cfg.get("recons_x_feature_masking", True),
         "run_linear_probe_on_best_loss": args.linear_probe,
-        "mask_rate": args.mask_rate,
+        "mask_rate": record_mask_rate,
         "channels": args.channels,
         "seed": int(args.seed),
         "negative_corruption_mode": "entity_only",
@@ -674,6 +811,10 @@ def print_status(experiments, db_path):
             "dropout": getattr(print_status, "dropout", None),
             "recons_r_training_mode": mode_cfg["recons_r_training_mode"],
             "target_relation_field": mode_cfg["target_relation_field"],
+            "mapped_only_dynamic_rate": mode_cfg.get("mapped_only_dynamic_rate", getattr(print_status, "mapped_only_dynamic_rate", 0.5)),
+            "mapped_mix_mapped_rate": mode_cfg.get("mapped_mix_mapped_rate", getattr(print_status, "mapped_mix_mapped_rate", 0.5)),
+            "mapped_mix_non_mapped_rate": mode_cfg.get("mapped_mix_non_mapped_rate", getattr(print_status, "mapped_mix_non_mapped_rate", 0.5)),
+            "all_mapped_plus_non_mapped_rate": mode_cfg.get("all_mapped_plus_non_mapped_rate", getattr(print_status, "all_mapped_plus_non_mapped_rate", 0.1)),
             "edge_curriculum_split_ratio": getattr(print_status, "edge_curriculum_split_ratio", 0.5),
             "edge_curriculum_initial_rate": getattr(print_status, "edge_curriculum_initial_rate", 0.05),
             "edge_curriculum_schedule": getattr(print_status, "edge_curriculum_schedule", "linear"),
@@ -682,7 +823,7 @@ def print_status(experiments, db_path):
             "graphmae_structure_alpha": getattr(print_status, "graphmae_structure_alpha", 1.0),
             "graphmae_structure_schedule": getattr(print_status, "graphmae_structure_schedule", "linear"),
             "run_linear_probe_on_best_loss": getattr(print_status, "linear_probe", False),
-            "mask_rate": getattr(print_status, "mask_rate", RELATION_MASK_RATE),
+            "mask_rate": effective_mask_rate(exp["mode"], getattr(print_status, "mask_rate", RELATION_MASK_RATE)),
             "channels": exp["channels"],
             "seed": exp["seed"],
         }
@@ -736,6 +877,10 @@ def run_suite(args):
     print_status.edge_curriculum_schedule = args.edge_curriculum_schedule
     print_status.linear_probe = args.linear_probe
     print_status.mask_rate = args.mask_rate
+    print_status.mapped_only_dynamic_rate = args.mapped_only_dynamic_rate
+    print_status.mapped_mix_mapped_rate = args.mapped_mix_mapped_rate
+    print_status.mapped_mix_non_mapped_rate = args.mapped_mix_non_mapped_rate
+    print_status.all_mapped_plus_non_mapped_rate = args.all_mapped_plus_non_mapped_rate
     pending = print_status(experiments, db_path)
     plan_path = db_path.with_name(f"{db_path.stem}_plan.json")
     write_json(plan_path, {
@@ -753,13 +898,17 @@ def run_suite(args):
             "lambda_onto": args.lambda_onto,
             "plm_embedding_model": args.plm_model,
             "graphmae_mask_rate": args.mask_rate,
-            "mask_rate": args.mask_rate,
+            "default_mask_rate": args.mask_rate,
             "graphmae_replace_rate": args.graphmae_replace_rate,
             "graphmae_structure_alpha": args.graphmae_structure_alpha,
             "graphmae_structure_schedule": args.graphmae_structure_schedule,
             "edge_curriculum_split_ratio": args.edge_curriculum_split_ratio,
             "edge_curriculum_initial_rate": args.edge_curriculum_initial_rate,
             "edge_curriculum_schedule": args.edge_curriculum_schedule,
+            "mapped_only_dynamic_rate": args.mapped_only_dynamic_rate,
+            "mapped_mix_mapped_rate": args.mapped_mix_mapped_rate,
+            "mapped_mix_non_mapped_rate": args.mapped_mix_non_mapped_rate,
+            "all_mapped_plus_non_mapped_rate": args.all_mapped_plus_non_mapped_rate,
             "num_neighbors": [-1, -1],
             "shuffle": False,
             "dropout": args.dropout,
@@ -781,6 +930,10 @@ def run_suite(args):
                 "description": exp["mode_config"]["description"],
                 "recons_r_training_mode": exp["mode_config"]["recons_r_training_mode"],
                 "target_relation_field": exp["mode_config"]["target_relation_field"],
+                "mapped_only_dynamic_rate": exp["mode_config"].get("mapped_only_dynamic_rate", args.mapped_only_dynamic_rate),
+                "mapped_mix_mapped_rate": exp["mode_config"].get("mapped_mix_mapped_rate", args.mapped_mix_mapped_rate),
+                "mapped_mix_non_mapped_rate": exp["mode_config"].get("mapped_mix_non_mapped_rate", args.mapped_mix_non_mapped_rate),
+                "all_mapped_plus_non_mapped_rate": exp["mode_config"].get("all_mapped_plus_non_mapped_rate", args.all_mapped_plus_non_mapped_rate),
                 "edge_curriculum_split_ratio": args.edge_curriculum_split_ratio,
                 "edge_curriculum_initial_rate": args.edge_curriculum_initial_rate,
                 "edge_curriculum_schedule": args.edge_curriculum_schedule,
@@ -789,7 +942,7 @@ def run_suite(args):
             "channels": exp["channels"],
             "seed": exp["seed"],
             "run_linear_probe_on_best_loss": args.linear_probe,
-            "mask_rate": args.mask_rate,
+            "mask_rate": effective_mask_rate(exp["mode"], args.mask_rate),
         }
         for exp in experiments
         ],
@@ -821,6 +974,10 @@ def run_suite(args):
             "dropout": args.dropout,
             "recons_r_training_mode": mode_cfg["recons_r_training_mode"],
             "target_relation_field": mode_cfg["target_relation_field"],
+            "mapped_only_dynamic_rate": mode_cfg.get("mapped_only_dynamic_rate", args.mapped_only_dynamic_rate),
+            "mapped_mix_mapped_rate": mode_cfg.get("mapped_mix_mapped_rate", args.mapped_mix_mapped_rate),
+            "mapped_mix_non_mapped_rate": mode_cfg.get("mapped_mix_non_mapped_rate", args.mapped_mix_non_mapped_rate),
+            "all_mapped_plus_non_mapped_rate": mode_cfg.get("all_mapped_plus_non_mapped_rate", args.all_mapped_plus_non_mapped_rate),
             "edge_curriculum_split_ratio": args.edge_curriculum_split_ratio,
             "edge_curriculum_initial_rate": args.edge_curriculum_initial_rate,
             "edge_curriculum_schedule": args.edge_curriculum_schedule,
@@ -829,7 +986,7 @@ def run_suite(args):
             "graphmae_structure_alpha": args.graphmae_structure_alpha,
             "graphmae_structure_schedule": args.graphmae_structure_schedule,
             "run_linear_probe_on_best_loss": args.linear_probe,
-            "mask_rate": args.mask_rate,
+            "mask_rate": effective_mask_rate(exp["mode"], args.mask_rate),
             "channels": exp["channels"],
             "seed": exp["seed"],
         }
@@ -869,6 +1026,10 @@ def run_suite(args):
             "--edge-curriculum-split-ratio", str(args.edge_curriculum_split_ratio),
             "--edge-curriculum-initial-rate", str(args.edge_curriculum_initial_rate),
             "--edge-curriculum-schedule", args.edge_curriculum_schedule,
+            "--mapped-only-dynamic-rate", str(mode_cfg.get("mapped_only_dynamic_rate", args.mapped_only_dynamic_rate)),
+            "--mapped-mix-mapped-rate", str(mode_cfg.get("mapped_mix_mapped_rate", args.mapped_mix_mapped_rate)),
+            "--mapped-mix-non-mapped-rate", str(mode_cfg.get("mapped_mix_non_mapped_rate", args.mapped_mix_non_mapped_rate)),
+            "--all-mapped-plus-non-mapped-rate", str(mode_cfg.get("all_mapped_plus_non_mapped_rate", args.all_mapped_plus_non_mapped_rate)),
         ]
         if args.linear_probe:
             command.extend([
@@ -910,6 +1071,10 @@ def run_suite(args):
             "description": mode_cfg["description"],
             "recons_r_training_mode": mode_cfg["recons_r_training_mode"],
             "target_relation_field": mode_cfg["target_relation_field"],
+            "mapped_only_dynamic_rate": mode_cfg.get("mapped_only_dynamic_rate", args.mapped_only_dynamic_rate),
+            "mapped_mix_mapped_rate": mode_cfg.get("mapped_mix_mapped_rate", args.mapped_mix_mapped_rate),
+            "mapped_mix_non_mapped_rate": mode_cfg.get("mapped_mix_non_mapped_rate", args.mapped_mix_non_mapped_rate),
+            "all_mapped_plus_non_mapped_rate": mode_cfg.get("all_mapped_plus_non_mapped_rate", args.all_mapped_plus_non_mapped_rate),
             "edge_curriculum_split_ratio": args.edge_curriculum_split_ratio,
             "edge_curriculum_initial_rate": args.edge_curriculum_initial_rate,
             "edge_curriculum_schedule": args.edge_curriculum_schedule,
@@ -918,7 +1083,7 @@ def run_suite(args):
             "graphmae_structure_alpha": args.graphmae_structure_alpha,
             "graphmae_structure_schedule": args.graphmae_structure_schedule,
             "run_linear_probe_on_best_loss": args.linear_probe,
-            "mask_rate": args.mask_rate,
+            "mask_rate": effective_mask_rate(exp["mode"], args.mask_rate),
             "channels": exp["channels"],
             "seed": exp["seed"],
             "negative_corruption_mode": "entity_only",
@@ -995,6 +1160,10 @@ def main():
     parser.add_argument("--edge-curriculum-split-ratio", type=float, default=float(os.environ.get("MASKING_STUDY_EDGE_CURRICULUM_SPLIT_RATIO", "0.5")))
     parser.add_argument("--edge-curriculum-initial-rate", type=float, default=float(os.environ.get("MASKING_STUDY_EDGE_CURRICULUM_INITIAL_RATE", "0.05")))
     parser.add_argument("--edge-curriculum-schedule", choices=["linear", "root", "geometric", "constant", "none"], default=os.environ.get("MASKING_STUDY_EDGE_CURRICULUM_SCHEDULE", "linear"))
+    parser.add_argument("--mapped-only-dynamic-rate", type=float, default=0.5)
+    parser.add_argument("--mapped-mix-mapped-rate", type=float, default=0.5)
+    parser.add_argument("--mapped-mix-non-mapped-rate", type=float, default=0.5)
+    parser.add_argument("--all-mapped-plus-non-mapped-rate", type=float, default=0.1)
     parser.add_argument("--linear-probe", action="store_true")
     parser.add_argument("--linear-probe-gs-path", default="../../data/UMLS/common_nodes.xlsx")
     parser.add_argument("--linear-probe-splits-dir", default="../../data/UMLS/splits/umls_kg_splits")

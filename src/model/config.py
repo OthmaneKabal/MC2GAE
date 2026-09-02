@@ -77,6 +77,10 @@ config = {
     "recons_r_training_mode": "all_batch_edges",  # "random_masked_only"/"removed_only" reconstruct only randomly masked edges; "mapped_only" hides mapped edges; "mapped_visible" keeps mapped edges visible; "all_batch_edges" is previous behavior
     "recons_r_target_relation_field": "predicate",  # "predicate" or "old_predicate" for mapping-guided controls
     "mapped_random_dynamic_mapped_fraction": 0.5,  # fraction of the masked edge budget sampled from is_mapped=True edges
+    "mapped_only_dynamic_rate": 0.5,  # fraction of is_mapped=True edges masked each epoch for mapped_only_dynamic_* modes
+    "mapped_mix_mapped_rate": 0.5,  # fraction of is_mapped=True edges masked each epoch for mapped_mix_dynamic_* modes
+    "mapped_mix_non_mapped_rate": 0.5,  # fraction of is_mapped=False edges masked each epoch for mapped_mix_dynamic_* modes
+    "all_mapped_plus_non_mapped_rate": 0.1,  # mask all mapped edges plus this fraction of non-mapped edges each epoch
     "edge_curriculum_split_ratio": 0.5,  # fraction of masked edges selected by model confidence; the rest is random
     "edge_curriculum_initial_rate": 0.05,
     "edge_curriculum_schedule": "linear",  # "linear", "root", "geometric", or "constant"
