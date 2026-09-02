@@ -26,20 +26,22 @@ NO_RATE_MODES = [
 ]
 GLOBAL_MASK_RATE_MODES = [
     "canonicalized_random_dynamic",
-    "canonicalized_balanced_dynamic",
 ]
 MAPPED_ONLY_RATE_MODES = [
     "mapped_only_dynamic_random",
-    "mapped_only_dynamic_balanced",
     "mapped_selector_dynamic_random",
-    "mapped_selector_dynamic_balanced",
 ]
 MIX_POOL_RATE_MODES = [
     "mapped_mix_dynamic_random",
-    "mapped_mix_dynamic_balanced",
 ]
 ALL_MAPPED_PLUS_MODES = [
     "all_mapped_plus_random_dynamic",
+]
+BALANCED_MODES = [
+    "canonicalized_balanced_dynamic",
+    "mapped_only_dynamic_balanced",
+    "mapped_selector_dynamic_balanced",
+    "mapped_mix_dynamic_balanced",
     "all_mapped_plus_balanced_dynamic",
 ]
 LEGACY_GLOBAL_BUDGET_MODES = {
@@ -54,6 +56,7 @@ ALL_MODES = (
     + MIX_POOL_RATE_MODES
     + ALL_MAPPED_PLUS_MODES
     + list(LEGACY_GLOBAL_BUDGET_MODES)
+    + BALANCED_MODES
 )
 
 
@@ -179,25 +182,31 @@ def update_summary_csv(summary_path, record):
     df.to_csv(summary_path, index=False)
 
 
+def balanced_last_modes(modes):
+    requested = list(modes)
+    balanced = set(BALANCED_MODES)
+    return [mode for mode in requested if mode not in balanced] + [mode for mode in requested if mode in balanced]
+
+
 def build_jobs(args):
     jobs = []
     channels_grid = [parse_channels(value) for value in args.channels_grid]
     mix_pairs = [parse_pair(value) for value in args.mix_pool_rates]
 
-    for mode in args.modes:
+    for mode in balanced_last_modes(args.modes):
         variants = []
         if mode in NO_RATE_MODES:
             variants = [{}]
-        elif mode in GLOBAL_MASK_RATE_MODES:
+        elif mode in GLOBAL_MASK_RATE_MODES or mode == "canonicalized_balanced_dynamic":
             variants = [{"mask_rate": float(rate)} for rate in args.mask_rates]
-        elif mode in MAPPED_ONLY_RATE_MODES:
+        elif mode in MAPPED_ONLY_RATE_MODES or mode in ("mapped_only_dynamic_balanced", "mapped_selector_dynamic_balanced"):
             variants = [{"mapped_only_dynamic_rate": float(rate)} for rate in args.mapped_only_rates]
-        elif mode in MIX_POOL_RATE_MODES:
+        elif mode in MIX_POOL_RATE_MODES or mode == "mapped_mix_dynamic_balanced":
             variants = [
                 {"mapped_mix_mapped_rate": float(mapped_rate), "mapped_mix_non_mapped_rate": float(other_rate)}
                 for mapped_rate, other_rate in mix_pairs
             ]
-        elif mode in ALL_MAPPED_PLUS_MODES:
+        elif mode in ALL_MAPPED_PLUS_MODES or mode == "all_mapped_plus_balanced_dynamic":
             variants = [
                 {"all_mapped_plus_non_mapped_rate": float(rate)}
                 for rate in args.all_mapped_plus_non_mapped_rates

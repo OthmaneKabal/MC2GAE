@@ -22,9 +22,7 @@ DEFAULT_PLAN = DEFAULT_OUT_ROOT / "plan.json"
 BASELINE_MODES = [
     "whole_graph",
     "random_static",
-    "balanced_static",
     "random_dynamic",
-    "balanced_dynamic",
     "recons_x_whole_graph",
     "recons_x_static",
     "graphmae_dynamic_x",
@@ -32,8 +30,11 @@ BASELINE_MODES = [
     "struct_node_degree_masking",
     "struct_node_learnable_masking",
     "edge_curriculum_dynamic",
+    "balanced_static",
+    "balanced_dynamic",
 ]
 NO_MASK_RATE_MODES = {"whole_graph", "recons_x_whole_graph"}
+BALANCED_MODES = {"balanced_static", "balanced_dynamic"}
 
 
 def parse_channels(value):
@@ -143,10 +144,15 @@ def update_summary_csv(summary_path, record):
     df.to_csv(summary_path, index=False)
 
 
+def balanced_last_modes(modes):
+    requested = list(modes)
+    return [mode for mode in requested if mode not in BALANCED_MODES] + [mode for mode in requested if mode in BALANCED_MODES]
+
+
 def build_jobs(args):
     jobs = []
     channels_grid = [parse_channels(value) for value in args.channels_grid]
-    for mode in args.modes:
+    for mode in balanced_last_modes(args.modes):
         rates = [None] if mode in NO_MASK_RATE_MODES else args.mask_rates
         for channels in channels_grid:
             for seed in args.seeds:
