@@ -135,6 +135,91 @@ def _prepare_domain_range_tensors(constraints_path, kg_gdp, onto_gdp, device):
     return type_ids, domain_mask, range_mask
 
 
+def _prepare_domain_range_embedding_tensors(constraints_path, kg_gdp, onto_gdp, device, core_concepts=None):
+    if not constraints_path or not os.path.exists(constraints_path):
+        print(f"Domain/range embedding constraints file not found: {constraints_path}")
+        return None, None, None, None, None
+
+    with open(constraints_path, "r", encoding="utf-8") as file:
+        constraints = json.load(file)
+
+    relation_constraints = constraints.get("relations", {})
+    allowed_type_names = set(core_concepts or [])
+    type_names = set()
+    matched_relations = 0
+    skipped_relations = 0
+
+    for relation_name, values in relation_constraints.items():
+        if relation_name not in kg_gdp.predicate_to_id or relation_name == "isa":
+            skipped_relations += 1
+            continue
+        direct_domain = [
+            type_name for type_name in values.get("direct_domain", [])
+            if type_name in onto_gdp.nodes_index and (not allowed_type_names or type_name in allowed_type_names)
+        ]
+        direct_range = [
+            type_name for type_name in values.get("direct_range", [])
+            if type_name in onto_gdp.nodes_index and (not allowed_type_names or type_name in allowed_type_names)
+        ]
+        allowed_domain = [
+            type_name for type_name in values.get("domain", direct_domain)
+            if type_name in onto_gdp.nodes_index and (not allowed_type_names or type_name in allowed_type_names)
+        ]
+        allowed_range = [
+            type_name for type_name in values.get("range", direct_range)
+            if type_name in onto_gdp.nodes_index and (not allowed_type_names or type_name in allowed_type_names)
+        ]
+        if not direct_domain or not direct_range:
+            skipped_relations += 1
+            continue
+        matched_relations += 1
+        type_names.update(direct_domain)
+        type_names.update(direct_range)
+        type_names.update(allowed_domain)
+        type_names.update(allowed_range)
+
+    if not type_names or matched_relations == 0:
+        print("No usable domain/range embedding constraints matched the KG relation/type indexes.")
+        return None, None, None, None, None
+
+    sorted_type_names = sorted(type_names)
+    type_name_to_position = {type_name: idx for idx, type_name in enumerate(sorted_type_names)}
+    type_ids = torch.tensor(
+        [onto_gdp.nodes_index[type_name] for type_name in sorted_type_names],
+        dtype=torch.long,
+        device=device,
+    )
+
+    num_relations = max(kg_gdp.predicate_to_id.values()) + 1
+    domain_explicit_mask = torch.zeros((num_relations, len(sorted_type_names)), dtype=torch.float32, device=device)
+    range_explicit_mask = torch.zeros((num_relations, len(sorted_type_names)), dtype=torch.float32, device=device)
+    domain_allowed_mask = torch.zeros((num_relations, len(sorted_type_names)), dtype=torch.float32, device=device)
+    range_allowed_mask = torch.zeros((num_relations, len(sorted_type_names)), dtype=torch.float32, device=device)
+
+    for relation_name, values in relation_constraints.items():
+        if relation_name not in kg_gdp.predicate_to_id or relation_name == "isa":
+            continue
+        relation_id = kg_gdp.predicate_to_id[relation_name]
+        for type_name in values.get("direct_domain", []):
+            if type_name in type_name_to_position:
+                domain_explicit_mask[relation_id, type_name_to_position[type_name]] = 1.0
+        for type_name in values.get("direct_range", []):
+            if type_name in type_name_to_position:
+                range_explicit_mask[relation_id, type_name_to_position[type_name]] = 1.0
+        for type_name in values.get("domain", values.get("direct_domain", [])):
+            if type_name in type_name_to_position:
+                domain_allowed_mask[relation_id, type_name_to_position[type_name]] = 1.0
+        for type_name in values.get("range", values.get("direct_range", [])):
+            if type_name in type_name_to_position:
+                range_allowed_mask[relation_id, type_name_to_position[type_name]] = 1.0
+
+    print(
+        f"Domain/range embedding constraints matched: {matched_relations} relations, "
+        f"{len(sorted_type_names)} ontology type prototypes, skipped {skipped_relations} relations."
+    )
+    return type_ids, domain_explicit_mask, range_explicit_mask, domain_allowed_mask, range_allowed_mask
+
+
 def _prepare_onto_hierarchy_pairs(onto_data, onto_gdp, device):
     if "isa" not in onto_gdp.predicate_to_id:
         print("No 'isa' relation found in ontology predicates; hierarchy loss disabled.")
@@ -266,6 +351,11 @@ def main():
     domain_range_type_ids = None
     domain_mask_by_relation = None
     range_mask_by_relation = None
+    domain_range_embedding_type_ids = None
+    domain_explicit_mask_by_relation = None
+    range_explicit_mask_by_relation = None
+    domain_allowed_mask_by_relation = None
+    range_allowed_mask_by_relation = None
     onto_hierarchy_child_ids = None
     onto_hierarchy_parent_ids = None
     soft_type_negative_candidates = None
@@ -309,12 +399,28 @@ def main():
                 dtype=torch.long,
                 device=device,
             )
-        if config.get("lambda_domain_range", 0) != 0 or config.get("negative_sampling_mode") == "soft_type_aware":
+        if (config.get("lambda_domain_range", 0) != 0 or
+                config.get("lambda_domain_range_embedding", 0) != 0 or
+                config.get("negative_sampling_mode") == "soft_type_aware"):
             domain_range_type_ids, domain_mask_by_relation, range_mask_by_relation = _prepare_domain_range_tensors(
                 config.get("domain_range_constraints_path"),
                 gdp,
                 onto_gdp,
                 device,
+            )
+        if config.get("lambda_domain_range_embedding", 0) != 0:
+            (
+                domain_range_embedding_type_ids,
+                domain_explicit_mask_by_relation,
+                range_explicit_mask_by_relation,
+                domain_allowed_mask_by_relation,
+                range_allowed_mask_by_relation,
+            ) = _prepare_domain_range_embedding_tensors(
+                config.get("domain_range_constraints_path"),
+                gdp,
+                onto_gdp,
+                device,
+                core_concepts=config["core_concepts"],
             )
         if config.get("negative_sampling_mode") == "soft_type_aware":
             soft_type_negative_candidates = _prepare_soft_type_negative_candidates(
@@ -776,6 +882,8 @@ def main():
                                 "core_alignment_loss": config.get("core_alignment_loss"),
                                 "lambda_domain_range": config.get("lambda_domain_range"),
                                 "domain_range_temperature": config.get("domain_range_temperature"),
+                                "lambda_domain_range_embedding": config.get("lambda_domain_range_embedding"),
+                                "domain_range_embedding_temperature": config.get("domain_range_embedding_temperature"),
                                 "lambda_onto_hierarchy": config.get("lambda_onto_hierarchy"),
                                 "negative_sampling_mode": config.get("negative_sampling_mode"),
                                 "negative_corruption_mode": config.get("negative_corruption_mode"),
@@ -841,6 +949,13 @@ def main():
                                     range_mask_by_relation=range_mask_by_relation,
                                     lambda_domain_range=config["lambda_domain_range"],
                                     domain_range_temperature=config["domain_range_temperature"],
+                                    domain_range_embedding_type_ids=domain_range_embedding_type_ids,
+                                    domain_explicit_mask_by_relation=domain_explicit_mask_by_relation,
+                                    range_explicit_mask_by_relation=range_explicit_mask_by_relation,
+                                    domain_allowed_mask_by_relation=domain_allowed_mask_by_relation,
+                                    range_allowed_mask_by_relation=range_allowed_mask_by_relation,
+                                    lambda_domain_range_embedding=config["lambda_domain_range_embedding"],
+                                    domain_range_embedding_temperature=config["domain_range_embedding_temperature"],
                                     onto_hierarchy_child_ids=onto_hierarchy_child_ids,
                                     onto_hierarchy_parent_ids=onto_hierarchy_parent_ids,
                                     lambda_onto_hierarchy=config["lambda_onto_hierarchy"],
@@ -859,6 +974,13 @@ def main():
                                     range_mask_by_relation=range_mask_by_relation,
                                     lambda_domain_range=config["lambda_domain_range"],
                                     domain_range_temperature=config["domain_range_temperature"],
+                                    domain_range_embedding_type_ids=domain_range_embedding_type_ids,
+                                    domain_explicit_mask_by_relation=domain_explicit_mask_by_relation,
+                                    range_explicit_mask_by_relation=range_explicit_mask_by_relation,
+                                    domain_allowed_mask_by_relation=domain_allowed_mask_by_relation,
+                                    range_allowed_mask_by_relation=range_allowed_mask_by_relation,
+                                    lambda_domain_range_embedding=config["lambda_domain_range_embedding"],
+                                    domain_range_embedding_temperature=config["domain_range_embedding_temperature"],
                                     onto_hierarchy_child_ids=onto_hierarchy_child_ids,
                                     onto_hierarchy_parent_ids=onto_hierarchy_parent_ids,
                                     lambda_onto_hierarchy=config["lambda_onto_hierarchy"],
@@ -941,6 +1063,8 @@ def main():
                             "core_alignment_loss": config.get("core_alignment_loss"),
                             "lambda_domain_range": config.get("lambda_domain_range"),
                             "domain_range_temperature": config.get("domain_range_temperature"),
+                            "lambda_domain_range_embedding": config.get("lambda_domain_range_embedding"),
+                            "domain_range_embedding_temperature": config.get("domain_range_embedding_temperature"),
                             "lambda_onto_hierarchy": config.get("lambda_onto_hierarchy"),
                             "negative_sampling_mode": config.get("negative_sampling_mode"),
                             "negative_corruption_mode": config.get("negative_corruption_mode"),
@@ -1003,6 +1127,13 @@ def main():
                                 range_mask_by_relation=range_mask_by_relation,
                                 lambda_domain_range=config["lambda_domain_range"],
                                 domain_range_temperature=config["domain_range_temperature"],
+                                domain_range_embedding_type_ids=domain_range_embedding_type_ids,
+                                domain_explicit_mask_by_relation=domain_explicit_mask_by_relation,
+                                range_explicit_mask_by_relation=range_explicit_mask_by_relation,
+                                domain_allowed_mask_by_relation=domain_allowed_mask_by_relation,
+                                range_allowed_mask_by_relation=range_allowed_mask_by_relation,
+                                lambda_domain_range_embedding=config["lambda_domain_range_embedding"],
+                                domain_range_embedding_temperature=config["domain_range_embedding_temperature"],
                                 onto_hierarchy_child_ids=onto_hierarchy_child_ids,
                                 onto_hierarchy_parent_ids=onto_hierarchy_parent_ids,
                                 lambda_onto_hierarchy=config["lambda_onto_hierarchy"],
@@ -1021,6 +1152,13 @@ def main():
                                 range_mask_by_relation=range_mask_by_relation,
                                 lambda_domain_range=config["lambda_domain_range"],
                                 domain_range_temperature=config["domain_range_temperature"],
+                                domain_range_embedding_type_ids=domain_range_embedding_type_ids,
+                                domain_explicit_mask_by_relation=domain_explicit_mask_by_relation,
+                                range_explicit_mask_by_relation=range_explicit_mask_by_relation,
+                                domain_allowed_mask_by_relation=domain_allowed_mask_by_relation,
+                                range_allowed_mask_by_relation=range_allowed_mask_by_relation,
+                                lambda_domain_range_embedding=config["lambda_domain_range_embedding"],
+                                domain_range_embedding_temperature=config["domain_range_embedding_temperature"],
                                 onto_hierarchy_child_ids=onto_hierarchy_child_ids,
                                 onto_hierarchy_parent_ids=onto_hierarchy_parent_ids,
                                 lambda_onto_hierarchy=config["lambda_onto_hierarchy"],

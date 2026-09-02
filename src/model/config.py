@@ -81,6 +81,7 @@ config = {
     "mapped_mix_mapped_rate": 0.5,  # fraction of is_mapped=True edges masked each epoch for mapped_mix_dynamic_* modes
     "mapped_mix_non_mapped_rate": 0.5,  # fraction of is_mapped=False edges masked each epoch for mapped_mix_dynamic_* modes
     "all_mapped_plus_non_mapped_rate": 0.1,  # mask all mapped edges plus this fraction of non-mapped edges each epoch
+    "mapped_biased_beta": 1.0,  # weighted global masking bias: gamma_e = U(0,1) + beta * is_mapped
     "edge_curriculum_split_ratio": 0.5,  # fraction of masked edges selected by model confidence; the rest is random
     "edge_curriculum_initial_rate": 0.05,
     "edge_curriculum_schedule": "linear",  # "linear", "root", "geometric", or "constant"
@@ -97,6 +98,8 @@ config = {
     "domain_range_constraints_path": "../../data/UMLS/noisy/org/SM_domain_range_constraints.json",
     "lambda_domain_range": 0,
     "domain_range_temperature": 0,
+    "lambda_domain_range_embedding": 0,
+    "domain_range_embedding_temperature": 0.1,
     "lambda_onto_hierarchy": 0,
     "negative_sampling_mode": "uniform",  # "uniform" keeps the previous sampler
     "negative_corruption_mode": "entity_only",  # "mixed", "relation_only", or "entity_only" for KG negatives

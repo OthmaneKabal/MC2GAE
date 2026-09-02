@@ -37,6 +37,7 @@ SHORT_MODE_NAMES = {
     "canonicalized_random_dynamic": "c_rdyn",
     "canonicalized_balanced_dynamic": "c_bdyn",
     "canonicalized_mapped_only": "c_map",
+    "canonicalized_mapped_visible": "c_mvis",
     "mapped_only_dynamic_random": "modr",
     "mapped_only_dynamic_balanced": "modb",
     "mapped_selector_old_predicate": "ms_old",
@@ -46,6 +47,7 @@ SHORT_MODE_NAMES = {
     "mapped_mix_dynamic_balanced": "mixb",
     "all_mapped_plus_random_dynamic": "amprd",
     "all_mapped_plus_balanced_dynamic": "ampbd",
+    "mapped_biased_dynamic": "mbdyn",
     "mapped_random_dynamic_15_15": "mrd15_15",
     "mapped_random_dynamic_20_10": "mrd20_10",
     "mapped_random_dynamic_20_30": "mrd20_30",
@@ -69,6 +71,7 @@ NO_MASK_RATE_MODES = {
     "recons_x_whole_graph",
     "canonicalized_whole_graph",
     "canonicalized_mapped_only",
+    "canonicalized_mapped_visible",
     "mapped_selector_old_predicate",
     "mapped_only_dynamic_random",
     "mapped_only_dynamic_balanced",
@@ -209,6 +212,12 @@ MAPPING_GUIDED_MODES = [
         "description": "Canonicalized graph: mask all mapped edges and reconstruct canonical predicates.",
     },
     {
+        "name": "canonicalized_mapped_visible",
+        "recons_r_training_mode": "mapped_visible",
+        "target_relation_field": "predicate",
+        "description": "Canonicalized graph: reconstruct all mapped edges while keeping them visible in message passing.",
+    },
+    {
         "name": "mapping_guided_mapped_predicate",
         "recons_r_training_mode": "mapped_only",
         "target_relation_field": "predicate",
@@ -273,6 +282,12 @@ MAPPING_GUIDED_MODES = [
         "recons_r_training_mode": "all_mapped_plus_balanced_dynamic",
         "target_relation_field": "predicate",
         "description": "Canonicalized graph: mask all mapped edges plus a dynamic balanced fraction of non-mapped edges.",
+    },
+    {
+        "name": "mapped_biased_dynamic",
+        "recons_r_training_mode": "mapped_biased_dynamic",
+        "target_relation_field": "predicate",
+        "description": "Canonicalized graph: weighted global dynamic masking with gamma=U(0,1)+beta*is_mapped.",
     },
     {
         "name": "mapped_random_dynamic_15_15",
@@ -355,6 +370,31 @@ def effective_mask_rate(mode_name, mask_rate):
     return float(mask_rate) if mode_uses_mask_rate(mode_name) else None
 
 
+def mode_parameter_tag(mode_name, mode_cfg, args):
+    def fmt(value):
+        return str(value).replace(".", "p")
+
+    if mode_name in (
+        "mapped_only_dynamic_random",
+        "mapped_only_dynamic_balanced",
+        "mapped_selector_dynamic_random",
+        "mapped_selector_dynamic_balanced",
+    ):
+        value = mode_cfg.get("mapped_only_dynamic_rate", args.mapped_only_dynamic_rate)
+        return f"__mod{fmt(value)}"
+    if mode_name in ("mapped_mix_dynamic_random", "mapped_mix_dynamic_balanced"):
+        mapped = mode_cfg.get("mapped_mix_mapped_rate", args.mapped_mix_mapped_rate)
+        other = mode_cfg.get("mapped_mix_non_mapped_rate", args.mapped_mix_non_mapped_rate)
+        return f"__mix{fmt(mapped)}-{fmt(other)}"
+    if mode_name in ("all_mapped_plus_random_dynamic", "all_mapped_plus_balanced_dynamic"):
+        value = mode_cfg.get("all_mapped_plus_non_mapped_rate", args.all_mapped_plus_non_mapped_rate)
+        return f"__amp{fmt(value)}"
+    if mode_name == "mapped_biased_dynamic":
+        value = mode_cfg.get("mapped_biased_beta", args.mapped_biased_beta)
+        return f"__beta{fmt(value)}"
+    return ""
+
+
 def capture_rng_state():
     import numpy as np
     import torch
@@ -407,6 +447,9 @@ def experiment_key(record):
         record.get("mapped_mix_mapped_rate"),
         record.get("mapped_mix_non_mapped_rate"),
         record.get("all_mapped_plus_non_mapped_rate"),
+        record.get("mapped_biased_beta"),
+        record.get("lambda_domain_range_embedding"),
+        record.get("domain_range_embedding_temperature"),
         record.get("edge_curriculum_split_ratio"),
         record.get("edge_curriculum_initial_rate"),
         record.get("edge_curriculum_schedule"),
@@ -469,6 +512,9 @@ def update_summary_csv(summary_path, finish_record):
         "mapped_mix_mapped_rate": finish_record.get("mapped_mix_mapped_rate"),
         "mapped_mix_non_mapped_rate": finish_record.get("mapped_mix_non_mapped_rate"),
         "all_mapped_plus_non_mapped_rate": finish_record.get("all_mapped_plus_non_mapped_rate"),
+        "mapped_biased_beta": finish_record.get("mapped_biased_beta"),
+        "lambda_domain_range_embedding": finish_record.get("lambda_domain_range_embedding"),
+        "domain_range_embedding_temperature": finish_record.get("domain_range_embedding_temperature"),
         "edge_curriculum_split_ratio": finish_record.get("edge_curriculum_split_ratio"),
         "edge_curriculum_initial_rate": finish_record.get("edge_curriculum_initial_rate"),
         "edge_curriculum_schedule": finish_record.get("edge_curriculum_schedule"),
@@ -587,6 +633,7 @@ def configure_model(config, experiment, run_dir, args, num_epochs=None):
         "mapped_mix_mapped_rate": mode_cfg.get("mapped_mix_mapped_rate", args.mapped_mix_mapped_rate),
         "mapped_mix_non_mapped_rate": mode_cfg.get("mapped_mix_non_mapped_rate", args.mapped_mix_non_mapped_rate),
         "all_mapped_plus_non_mapped_rate": mode_cfg.get("all_mapped_plus_non_mapped_rate", args.all_mapped_plus_non_mapped_rate),
+        "mapped_biased_beta": mode_cfg.get("mapped_biased_beta", args.mapped_biased_beta),
         "edge_curriculum_split_ratio": args.edge_curriculum_split_ratio,
         "edge_curriculum_initial_rate": args.edge_curriculum_initial_rate,
         "edge_curriculum_schedule": args.edge_curriculum_schedule,
@@ -629,6 +676,8 @@ def configure_model(config, experiment, run_dir, args, num_epochs=None):
         "lambda_core_contrastive": 0,
         "lambda_core_align": 0,
         "lambda_domain_range": 0,
+        "lambda_domain_range_embedding": args.lambda_domain_range_embedding,
+        "domain_range_embedding_temperature": args.domain_range_embedding_temperature,
         "lambda_onto_hierarchy": 0,
         "hyperparams_grid": {"num_bases": [5, 10], "out_channels": [experiment["channels"]]},
         "encoders": [args.encoder],
@@ -674,9 +723,10 @@ def run_single(args):
     uses_mask_rate = mode_uses_mask_rate(args.mode)
     record_mask_rate = effective_mask_rate(args.mode, args.mask_rate)
     mask_tag = f"__mask{args.mask_rate:g}" if uses_mask_rate else ""
+    param_tag = mode_parameter_tag(args.mode, mode_cfg, args)
     run_name = (
         f"{args.graph}__{args.mode}__"
-        f"ch{'-'.join(str(value) for value in args.channels)}__seed{args.seed}{mask_tag}"
+        f"ch{'-'.join(str(value) for value in args.channels)}__seed{args.seed}{mask_tag}{param_tag}"
     )
     wandb_config = {
         "study": "biomedical_recons_r_masking",
@@ -708,9 +758,14 @@ def run_single(args):
             "all_mapped_plus_non_mapped_rate",
             args.all_mapped_plus_non_mapped_rate,
         )
+    if args.mode == "mapped_biased_dynamic":
+        wandb_config["mapped_biased_beta"] = mode_cfg.get("mapped_biased_beta", args.mapped_biased_beta)
     if mode_cfg.get("training_task", args.training_task) == "Recons_R_with_onto":
         wandb_config["ontology_reconstruction"] = True
         wandb_config["lambda_onto"] = args.lambda_onto
+    if args.lambda_domain_range_embedding != 0:
+        wandb_config["lambda_domain_range_embedding"] = args.lambda_domain_range_embedding
+        wandb_config["domain_range_embedding_temperature"] = args.domain_range_embedding_temperature
     if mode_cfg.get("training_task") == "Recons_X":
         wandb_config["recons_x_feature_masking"] = mode_cfg.get("recons_x_feature_masking", True)
     if mode_cfg.get("training_task") == "GraphMAE_Recons_X":
@@ -776,6 +831,9 @@ def run_single(args):
         "mapped_mix_mapped_rate": mode_cfg.get("mapped_mix_mapped_rate", args.mapped_mix_mapped_rate),
         "mapped_mix_non_mapped_rate": mode_cfg.get("mapped_mix_non_mapped_rate", args.mapped_mix_non_mapped_rate),
         "all_mapped_plus_non_mapped_rate": mode_cfg.get("all_mapped_plus_non_mapped_rate", args.all_mapped_plus_non_mapped_rate),
+        "mapped_biased_beta": mode_cfg.get("mapped_biased_beta", args.mapped_biased_beta),
+        "lambda_domain_range_embedding": args.lambda_domain_range_embedding,
+        "domain_range_embedding_temperature": args.domain_range_embedding_temperature,
         "graphmae_structure_masking": mode_cfg.get("graphmae_structure_masking", args.graphmae_structure_masking),
         "graphmae_structure_alpha": args.graphmae_structure_alpha,
         "graphmae_structure_schedule": args.graphmae_structure_schedule,
@@ -815,6 +873,9 @@ def print_status(experiments, db_path):
             "mapped_mix_mapped_rate": mode_cfg.get("mapped_mix_mapped_rate", getattr(print_status, "mapped_mix_mapped_rate", 0.5)),
             "mapped_mix_non_mapped_rate": mode_cfg.get("mapped_mix_non_mapped_rate", getattr(print_status, "mapped_mix_non_mapped_rate", 0.5)),
             "all_mapped_plus_non_mapped_rate": mode_cfg.get("all_mapped_plus_non_mapped_rate", getattr(print_status, "all_mapped_plus_non_mapped_rate", 0.1)),
+            "mapped_biased_beta": mode_cfg.get("mapped_biased_beta", getattr(print_status, "mapped_biased_beta", 1.0)),
+            "lambda_domain_range_embedding": getattr(print_status, "lambda_domain_range_embedding", 0.0),
+            "domain_range_embedding_temperature": getattr(print_status, "domain_range_embedding_temperature", 0.1),
             "edge_curriculum_split_ratio": getattr(print_status, "edge_curriculum_split_ratio", 0.5),
             "edge_curriculum_initial_rate": getattr(print_status, "edge_curriculum_initial_rate", 0.05),
             "edge_curriculum_schedule": getattr(print_status, "edge_curriculum_schedule", "linear"),
@@ -881,6 +942,9 @@ def run_suite(args):
     print_status.mapped_mix_mapped_rate = args.mapped_mix_mapped_rate
     print_status.mapped_mix_non_mapped_rate = args.mapped_mix_non_mapped_rate
     print_status.all_mapped_plus_non_mapped_rate = args.all_mapped_plus_non_mapped_rate
+    print_status.mapped_biased_beta = args.mapped_biased_beta
+    print_status.lambda_domain_range_embedding = args.lambda_domain_range_embedding
+    print_status.domain_range_embedding_temperature = args.domain_range_embedding_temperature
     pending = print_status(experiments, db_path)
     plan_path = db_path.with_name(f"{db_path.stem}_plan.json")
     write_json(plan_path, {
@@ -909,6 +973,9 @@ def run_suite(args):
             "mapped_mix_mapped_rate": args.mapped_mix_mapped_rate,
             "mapped_mix_non_mapped_rate": args.mapped_mix_non_mapped_rate,
             "all_mapped_plus_non_mapped_rate": args.all_mapped_plus_non_mapped_rate,
+            "mapped_biased_beta": args.mapped_biased_beta,
+            "lambda_domain_range_embedding": args.lambda_domain_range_embedding,
+            "domain_range_embedding_temperature": args.domain_range_embedding_temperature,
             "num_neighbors": [-1, -1],
             "shuffle": False,
             "dropout": args.dropout,
@@ -934,6 +1001,9 @@ def run_suite(args):
                 "mapped_mix_mapped_rate": exp["mode_config"].get("mapped_mix_mapped_rate", args.mapped_mix_mapped_rate),
                 "mapped_mix_non_mapped_rate": exp["mode_config"].get("mapped_mix_non_mapped_rate", args.mapped_mix_non_mapped_rate),
                 "all_mapped_plus_non_mapped_rate": exp["mode_config"].get("all_mapped_plus_non_mapped_rate", args.all_mapped_plus_non_mapped_rate),
+                "mapped_biased_beta": exp["mode_config"].get("mapped_biased_beta", args.mapped_biased_beta),
+                "lambda_domain_range_embedding": args.lambda_domain_range_embedding,
+                "domain_range_embedding_temperature": args.domain_range_embedding_temperature,
                 "edge_curriculum_split_ratio": args.edge_curriculum_split_ratio,
                 "edge_curriculum_initial_rate": args.edge_curriculum_initial_rate,
                 "edge_curriculum_schedule": args.edge_curriculum_schedule,
@@ -978,6 +1048,7 @@ def run_suite(args):
             "mapped_mix_mapped_rate": mode_cfg.get("mapped_mix_mapped_rate", args.mapped_mix_mapped_rate),
             "mapped_mix_non_mapped_rate": mode_cfg.get("mapped_mix_non_mapped_rate", args.mapped_mix_non_mapped_rate),
             "all_mapped_plus_non_mapped_rate": mode_cfg.get("all_mapped_plus_non_mapped_rate", args.all_mapped_plus_non_mapped_rate),
+            "mapped_biased_beta": mode_cfg.get("mapped_biased_beta", args.mapped_biased_beta),
             "edge_curriculum_split_ratio": args.edge_curriculum_split_ratio,
             "edge_curriculum_initial_rate": args.edge_curriculum_initial_rate,
             "edge_curriculum_schedule": args.edge_curriculum_schedule,
@@ -1030,6 +1101,9 @@ def run_suite(args):
             "--mapped-mix-mapped-rate", str(mode_cfg.get("mapped_mix_mapped_rate", args.mapped_mix_mapped_rate)),
             "--mapped-mix-non-mapped-rate", str(mode_cfg.get("mapped_mix_non_mapped_rate", args.mapped_mix_non_mapped_rate)),
             "--all-mapped-plus-non-mapped-rate", str(mode_cfg.get("all_mapped_plus_non_mapped_rate", args.all_mapped_plus_non_mapped_rate)),
+            "--mapped-biased-beta", str(mode_cfg.get("mapped_biased_beta", args.mapped_biased_beta)),
+            "--lambda-domain-range-embedding", str(args.lambda_domain_range_embedding),
+            "--domain-range-embedding-temperature", str(args.domain_range_embedding_temperature),
         ]
         if args.linear_probe:
             command.extend([
@@ -1075,6 +1149,7 @@ def run_suite(args):
             "mapped_mix_mapped_rate": mode_cfg.get("mapped_mix_mapped_rate", args.mapped_mix_mapped_rate),
             "mapped_mix_non_mapped_rate": mode_cfg.get("mapped_mix_non_mapped_rate", args.mapped_mix_non_mapped_rate),
             "all_mapped_plus_non_mapped_rate": mode_cfg.get("all_mapped_plus_non_mapped_rate", args.all_mapped_plus_non_mapped_rate),
+            "mapped_biased_beta": mode_cfg.get("mapped_biased_beta", args.mapped_biased_beta),
             "edge_curriculum_split_ratio": args.edge_curriculum_split_ratio,
             "edge_curriculum_initial_rate": args.edge_curriculum_initial_rate,
             "edge_curriculum_schedule": args.edge_curriculum_schedule,
@@ -1164,6 +1239,9 @@ def main():
     parser.add_argument("--mapped-mix-mapped-rate", type=float, default=0.5)
     parser.add_argument("--mapped-mix-non-mapped-rate", type=float, default=0.5)
     parser.add_argument("--all-mapped-plus-non-mapped-rate", type=float, default=0.1)
+    parser.add_argument("--mapped-biased-beta", type=float, default=1.0)
+    parser.add_argument("--lambda-domain-range-embedding", type=float, default=0.0)
+    parser.add_argument("--domain-range-embedding-temperature", type=float, default=0.1)
     parser.add_argument("--linear-probe", action="store_true")
     parser.add_argument("--linear-probe-gs-path", default="../../data/UMLS/common_nodes.xlsx")
     parser.add_argument("--linear-probe-splits-dir", default="../../data/UMLS/splits/umls_kg_splits")

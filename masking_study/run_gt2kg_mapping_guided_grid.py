@@ -22,10 +22,12 @@ DEFAULT_PLAN = DEFAULT_OUT_ROOT / "plan.json"
 NO_RATE_MODES = [
     "canonicalized_whole_graph",
     "canonicalized_mapped_only",
+    "canonicalized_mapped_visible",
     "mapped_selector_old_predicate",
 ]
 GLOBAL_MASK_RATE_MODES = [
     "canonicalized_random_dynamic",
+    "mapped_biased_dynamic",
 ]
 MAPPED_ONLY_RATE_MODES = [
     "mapped_only_dynamic_random",
@@ -93,6 +95,11 @@ def job_key(record):
         record.get("mapped_mix_mapped_rate"),
         record.get("mapped_mix_non_mapped_rate"),
         record.get("all_mapped_plus_non_mapped_rate"),
+        record.get("mapped_biased_beta"),
+        record.get("edge_curriculum_split_ratio"),
+        record.get("edge_curriculum_initial_rate"),
+        record.get("edge_curriculum_schedule"),
+        record.get("lambda_onto"),
         record.get("encoder"),
         record.get("decoder"),
         record.get("dropout"),
@@ -159,6 +166,11 @@ def update_summary_csv(summary_path, record):
         "mapped_mix_mapped_rate": record.get("mapped_mix_mapped_rate"),
         "mapped_mix_non_mapped_rate": record.get("mapped_mix_non_mapped_rate"),
         "all_mapped_plus_non_mapped_rate": record.get("all_mapped_plus_non_mapped_rate"),
+        "mapped_biased_beta": record.get("mapped_biased_beta"),
+        "edge_curriculum_split_ratio": record.get("edge_curriculum_split_ratio"),
+        "edge_curriculum_initial_rate": record.get("edge_curriculum_initial_rate"),
+        "edge_curriculum_schedule": record.get("edge_curriculum_schedule"),
+        "lambda_onto": record.get("lambda_onto"),
         "encoder": record.get("encoder"),
         "decoder": record.get("decoder"),
         "dropout": record.get("dropout"),
@@ -197,6 +209,12 @@ def build_jobs(args):
         variants = []
         if mode in NO_RATE_MODES:
             variants = [{}]
+        elif mode == "mapped_biased_dynamic":
+            variants = [
+                {"mask_rate": float(mask_rate), "mapped_biased_beta": float(beta)}
+                for mask_rate in args.mask_rates
+                for beta in args.mapped_biased_betas
+            ]
         elif mode in GLOBAL_MASK_RATE_MODES or mode == "canonicalized_balanced_dynamic":
             variants = [{"mask_rate": float(rate)} for rate in args.mask_rates]
         elif mode in MAPPED_ONLY_RATE_MODES or mode in ("mapped_only_dynamic_balanced", "mapped_selector_dynamic_balanced"):
@@ -229,6 +247,11 @@ def build_jobs(args):
                         "mapped_mix_mapped_rate": variant.get("mapped_mix_mapped_rate"),
                         "mapped_mix_non_mapped_rate": variant.get("mapped_mix_non_mapped_rate"),
                         "all_mapped_plus_non_mapped_rate": variant.get("all_mapped_plus_non_mapped_rate"),
+                        "mapped_biased_beta": variant.get("mapped_biased_beta"),
+                        "edge_curriculum_split_ratio": args.edge_curriculum_split_ratio,
+                        "edge_curriculum_initial_rate": args.edge_curriculum_initial_rate,
+                        "edge_curriculum_schedule": args.edge_curriculum_schedule,
+                        "lambda_onto": float(args.lambda_onto),
                         "encoder": args.encoder,
                         "decoder": args.decoder,
                         "dropout": float(args.dropout),
@@ -245,6 +268,7 @@ def build_run_dir(out_root, job, index):
         f"mod{rate_tag(job['mapped_only_dynamic_rate'])}",
         f"mix{rate_tag(job['mapped_mix_mapped_rate'])}-{rate_tag(job['mapped_mix_non_mapped_rate'])}",
         f"amp{rate_tag(job['all_mapped_plus_non_mapped_rate'])}",
+        f"beta{rate_tag(job['mapped_biased_beta'])}",
     ]
     rate_part = "__".join(tag for tag in tags if not tag.endswith("none") and "-none" not in tag)
     if not rate_part:
@@ -265,6 +289,7 @@ def build_command(args, job, out_dir):
         if job["all_mapped_plus_non_mapped_rate"] is None
         else job["all_mapped_plus_non_mapped_rate"]
     )
+    mapped_biased_beta = 1.0 if job["mapped_biased_beta"] is None else job["mapped_biased_beta"]
     command = [
         sys.executable,
         str(RUN_SINGLE_SCRIPT),
@@ -284,8 +309,13 @@ def build_command(args, job, out_dir):
         "--mapped-mix-mapped-rate", str(mix_mapped_rate),
         "--mapped-mix-non-mapped-rate", str(mix_other_rate),
         "--all-mapped-plus-non-mapped-rate", str(all_mapped_plus_rate),
+        "--mapped-biased-beta", str(mapped_biased_beta),
         "--wandb-project", args.wandb_project,
+        "--lambda-onto", str(args.lambda_onto),
         "--num-epochs", str(args.num_epochs),
+        "--edge-curriculum-split-ratio", str(args.edge_curriculum_split_ratio),
+        "--edge-curriculum-initial-rate", str(args.edge_curriculum_initial_rate),
+        "--edge-curriculum-schedule", args.edge_curriculum_schedule,
         "--short-run-dirs",
     ]
     if args.linear_probe:
@@ -314,7 +344,9 @@ def print_status(jobs, latest):
             f"seed {job['seed']:<4} mask {job['mask_rate']} "
             f"mapped {job['mapped_only_dynamic_rate']} "
             f"mix {job['mapped_mix_mapped_rate']}/{job['mapped_mix_non_mapped_rate']} "
-            f"extra {job['all_mapped_plus_non_mapped_rate']}"
+            f"extra {job['all_mapped_plus_non_mapped_rate']} "
+            f"beta {job['mapped_biased_beta']} "
+            f"lambda_onto {job['lambda_onto']}"
         )
         if finish is not None and finish.get("status") in ("completed", "completed_no_metrics"):
             metrics = finish.get("metrics") or {}
@@ -352,6 +384,11 @@ def run_suite(args):
         "mapped_only_rates": args.mapped_only_rates,
         "mix_pool_rates": args.mix_pool_rates,
         "all_mapped_plus_non_mapped_rates": args.all_mapped_plus_non_mapped_rates,
+        "mapped_biased_betas": args.mapped_biased_betas,
+        "lambda_onto": args.lambda_onto,
+        "edge_curriculum_split_ratio": args.edge_curriculum_split_ratio,
+        "edge_curriculum_initial_rate": args.edge_curriculum_initial_rate,
+        "edge_curriculum_schedule": args.edge_curriculum_schedule,
         "legacy_global_budget_modes": LEGACY_GLOBAL_BUDGET_MODES,
         "channels_grid": [parse_channels(value) for value in args.channels_grid],
         "seeds": args.seeds,
@@ -458,6 +495,11 @@ def main():
         default=["0.2-0.1", "0.5-0.1", "0.5-0.3", "0.5-0.5", "0.7-0.3", "0.9-0.1"],
     )
     parser.add_argument("--all-mapped-plus-non-mapped-rates", nargs="*", type=float, default=[0.1, 0.2, 0.3, 0.4, 0.5])
+    parser.add_argument("--mapped-biased-betas", nargs="*", type=float, default=[0.5, 1.0, 2.0])
+    parser.add_argument("--lambda-onto", type=float, default=0.3)
+    parser.add_argument("--edge-curriculum-split-ratio", type=float, default=0.5)
+    parser.add_argument("--edge-curriculum-initial-rate", type=float, default=0.05)
+    parser.add_argument("--edge-curriculum-schedule", choices=["linear", "root", "geometric", "constant", "none"], default="linear")
     parser.add_argument("--num-epochs", type=int, default=50)
     parser.add_argument("--encoder", default="RotatEGCN_attn")
     parser.add_argument("--decoder", default="MLP")

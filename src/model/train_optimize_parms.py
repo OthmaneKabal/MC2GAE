@@ -234,6 +234,9 @@ def _selected_edge_types(data, selected, device):
 
 
 def _sample_recons_r_mask(data, mode, seed_value, device):
+    if mode == "mapped_biased_dynamic":
+        print("\nUsing mapped-biased weighted dynamic edge masking.\n")
+        return _sample_mapped_biased_dynamic_mask(data, seed_value, device)
     if mode == "all_mapped_plus_random_dynamic":
         print("\nUsing all-mapped plus random non-mapped dynamic edge masking.\n")
         return _sample_all_mapped_plus_dynamic_mask(data, seed_value, device, strategy="random")
@@ -330,6 +333,40 @@ def _sample_mapped_mix_dynamic_mask(data, seed_value, device, strategy="random")
         f"mapped_mix_dynamic_{strategy} mask: total={selected.numel()}, "
         f"mapped={selected_mapped.numel()}, other={selected_other.numel()}, "
         f"mapped_rate={mapped_rate}, non_mapped_rate={non_mapped_rate}"
+    )
+    return selected, removed_edge_types
+
+
+def _sample_mapped_biased_dynamic_mask(data, seed_value, device):
+    if not hasattr(data, "edge_is_mapped") or data.edge_is_mapped is None:
+        raise ValueError("mapped_biased_dynamic requires edge_is_mapped loaded from the KG JSON field 'is_mapped'.")
+
+    total_drop_rate = _validate_rate("total_drop_rate", config.get("total_drop_rate", 0.0))
+    beta = float(config.get("mapped_biased_beta", 1.0))
+    if beta < 0:
+        raise ValueError("mapped_biased_beta must be >= 0.")
+
+    total_edges = int(data.edge_index.size(1))
+    count = int(total_edges * total_drop_rate)
+    if count <= 0:
+        return _empty_edge_selection(device)
+
+    generator = torch.Generator(device="cpu").manual_seed(int(seed_value))
+    mapped = data.edge_is_mapped.bool().detach().cpu().float()
+    eps = torch.rand(total_edges, generator=generator)
+    weights = eps + beta * mapped
+    if float(weights.sum().item()) <= 0:
+        weights = torch.ones_like(weights)
+
+    selected = torch.multinomial(weights, num_samples=min(count, total_edges), replacement=False, generator=generator)
+    selected = selected.to(device=device, dtype=torch.long)
+    removed_edge_types = _selected_edge_types(data, selected, device)
+    actual_mapped_count = int(data.edge_is_mapped[selected].bool().sum().item())
+    actual_other_count = int(selected.numel()) - actual_mapped_count
+    print(
+        f"mapped_biased_dynamic mask: total={selected.numel()}, "
+        f"mapped={actual_mapped_count}, other={actual_other_count}, "
+        f"drop_rate={total_drop_rate}, beta={beta}"
     )
     return selected, removed_edge_types
 
@@ -593,6 +630,73 @@ def _domain_range_constraint_loss(node_embeddings, positive_triplets, type_embed
     range_scores = (tail_probs * range_masks).sum(dim=1)
     compatibility_scores = domain_scores * range_scores
     return -torch.log(compatibility_scores + eps).mean()
+
+
+def _domain_range_embedding_constraint_loss(kg_embeddings, positive_triplets, type_embeddings,
+                                            domain_explicit_mask_by_relation,
+                                            range_explicit_mask_by_relation,
+                                            domain_allowed_mask_by_relation,
+                                            range_allowed_mask_by_relation,
+                                            temperature=0.1, eps=1e-8):
+    if positive_triplets.numel() == 0 or type_embeddings is None:
+        return torch.tensor(0.0, device=kg_embeddings.device)
+
+    relation_ids = positive_triplets[:, 1]
+    valid_relation_mask = relation_ids < domain_explicit_mask_by_relation.size(0)
+    if valid_relation_mask.sum() == 0:
+        return torch.tensor(0.0, device=kg_embeddings.device)
+
+    positive_triplets = positive_triplets[valid_relation_mask]
+    relation_ids = positive_triplets[:, 1]
+    domain_explicit_masks = domain_explicit_mask_by_relation[relation_ids].bool()
+    range_explicit_masks = range_explicit_mask_by_relation[relation_ids].bool()
+    domain_allowed_masks = domain_allowed_mask_by_relation[relation_ids].bool()
+    range_allowed_masks = range_allowed_mask_by_relation[relation_ids].bool()
+
+    constrained_mask = (
+        domain_explicit_masks.any(dim=1) & range_explicit_masks.any(dim=1) &
+        domain_allowed_masks.any(dim=1) & range_allowed_masks.any(dim=1)
+    )
+    if constrained_mask.sum() == 0:
+        return torch.tensor(0.0, device=kg_embeddings.device)
+
+    positive_triplets = positive_triplets[constrained_mask]
+    domain_explicit_masks = domain_explicit_masks[constrained_mask]
+    range_explicit_masks = range_explicit_masks[constrained_mask]
+    domain_allowed_masks = domain_allowed_masks[constrained_mask]
+    range_allowed_masks = range_allowed_masks[constrained_mask]
+
+    normalized_nodes = F.normalize(kg_embeddings, p=2, dim=1)
+    normalized_types = F.normalize(type_embeddings, p=2, dim=1)
+    logits = normalized_nodes @ normalized_types.t() / max(float(temperature), eps)
+    head_logits = logits[positive_triplets[:, 0]]
+    tail_logits = logits[positive_triplets[:, 2]]
+
+    very_negative = torch.finfo(head_logits.dtype).min
+    domain_denominator_mask = ~(domain_allowed_masks & ~domain_explicit_masks)
+    range_denominator_mask = ~(range_allowed_masks & ~range_explicit_masks)
+
+    domain_pos = torch.logsumexp(head_logits.masked_fill(~domain_explicit_masks, very_negative), dim=1)
+    domain_den = torch.logsumexp(head_logits.masked_fill(~domain_denominator_mask, very_negative), dim=1)
+    range_pos = torch.logsumexp(tail_logits.masked_fill(~range_explicit_masks, very_negative), dim=1)
+    range_den = torch.logsumexp(tail_logits.masked_fill(~range_denominator_mask, very_negative), dim=1)
+
+    return -((domain_pos - domain_den) + (range_pos - range_den)).mean()
+
+
+def _mapped_domain_range_triplets(batch, relation_target_attr):
+    if batch.edge_index.size(1) == 0 or relation_target_attr != "edge_type":
+        return None
+    if not hasattr(batch, "edge_is_mapped"):
+        return None
+    mapped_mask = batch.edge_is_mapped.bool()
+    if mapped_mask.sum() == 0:
+        return None
+    return torch.stack((
+        batch.edge_index[0, mapped_mask],
+        batch.edge_type[mapped_mask],
+        batch.edge_index[1, mapped_mask],
+    ), dim=1)
 
 
 def _extract_node_embeddings_by_global_id(node_embeddings, batch_n_id, global_ids):
@@ -1310,6 +1414,13 @@ def train_DisMult(model, data, optimizer,num_epochs,gdp, save_file,device,
                            domain_range_type_ids=None, domain_mask_by_relation=None,
                            range_mask_by_relation=None, lambda_domain_range=0.0,
                            domain_range_temperature=0.2,
+                           domain_range_embedding_type_ids=None,
+                           domain_explicit_mask_by_relation=None,
+                           range_explicit_mask_by_relation=None,
+                           domain_allowed_mask_by_relation=None,
+                           range_allowed_mask_by_relation=None,
+                           lambda_domain_range_embedding=0.0,
+                           domain_range_embedding_temperature=0.1,
                            onto_hierarchy_child_ids=None, onto_hierarchy_parent_ids=None,
                            lambda_onto_hierarchy=0.0,
                            negative_sampling_mode="uniform", soft_type_candidates=None,
@@ -1402,6 +1513,7 @@ def train_DisMult(model, data, optimizer,num_epochs,gdp, save_file,device,
             removed_edge_indices, removed_edge_types = _sample_recons_r_mask(data, recons_r_training_mode, seed, device)
         elif recons_r_training_mode in (
             "random_dynamic_masked_only", "balanced_dynamic_masked_only", "mapped_random_dynamic",
+            "mapped_biased_dynamic",
             "all_mapped_plus_random_dynamic", "all_mapped_plus_balanced_dynamic",
             "mapped_only_dynamic_random", "mapped_only_dynamic_balanced",
             "mapped_selector_dynamic_random", "mapped_selector_dynamic_balanced",
@@ -1431,7 +1543,8 @@ def train_DisMult(model, data, optimizer,num_epochs,gdp, save_file,device,
     use_onto = (
         onto_data is not None and onto_r_decoder is not None and
         (lambda_onto != 0 or lambda_align != 0 or lambda_core_contrastive != 0 or
-         lambda_core_align != 0 or lambda_domain_range != 0 or lambda_onto_hierarchy != 0)
+         lambda_core_align != 0 or lambda_domain_range != 0 or
+         lambda_domain_range_embedding != 0 or lambda_onto_hierarchy != 0)
     )
     if replay_onto_negative_sampling and not use_onto:
         raise ValueError("replay_onto_negative_sampling=True but ontology training is disabled.")
@@ -1486,6 +1599,23 @@ def train_DisMult(model, data, optimizer,num_epochs,gdp, save_file,device,
         domain_mask_by_relation = domain_mask_by_relation.to(device)
         range_mask_by_relation = range_mask_by_relation.to(device)
         print(f"\nUsing domain/range constraint loss with {domain_range_type_ids.numel()} ontology type prototypes.\n")
+    use_domain_range_embedding_constraints = (
+        use_onto and relation_target_attr == "edge_type" and
+        domain_range_embedding_type_ids is not None and
+        domain_explicit_mask_by_relation is not None and range_explicit_mask_by_relation is not None and
+        domain_allowed_mask_by_relation is not None and range_allowed_mask_by_relation is not None and
+        lambda_domain_range_embedding != 0
+    )
+    if use_domain_range_embedding_constraints:
+        domain_range_embedding_type_ids = domain_range_embedding_type_ids.to(device)
+        domain_explicit_mask_by_relation = domain_explicit_mask_by_relation.to(device)
+        range_explicit_mask_by_relation = range_explicit_mask_by_relation.to(device)
+        domain_allowed_mask_by_relation = domain_allowed_mask_by_relation.to(device)
+        range_allowed_mask_by_relation = range_allowed_mask_by_relation.to(device)
+        print(
+            f"\nUsing mapped domain/range embedding contrastive loss with "
+            f"{domain_range_embedding_type_ids.numel()} ontology type prototypes.\n"
+        )
     use_onto_hierarchy = (
         use_onto and onto_hierarchy_child_ids is not None and onto_hierarchy_parent_ids is not None and
         lambda_onto_hierarchy != 0
@@ -1512,6 +1642,7 @@ def train_DisMult(model, data, optimizer,num_epochs,gdp, save_file,device,
         edge_curriculum_rate = None
         if recons_r_training_mode in (
             "random_dynamic_masked_only", "balanced_dynamic_masked_only", "mapped_random_dynamic",
+            "mapped_biased_dynamic",
             "all_mapped_plus_random_dynamic", "all_mapped_plus_balanced_dynamic",
             "mapped_only_dynamic_random", "mapped_only_dynamic_balanced",
             "mapped_selector_dynamic_random", "mapped_selector_dynamic_balanced",
@@ -1537,6 +1668,7 @@ def train_DisMult(model, data, optimizer,num_epochs,gdp, save_file,device,
         total_core_contrastive_loss = 0
         total_core_align_loss = 0
         total_domain_range_loss = 0
+        total_domain_range_embedding_loss = 0
         total_onto_hierarchy_loss = 0
         negative_tracking_state = _new_negative_tracking_state() if track_kg_negative_sampling else None
         onto_negative_tracking_state = _new_negative_tracking_state() if track_onto_negative_sampling and use_onto else None
@@ -1592,6 +1724,7 @@ def train_DisMult(model, data, optimizer,num_epochs,gdp, save_file,device,
                     "removed_only", "random_masked_only", "balanced_static_masked_only",
                     "random_static_masked_only", "random_dynamic_masked_only",
                     "balanced_dynamic_masked_only", "mapped_random_dynamic",
+                    "mapped_biased_dynamic",
                     "all_mapped_plus_random_dynamic", "all_mapped_plus_balanced_dynamic",
                     "mapped_only_dynamic_random", "mapped_only_dynamic_balanced",
                     "mapped_selector_dynamic_random", "mapped_selector_dynamic_balanced",
@@ -1677,33 +1810,36 @@ def train_DisMult(model, data, optimizer,num_epochs,gdp, save_file,device,
                 )
                 if use_onto:
                     H_onto = _encode_nodes(model, onto_data)
-                    if onto_negative_replay_records is not None:
-                        onto_negative_triplets, onto_negative_replay_cursor = _replay_negative_triplets(
-                            onto_negative_replay_records,
-                            onto_negative_replay_cursor,
-                            onto_positive_triplets.size(0),
-                            onto_data,
-                            device,
-                            epoch + 1,
-                            source_name="ontology",
+                    if lambda_onto != 0 or onto_negative_tracking_state is not None or onto_negative_replay_records is not None:
+                        if onto_negative_replay_records is not None:
+                            onto_negative_triplets, onto_negative_replay_cursor = _replay_negative_triplets(
+                                onto_negative_replay_records,
+                                onto_negative_replay_cursor,
+                                onto_positive_triplets.size(0),
+                                onto_data,
+                                device,
+                                epoch + 1,
+                                source_name="ontology",
+                            )
+                        else:
+                            onto_negative_triplets = generate_negatives(
+                                onto_data, onto_data, negative_ratio=1, triplet_set=onto_triplet_set,
+                                negative_entity_sampling_scope=negative_entity_sampling_scope,
+                            )
+                        if onto_negative_tracking_state is not None:
+                            _update_negative_tracking_state(
+                                onto_negative_tracking_state,
+                                onto_positive_triplets,
+                                onto_negative_triplets,
+                                onto_data,
+                                onto_gdp,
+                                max_examples=onto_negative_tracking_max_examples,
+                            )
+                        onto_loss, _, _ = _distmult_bce_loss(
+                            onto_r_decoder, H_onto, onto_positive_triplets, onto_negative_triplets
                         )
                     else:
-                        onto_negative_triplets = generate_negatives(
-                            onto_data, onto_data, negative_ratio=1, triplet_set=onto_triplet_set,
-                            negative_entity_sampling_scope=negative_entity_sampling_scope,
-                        )
-                    if onto_negative_tracking_state is not None:
-                        _update_negative_tracking_state(
-                            onto_negative_tracking_state,
-                            onto_positive_triplets,
-                            onto_negative_triplets,
-                            onto_data,
-                            onto_gdp,
-                            max_examples=onto_negative_tracking_max_examples,
-                        )
-                    onto_loss, _, _ = _distmult_bce_loss(
-                        onto_r_decoder, H_onto, onto_positive_triplets, onto_negative_triplets
-                    )
+                        onto_loss = torch.tensor(0.0, device=device)
                 else:
                     onto_loss = torch.tensor(0.0, device=device)
                 if use_relation_alignment:
@@ -1759,6 +1895,38 @@ def train_DisMult(model, data, optimizer,num_epochs,gdp, save_file,device,
                     )
                 else:
                     domain_range_loss = torch.tensor(0.0, device=device)
+                if use_domain_range_embedding_constraints:
+                    if recons_r_training_mode == "all_batch_edges":
+                        domain_range_embedding_triplets = [
+                            triplets for triplets in (
+                                _mapped_domain_range_triplets(G2_batch, relation_target_attr),
+                                _mapped_domain_range_triplets(removed_batch, relation_target_attr),
+                            )
+                            if triplets is not None
+                        ]
+                    else:
+                        domain_range_embedding_triplets = [
+                            triplets for triplets in (
+                                _mapped_domain_range_triplets(removed_batch, relation_target_attr),
+                            )
+                            if triplets is not None
+                        ]
+                    if domain_range_embedding_triplets:
+                        domain_range_embedding_triplets = torch.cat(domain_range_embedding_triplets, dim=0)
+                        domain_range_embedding_loss = _domain_range_embedding_constraint_loss(
+                            H_2,
+                            domain_range_embedding_triplets,
+                            H_onto[domain_range_embedding_type_ids],
+                            domain_explicit_mask_by_relation,
+                            range_explicit_mask_by_relation,
+                            domain_allowed_mask_by_relation,
+                            range_allowed_mask_by_relation,
+                            temperature=domain_range_embedding_temperature,
+                        )
+                    else:
+                        domain_range_embedding_loss = torch.tensor(0.0, device=device)
+                else:
+                    domain_range_embedding_loss = torch.tensor(0.0, device=device)
                 if use_onto_hierarchy:
                     onto_hierarchy_loss = _ontology_hierarchy_similarity_loss(
                         H_onto,
@@ -1783,6 +1951,7 @@ def train_DisMult(model, data, optimizer,num_epochs,gdp, save_file,device,
                        lambda_core_contrastive * core_contrastive_loss + \
                        lambda_core_align * core_align_loss + \
                        lambda_domain_range * domain_range_loss + \
+                       lambda_domain_range_embedding * domain_range_embedding_loss + \
                        lambda_onto_hierarchy * onto_hierarchy_loss
                 loss.backward()
                 optimizer.step()
@@ -1795,6 +1964,7 @@ def train_DisMult(model, data, optimizer,num_epochs,gdp, save_file,device,
                 total_core_contrastive_loss += core_contrastive_loss.item()
                 total_core_align_loss += core_align_loss.item()
                 total_domain_range_loss += domain_range_loss.item()
+                total_domain_range_embedding_loss += domain_range_embedding_loss.item()
                 total_onto_hierarchy_loss += onto_hierarchy_loss.item()
                 main_pbar.update(1)
                 if _step_limit_reached(global_step):
@@ -1827,6 +1997,7 @@ def train_DisMult(model, data, optimizer,num_epochs,gdp, save_file,device,
             avg_core_contrastive_loss = total_core_contrastive_loss / max(steps_this_epoch, 1)
             avg_core_align_loss = total_core_align_loss / max(steps_this_epoch, 1)
             avg_domain_range_loss = total_domain_range_loss / max(steps_this_epoch, 1)
+            avg_domain_range_embedding_loss = total_domain_range_embedding_loss / max(steps_this_epoch, 1)
             avg_onto_hierarchy_loss = total_onto_hierarchy_loss / max(steps_this_epoch, 1)
             print("Evaluation\n")
             # metrics = evaluate(model, data, config["Gs_path_no_other"], config["core_concepts"], gdp)
@@ -1879,6 +2050,12 @@ def train_DisMult(model, data, optimizer,num_epochs,gdp, save_file,device,
                     f"lambda_domain_range: {lambda_domain_range}, "
                     f"temperature: {domain_range_temperature}"
                 )
+            if use_domain_range_embedding_constraints:
+                print(
+                    f"Domain_range_embedding_loss: {avg_domain_range_embedding_loss}, "
+                    f"lambda_domain_range_embedding: {lambda_domain_range_embedding}, "
+                    f"temperature: {domain_range_embedding_temperature}"
+                )
             if use_onto_hierarchy:
                 print(
                     f"Onto_hierarchy_loss: {avg_onto_hierarchy_loss}, "
@@ -1922,6 +2099,7 @@ def train_DisMult(model, data, optimizer,num_epochs,gdp, save_file,device,
                        "core_contrastive_loss": avg_core_contrastive_loss,
                        "core_align_loss": avg_core_align_loss,
                        "domain_range_loss": avg_domain_range_loss,
+                       "domain_range_embedding_loss": avg_domain_range_embedding_loss,
                        "onto_hierarchy_loss": avg_onto_hierarchy_loss,
                        **_wandb_classification_metrics(metrics),
                        "R_accuracy": R_accuracy, "R_precision": R_precision,
@@ -1977,6 +2155,13 @@ def train_DisMult_with_onto(model, data, onto_data, onto_r_decoder, optimizer, n
                             domain_range_type_ids=None, domain_mask_by_relation=None,
                             range_mask_by_relation=None, lambda_domain_range=0.0,
                             domain_range_temperature=0.2,
+                            domain_range_embedding_type_ids=None,
+                            domain_explicit_mask_by_relation=None,
+                            range_explicit_mask_by_relation=None,
+                            domain_allowed_mask_by_relation=None,
+                            range_allowed_mask_by_relation=None,
+                            lambda_domain_range_embedding=0.0,
+                            domain_range_embedding_temperature=0.1,
                             onto_hierarchy_child_ids=None, onto_hierarchy_parent_ids=None,
                             lambda_onto_hierarchy=0.0,
                             negative_sampling_mode="uniform", soft_type_candidates=None,
@@ -2006,6 +2191,13 @@ def train_DisMult_with_onto(model, data, onto_data, onto_r_decoder, optimizer, n
         range_mask_by_relation=range_mask_by_relation,
         lambda_domain_range=lambda_domain_range,
         domain_range_temperature=domain_range_temperature,
+        domain_range_embedding_type_ids=domain_range_embedding_type_ids,
+        domain_explicit_mask_by_relation=domain_explicit_mask_by_relation,
+        range_explicit_mask_by_relation=range_explicit_mask_by_relation,
+        domain_allowed_mask_by_relation=domain_allowed_mask_by_relation,
+        range_allowed_mask_by_relation=range_allowed_mask_by_relation,
+        lambda_domain_range_embedding=lambda_domain_range_embedding,
+        domain_range_embedding_temperature=domain_range_embedding_temperature,
         onto_hierarchy_child_ids=onto_hierarchy_child_ids,
         onto_hierarchy_parent_ids=onto_hierarchy_parent_ids,
         lambda_onto_hierarchy=lambda_onto_hierarchy,
