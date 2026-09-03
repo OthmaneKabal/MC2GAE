@@ -31,16 +31,27 @@ UMLS_CORE_CONCEPTS = [
 ]
 
 GRAPHS = {
-    "biomed": {
+    "biomed_noisy": {
         "domain": "biomedical",
+        "graph_version": "noisy",
         "dataset": "MM_mapped_nci_All_R_KG",
         "kg_path": "../../data/UMLS/noisy/org/MM_mapped_nci_All_R_KG.json",
         "gs_path": "../../data/UMLS/common_nodes.xlsx",
         "core_concepts": UMLS_CORE_CONCEPTS,
         "embedding_output_name": "MM_mapped_nci_All_R_KG",
     },
+    "biomed_clean": {
+        "domain": "biomedical",
+        "graph_version": "clean",
+        "dataset": "KG_NCI_vf",
+        "kg_path": "../../data/UMLS/clean/KG_NCI_vf.json",
+        "gs_path": "../../data/UMLS/common_nodes.xlsx",
+        "core_concepts": UMLS_CORE_CONCEPTS,
+        "embedding_output_name": "KG_NCI_vf",
+    },
     "dbpedia_clean": {
         "domain": "dbpedia",
+        "graph_version": "clean",
         "dataset": "DBpedia_174_clean_kg",
         "kg_path": "../../data/dbpedia_174/DBpedia_174_clean_kg.json",
         "gs_path": "../../data/dbpedia_174/GS_dbpedia_174.xlsx",
@@ -49,6 +60,7 @@ GRAPHS = {
     },
     "dbpedia_tdg": {
         "domain": "dbpedia",
+        "graph_version": "tdg_noisy",
         "dataset": "dbpedia_174_kg_tdg",
         "kg_path": "../../data/dbpedia_174/dbpedia_174_kg_tdg.json",
         "gs_path": "../../data/dbpedia_174/GS_dbpedia_174.xlsx",
@@ -169,6 +181,7 @@ def experiment_key(record):
     return (
         record.get("graph"),
         record.get("domain"),
+        record.get("graph_version"),
         record.get("embedding"),
         record.get("task"),
         tuple(record.get("channels", [])),
@@ -220,6 +233,7 @@ def update_summary_csv(summary_path, finish_record):
         "status": finish_record.get("status"),
         "graph": finish_record.get("graph"),
         "domain": finish_record.get("domain"),
+        "graph_version": finish_record.get("graph_version"),
         "embedding": finish_record.get("embedding"),
         "plm_model": finish_record.get("plm_model"),
         "task": finish_record.get("task"),
@@ -358,6 +372,7 @@ def build_experiments(args):
                 experiments.append({
                     "graph": graph_name,
                     "domain": domain,
+                    "graph_version": GRAPHS[graph_name]["graph_version"],
                     "embedding": embedding_name,
                     "task": task_name,
                     "channels": args.channels,
@@ -427,6 +442,7 @@ def run_one(experiment, args):
         "study": "initial_embedding_quality_ablation",
         "graph": experiment["graph"],
         "domain": graph_cfg["domain"],
+        "graph_version": graph_cfg["graph_version"],
         "embedding": experiment["embedding"],
         "plm_model": embedding_cfg["model"],
         "task": experiment["task"],
@@ -510,7 +526,12 @@ def print_status(experiments, latest):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--graphs", nargs="*", choices=sorted(GRAPHS), default=["biomed", "dbpedia_clean", "dbpedia_tdg"])
+    parser.add_argument(
+        "--graphs",
+        nargs="*",
+        choices=sorted(GRAPHS),
+        default=["biomed_noisy", "biomed_clean", "dbpedia_clean", "dbpedia_tdg"],
+    )
     parser.add_argument("--embeddings", nargs="*", choices=sorted(EMBEDDINGS), default=["sentencebert", "biolinkbert", "roberta"])
     parser.add_argument("--tasks", nargs="*", choices=sorted(TASKS), default=["recons_r", "recons_x"])
     parser.add_argument("--seed", type=int, default=0)
