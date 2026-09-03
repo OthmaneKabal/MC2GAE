@@ -374,15 +374,27 @@ def build_run_dir_name(experiment):
     )
 
 
+def available_run_dir(base_dir):
+    if not base_dir.exists():
+        return base_dir
+    for retry_idx in range(1, 1000):
+        candidate = base_dir.with_name(f"{base_dir.name}__retry{retry_idx:02d}")
+        if not candidate.exists():
+            return candidate
+    raise FileExistsError(f"Could not find a free retry directory for {base_dir}")
+
+
 def run_one(experiment, args):
     out_root = resolve_path(args.out_root)
     db_path = resolve_path(args.db)
     summary_path = resolve_path(args.summary)
-    run_dir = out_root / "runs" / build_run_dir_name(experiment)
+    requested_run_dir = out_root / "runs" / build_run_dir_name(experiment)
+    run_dir = requested_run_dir
     if run_dir.exists() and args.overwrite:
         shutil.rmtree(run_dir)
     elif run_dir.exists():
-        raise FileExistsError(f"Output directory already exists: {run_dir}")
+        run_dir = available_run_dir(requested_run_dir)
+        print(f"Output directory already exists, using retry directory: {run_dir}")
     run_dir.mkdir(parents=True, exist_ok=True)
 
     set_all_seeds(int(experiment["seed"]))
