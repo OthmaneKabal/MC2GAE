@@ -39,12 +39,16 @@ MIX_POOL_RATE_MODES = [
 ALL_MAPPED_PLUS_MODES = [
     "all_mapped_plus_random_dynamic",
 ]
+MAPPED_CONTEXT_NON_MAPPED_MODES = [
+    "mapped_context_non_mapped_dynamic_random",
+]
 BALANCED_MODES = [
     "canonicalized_balanced_dynamic",
     "mapped_only_dynamic_balanced",
     "mapped_selector_dynamic_balanced",
     "mapped_mix_dynamic_balanced",
     "all_mapped_plus_balanced_dynamic",
+    "mapped_context_non_mapped_dynamic_balanced",
 ]
 LEGACY_GLOBAL_BUDGET_MODES = {
     "mapped_random_dynamic_15_15": 0.3,
@@ -57,6 +61,7 @@ ALL_MODES = (
     + MAPPED_ONLY_RATE_MODES
     + MIX_POOL_RATE_MODES
     + ALL_MAPPED_PLUS_MODES
+    + MAPPED_CONTEXT_NON_MAPPED_MODES
     + list(LEGACY_GLOBAL_BUDGET_MODES)
     + BALANCED_MODES
 )
@@ -95,11 +100,13 @@ def job_key(record):
         record.get("mapped_mix_mapped_rate"),
         record.get("mapped_mix_non_mapped_rate"),
         record.get("all_mapped_plus_non_mapped_rate"),
+        record.get("mapped_context_non_mapped_rate"),
         record.get("mapped_biased_beta"),
         record.get("edge_curriculum_split_ratio"),
         record.get("edge_curriculum_initial_rate"),
         record.get("edge_curriculum_schedule"),
         record.get("lambda_onto"),
+        record.get("track_kg_negative_sampling"),
         record.get("encoder"),
         record.get("decoder"),
         record.get("dropout"),
@@ -166,6 +173,7 @@ def update_summary_csv(summary_path, record):
         "mapped_mix_mapped_rate": record.get("mapped_mix_mapped_rate"),
         "mapped_mix_non_mapped_rate": record.get("mapped_mix_non_mapped_rate"),
         "all_mapped_plus_non_mapped_rate": record.get("all_mapped_plus_non_mapped_rate"),
+        "mapped_context_non_mapped_rate": record.get("mapped_context_non_mapped_rate"),
         "mapped_biased_beta": record.get("mapped_biased_beta"),
         "edge_curriculum_split_ratio": record.get("edge_curriculum_split_ratio"),
         "edge_curriculum_initial_rate": record.get("edge_curriculum_initial_rate"),
@@ -229,6 +237,11 @@ def build_jobs(args):
                 {"all_mapped_plus_non_mapped_rate": float(rate)}
                 for rate in args.all_mapped_plus_non_mapped_rates
             ]
+        elif mode in MAPPED_CONTEXT_NON_MAPPED_MODES or mode == "mapped_context_non_mapped_dynamic_balanced":
+            variants = [
+                {"mapped_context_non_mapped_rate": float(rate)}
+                for rate in args.mapped_context_non_mapped_rates
+            ]
         elif mode in LEGACY_GLOBAL_BUDGET_MODES:
             variants = [{"mask_rate": LEGACY_GLOBAL_BUDGET_MODES[mode]}]
         else:
@@ -247,11 +260,13 @@ def build_jobs(args):
                         "mapped_mix_mapped_rate": variant.get("mapped_mix_mapped_rate"),
                         "mapped_mix_non_mapped_rate": variant.get("mapped_mix_non_mapped_rate"),
                         "all_mapped_plus_non_mapped_rate": variant.get("all_mapped_plus_non_mapped_rate"),
+                        "mapped_context_non_mapped_rate": variant.get("mapped_context_non_mapped_rate"),
                         "mapped_biased_beta": variant.get("mapped_biased_beta"),
                         "edge_curriculum_split_ratio": args.edge_curriculum_split_ratio,
                         "edge_curriculum_initial_rate": args.edge_curriculum_initial_rate,
                         "edge_curriculum_schedule": args.edge_curriculum_schedule,
                         "lambda_onto": float(args.lambda_onto),
+                        "track_kg_negative_sampling": bool(args.track_kg_negative_sampling),
                         "encoder": args.encoder,
                         "decoder": args.decoder,
                         "dropout": float(args.dropout),
@@ -268,6 +283,7 @@ def build_run_dir(out_root, job, index):
         f"mod{rate_tag(job['mapped_only_dynamic_rate'])}",
         f"mix{rate_tag(job['mapped_mix_mapped_rate'])}-{rate_tag(job['mapped_mix_non_mapped_rate'])}",
         f"amp{rate_tag(job['all_mapped_plus_non_mapped_rate'])}",
+        f"mctx{rate_tag(job['mapped_context_non_mapped_rate'])}",
         f"beta{rate_tag(job['mapped_biased_beta'])}",
     ]
     rate_part = "__".join(tag for tag in tags if not tag.endswith("none") and "-none" not in tag)
@@ -289,6 +305,11 @@ def build_command(args, job, out_dir):
         if job["all_mapped_plus_non_mapped_rate"] is None
         else job["all_mapped_plus_non_mapped_rate"]
     )
+    mapped_context_non_mapped_rate = (
+        1.0
+        if job["mapped_context_non_mapped_rate"] is None
+        else job["mapped_context_non_mapped_rate"]
+    )
     mapped_biased_beta = 1.0 if job["mapped_biased_beta"] is None else job["mapped_biased_beta"]
     command = [
         sys.executable,
@@ -309,6 +330,7 @@ def build_command(args, job, out_dir):
         "--mapped-mix-mapped-rate", str(mix_mapped_rate),
         "--mapped-mix-non-mapped-rate", str(mix_other_rate),
         "--all-mapped-plus-non-mapped-rate", str(all_mapped_plus_rate),
+        "--mapped-context-non-mapped-rate", str(mapped_context_non_mapped_rate),
         "--mapped-biased-beta", str(mapped_biased_beta),
         "--wandb-project", args.wandb_project,
         "--lambda-onto", str(args.lambda_onto),
@@ -318,6 +340,17 @@ def build_command(args, job, out_dir):
         "--edge-curriculum-schedule", args.edge_curriculum_schedule,
         "--short-run-dirs",
     ]
+    if args.track_kg_negative_sampling:
+        command.append("--track-kg-negative-sampling")
+        if args.kg_negative_tracking_max_examples is not None:
+            command.extend(["--kg-negative-tracking-max-examples", str(args.kg_negative_tracking_max_examples)])
+    if args.debug_negative_sampling_epochs:
+        command.extend([
+            "--debug-negative-sampling-epochs",
+            *[str(value) for value in args.debug_negative_sampling_epochs],
+            "--debug-negative-sampling-batches-per-epoch",
+            str(args.debug_negative_sampling_batches_per_epoch),
+        ])
     if args.linear_probe:
         command.extend([
             "--linear-probe",
@@ -345,6 +378,7 @@ def print_status(jobs, latest):
             f"mapped {job['mapped_only_dynamic_rate']} "
             f"mix {job['mapped_mix_mapped_rate']}/{job['mapped_mix_non_mapped_rate']} "
             f"extra {job['all_mapped_plus_non_mapped_rate']} "
+            f"ctx_non_mapped {job['mapped_context_non_mapped_rate']} "
             f"beta {job['mapped_biased_beta']} "
             f"lambda_onto {job['lambda_onto']}"
         )
@@ -384,8 +418,13 @@ def run_suite(args):
         "mapped_only_rates": args.mapped_only_rates,
         "mix_pool_rates": args.mix_pool_rates,
         "all_mapped_plus_non_mapped_rates": args.all_mapped_plus_non_mapped_rates,
+        "mapped_context_non_mapped_rates": args.mapped_context_non_mapped_rates,
         "mapped_biased_betas": args.mapped_biased_betas,
         "lambda_onto": args.lambda_onto,
+        "track_kg_negative_sampling": args.track_kg_negative_sampling,
+        "kg_negative_tracking_max_examples": args.kg_negative_tracking_max_examples,
+        "debug_negative_sampling_epochs": args.debug_negative_sampling_epochs,
+        "debug_negative_sampling_batches_per_epoch": args.debug_negative_sampling_batches_per_epoch,
         "edge_curriculum_split_ratio": args.edge_curriculum_split_ratio,
         "edge_curriculum_initial_rate": args.edge_curriculum_initial_rate,
         "edge_curriculum_schedule": args.edge_curriculum_schedule,
@@ -495,8 +534,13 @@ def main():
         default=["0.2-0.1", "0.5-0.1", "0.5-0.3", "0.5-0.5", "0.7-0.3", "0.9-0.1"],
     )
     parser.add_argument("--all-mapped-plus-non-mapped-rates", nargs="*", type=float, default=[0.1, 0.2, 0.3, 0.4, 0.5])
+    parser.add_argument("--mapped-context-non-mapped-rates", nargs="*", type=float, default=[0.2, 0.4, 0.6, 0.8, 1.0])
     parser.add_argument("--mapped-biased-betas", nargs="*", type=float, default=[0.5, 1.0, 2.0])
     parser.add_argument("--lambda-onto", type=float, default=0.3)
+    parser.add_argument("--track-kg-negative-sampling", action="store_true")
+    parser.add_argument("--kg-negative-tracking-max-examples", type=int, default=None)
+    parser.add_argument("--debug-negative-sampling-epochs", nargs="*", type=int, default=[])
+    parser.add_argument("--debug-negative-sampling-batches-per-epoch", type=int, default=0)
     parser.add_argument("--edge-curriculum-split-ratio", type=float, default=0.5)
     parser.add_argument("--edge-curriculum-initial-rate", type=float, default=0.05)
     parser.add_argument("--edge-curriculum-schedule", choices=["linear", "root", "geometric", "constant", "none"], default="linear")

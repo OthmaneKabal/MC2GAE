@@ -47,6 +47,8 @@ SHORT_MODE_NAMES = {
     "mapped_mix_dynamic_balanced": "mixb",
     "all_mapped_plus_random_dynamic": "amprd",
     "all_mapped_plus_balanced_dynamic": "ampbd",
+    "mapped_context_non_mapped_dynamic_random": "mcnmr",
+    "mapped_context_non_mapped_dynamic_balanced": "mcnmb",
     "mapped_biased_dynamic": "mbdyn",
     "mapped_random_dynamic_15_15": "mrd15_15",
     "mapped_random_dynamic_20_10": "mrd20_10",
@@ -81,6 +83,8 @@ NO_MASK_RATE_MODES = {
     "mapped_mix_dynamic_balanced",
     "all_mapped_plus_random_dynamic",
     "all_mapped_plus_balanced_dynamic",
+    "mapped_context_non_mapped_dynamic_random",
+    "mapped_context_non_mapped_dynamic_balanced",
 }
 
 GRAPHS = {
@@ -284,6 +288,18 @@ MAPPING_GUIDED_MODES = [
         "description": "Canonicalized graph: mask all mapped edges plus a dynamic balanced fraction of non-mapped edges.",
     },
     {
+        "name": "mapped_context_non_mapped_dynamic_random",
+        "recons_r_training_mode": "mapped_context_non_mapped_dynamic_random",
+        "target_relation_field": "predicate",
+        "description": "Canonicalized graph: keep mapped edges visible and dynamically mask a random fraction of non-mapped edges.",
+    },
+    {
+        "name": "mapped_context_non_mapped_dynamic_balanced",
+        "recons_r_training_mode": "mapped_context_non_mapped_dynamic_balanced",
+        "target_relation_field": "predicate",
+        "description": "Canonicalized graph: keep mapped edges visible and dynamically mask a balanced fraction of non-mapped edges.",
+    },
+    {
         "name": "mapped_biased_dynamic",
         "recons_r_training_mode": "mapped_biased_dynamic",
         "target_relation_field": "predicate",
@@ -389,6 +405,9 @@ def mode_parameter_tag(mode_name, mode_cfg, args):
     if mode_name in ("all_mapped_plus_random_dynamic", "all_mapped_plus_balanced_dynamic"):
         value = mode_cfg.get("all_mapped_plus_non_mapped_rate", args.all_mapped_plus_non_mapped_rate)
         return f"__amp{fmt(value)}"
+    if mode_name in ("mapped_context_non_mapped_dynamic_random", "mapped_context_non_mapped_dynamic_balanced"):
+        value = mode_cfg.get("mapped_context_non_mapped_rate", args.mapped_context_non_mapped_rate)
+        return f"__mctx{fmt(value)}"
     if mode_name == "mapped_biased_dynamic":
         value = mode_cfg.get("mapped_biased_beta", args.mapped_biased_beta)
         return f"__beta{fmt(value)}"
@@ -447,6 +466,7 @@ def experiment_key(record):
         record.get("mapped_mix_mapped_rate"),
         record.get("mapped_mix_non_mapped_rate"),
         record.get("all_mapped_plus_non_mapped_rate"),
+        record.get("mapped_context_non_mapped_rate"),
         record.get("mapped_biased_beta"),
         record.get("lambda_domain_range_embedding"),
         record.get("domain_range_embedding_temperature"),
@@ -512,6 +532,7 @@ def update_summary_csv(summary_path, finish_record):
         "mapped_mix_mapped_rate": finish_record.get("mapped_mix_mapped_rate"),
         "mapped_mix_non_mapped_rate": finish_record.get("mapped_mix_non_mapped_rate"),
         "all_mapped_plus_non_mapped_rate": finish_record.get("all_mapped_plus_non_mapped_rate"),
+        "mapped_context_non_mapped_rate": finish_record.get("mapped_context_non_mapped_rate"),
         "mapped_biased_beta": finish_record.get("mapped_biased_beta"),
         "lambda_domain_range_embedding": finish_record.get("lambda_domain_range_embedding"),
         "domain_range_embedding_temperature": finish_record.get("domain_range_embedding_temperature"),
@@ -633,6 +654,7 @@ def configure_model(config, experiment, run_dir, args, num_epochs=None):
         "mapped_mix_mapped_rate": mode_cfg.get("mapped_mix_mapped_rate", args.mapped_mix_mapped_rate),
         "mapped_mix_non_mapped_rate": mode_cfg.get("mapped_mix_non_mapped_rate", args.mapped_mix_non_mapped_rate),
         "all_mapped_plus_non_mapped_rate": mode_cfg.get("all_mapped_plus_non_mapped_rate", args.all_mapped_plus_non_mapped_rate),
+        "mapped_context_non_mapped_rate": mode_cfg.get("mapped_context_non_mapped_rate", args.mapped_context_non_mapped_rate),
         "mapped_biased_beta": mode_cfg.get("mapped_biased_beta", args.mapped_biased_beta),
         "edge_curriculum_split_ratio": args.edge_curriculum_split_ratio,
         "edge_curriculum_initial_rate": args.edge_curriculum_initial_rate,
@@ -661,7 +683,12 @@ def configure_model(config, experiment, run_dir, args, num_epochs=None):
         "total_drop_rate": args.mask_rate,
         "max_masking_percentage": args.mask_rate,
         "kg_negative_sampling_seed": None,
-        "track_kg_negative_sampling": False,
+        "track_kg_negative_sampling": args.track_kg_negative_sampling,
+        "kg_negative_tracking_dir": str(run_dir / "negative_sampling"),
+        "kg_negative_tracking_max_examples": args.kg_negative_tracking_max_examples,
+        "debug_negative_sampling_epochs": args.debug_negative_sampling_epochs,
+        "debug_negative_sampling_batches_per_epoch": args.debug_negative_sampling_batches_per_epoch,
+        "debug_negative_sampling_path": str(run_dir / "kg_negative_debug_batches.json"),
         "track_onto_negative_sampling": False,
         "replay_kg_negative_sampling": False,
         "replay_onto_negative_sampling": False,
@@ -758,6 +785,11 @@ def run_single(args):
             "all_mapped_plus_non_mapped_rate",
             args.all_mapped_plus_non_mapped_rate,
         )
+    if args.mode in ("mapped_context_non_mapped_dynamic_random", "mapped_context_non_mapped_dynamic_balanced"):
+        wandb_config["mapped_context_non_mapped_rate"] = mode_cfg.get(
+            "mapped_context_non_mapped_rate",
+            args.mapped_context_non_mapped_rate,
+        )
     if args.mode == "mapped_biased_dynamic":
         wandb_config["mapped_biased_beta"] = mode_cfg.get("mapped_biased_beta", args.mapped_biased_beta)
     if mode_cfg.get("training_task", args.training_task) == "Recons_R_with_onto":
@@ -831,6 +863,7 @@ def run_single(args):
         "mapped_mix_mapped_rate": mode_cfg.get("mapped_mix_mapped_rate", args.mapped_mix_mapped_rate),
         "mapped_mix_non_mapped_rate": mode_cfg.get("mapped_mix_non_mapped_rate", args.mapped_mix_non_mapped_rate),
         "all_mapped_plus_non_mapped_rate": mode_cfg.get("all_mapped_plus_non_mapped_rate", args.all_mapped_plus_non_mapped_rate),
+        "mapped_context_non_mapped_rate": mode_cfg.get("mapped_context_non_mapped_rate", args.mapped_context_non_mapped_rate),
         "mapped_biased_beta": mode_cfg.get("mapped_biased_beta", args.mapped_biased_beta),
         "lambda_domain_range_embedding": args.lambda_domain_range_embedding,
         "domain_range_embedding_temperature": args.domain_range_embedding_temperature,
@@ -873,6 +906,7 @@ def print_status(experiments, db_path):
             "mapped_mix_mapped_rate": mode_cfg.get("mapped_mix_mapped_rate", getattr(print_status, "mapped_mix_mapped_rate", 0.5)),
             "mapped_mix_non_mapped_rate": mode_cfg.get("mapped_mix_non_mapped_rate", getattr(print_status, "mapped_mix_non_mapped_rate", 0.5)),
             "all_mapped_plus_non_mapped_rate": mode_cfg.get("all_mapped_plus_non_mapped_rate", getattr(print_status, "all_mapped_plus_non_mapped_rate", 0.1)),
+            "mapped_context_non_mapped_rate": mode_cfg.get("mapped_context_non_mapped_rate", getattr(print_status, "mapped_context_non_mapped_rate", 1.0)),
             "mapped_biased_beta": mode_cfg.get("mapped_biased_beta", getattr(print_status, "mapped_biased_beta", 1.0)),
             "lambda_domain_range_embedding": getattr(print_status, "lambda_domain_range_embedding", 0.0),
             "domain_range_embedding_temperature": getattr(print_status, "domain_range_embedding_temperature", 0.1),
@@ -942,6 +976,7 @@ def run_suite(args):
     print_status.mapped_mix_mapped_rate = args.mapped_mix_mapped_rate
     print_status.mapped_mix_non_mapped_rate = args.mapped_mix_non_mapped_rate
     print_status.all_mapped_plus_non_mapped_rate = args.all_mapped_plus_non_mapped_rate
+    print_status.mapped_context_non_mapped_rate = args.mapped_context_non_mapped_rate
     print_status.mapped_biased_beta = args.mapped_biased_beta
     print_status.lambda_domain_range_embedding = args.lambda_domain_range_embedding
     print_status.domain_range_embedding_temperature = args.domain_range_embedding_temperature
@@ -973,6 +1008,7 @@ def run_suite(args):
             "mapped_mix_mapped_rate": args.mapped_mix_mapped_rate,
             "mapped_mix_non_mapped_rate": args.mapped_mix_non_mapped_rate,
             "all_mapped_plus_non_mapped_rate": args.all_mapped_plus_non_mapped_rate,
+            "mapped_context_non_mapped_rate": args.mapped_context_non_mapped_rate,
             "mapped_biased_beta": args.mapped_biased_beta,
             "lambda_domain_range_embedding": args.lambda_domain_range_embedding,
             "domain_range_embedding_temperature": args.domain_range_embedding_temperature,
@@ -1001,6 +1037,7 @@ def run_suite(args):
                 "mapped_mix_mapped_rate": exp["mode_config"].get("mapped_mix_mapped_rate", args.mapped_mix_mapped_rate),
                 "mapped_mix_non_mapped_rate": exp["mode_config"].get("mapped_mix_non_mapped_rate", args.mapped_mix_non_mapped_rate),
                 "all_mapped_plus_non_mapped_rate": exp["mode_config"].get("all_mapped_plus_non_mapped_rate", args.all_mapped_plus_non_mapped_rate),
+                "mapped_context_non_mapped_rate": exp["mode_config"].get("mapped_context_non_mapped_rate", args.mapped_context_non_mapped_rate),
                 "mapped_biased_beta": exp["mode_config"].get("mapped_biased_beta", args.mapped_biased_beta),
                 "lambda_domain_range_embedding": args.lambda_domain_range_embedding,
                 "domain_range_embedding_temperature": args.domain_range_embedding_temperature,
@@ -1048,6 +1085,7 @@ def run_suite(args):
             "mapped_mix_mapped_rate": mode_cfg.get("mapped_mix_mapped_rate", args.mapped_mix_mapped_rate),
             "mapped_mix_non_mapped_rate": mode_cfg.get("mapped_mix_non_mapped_rate", args.mapped_mix_non_mapped_rate),
             "all_mapped_plus_non_mapped_rate": mode_cfg.get("all_mapped_plus_non_mapped_rate", args.all_mapped_plus_non_mapped_rate),
+            "mapped_context_non_mapped_rate": mode_cfg.get("mapped_context_non_mapped_rate", args.mapped_context_non_mapped_rate),
             "mapped_biased_beta": mode_cfg.get("mapped_biased_beta", args.mapped_biased_beta),
             "edge_curriculum_split_ratio": args.edge_curriculum_split_ratio,
             "edge_curriculum_initial_rate": args.edge_curriculum_initial_rate,
@@ -1101,6 +1139,7 @@ def run_suite(args):
             "--mapped-mix-mapped-rate", str(mode_cfg.get("mapped_mix_mapped_rate", args.mapped_mix_mapped_rate)),
             "--mapped-mix-non-mapped-rate", str(mode_cfg.get("mapped_mix_non_mapped_rate", args.mapped_mix_non_mapped_rate)),
             "--all-mapped-plus-non-mapped-rate", str(mode_cfg.get("all_mapped_plus_non_mapped_rate", args.all_mapped_plus_non_mapped_rate)),
+            "--mapped-context-non-mapped-rate", str(mode_cfg.get("mapped_context_non_mapped_rate", args.mapped_context_non_mapped_rate)),
             "--mapped-biased-beta", str(mode_cfg.get("mapped_biased_beta", args.mapped_biased_beta)),
             "--lambda-domain-range-embedding", str(args.lambda_domain_range_embedding),
             "--domain-range-embedding-temperature", str(args.domain_range_embedding_temperature),
@@ -1149,6 +1188,7 @@ def run_suite(args):
             "mapped_mix_mapped_rate": mode_cfg.get("mapped_mix_mapped_rate", args.mapped_mix_mapped_rate),
             "mapped_mix_non_mapped_rate": mode_cfg.get("mapped_mix_non_mapped_rate", args.mapped_mix_non_mapped_rate),
             "all_mapped_plus_non_mapped_rate": mode_cfg.get("all_mapped_plus_non_mapped_rate", args.all_mapped_plus_non_mapped_rate),
+            "mapped_context_non_mapped_rate": mode_cfg.get("mapped_context_non_mapped_rate", args.mapped_context_non_mapped_rate),
             "mapped_biased_beta": mode_cfg.get("mapped_biased_beta", args.mapped_biased_beta),
             "edge_curriculum_split_ratio": args.edge_curriculum_split_ratio,
             "edge_curriculum_initial_rate": args.edge_curriculum_initial_rate,
@@ -1239,9 +1279,14 @@ def main():
     parser.add_argument("--mapped-mix-mapped-rate", type=float, default=0.5)
     parser.add_argument("--mapped-mix-non-mapped-rate", type=float, default=0.5)
     parser.add_argument("--all-mapped-plus-non-mapped-rate", type=float, default=0.1)
+    parser.add_argument("--mapped-context-non-mapped-rate", type=float, default=1.0)
     parser.add_argument("--mapped-biased-beta", type=float, default=1.0)
     parser.add_argument("--lambda-domain-range-embedding", type=float, default=0.0)
     parser.add_argument("--domain-range-embedding-temperature", type=float, default=0.1)
+    parser.add_argument("--track-kg-negative-sampling", action="store_true")
+    parser.add_argument("--kg-negative-tracking-max-examples", type=int, default=None)
+    parser.add_argument("--debug-negative-sampling-epochs", nargs="*", type=int, default=[])
+    parser.add_argument("--debug-negative-sampling-batches-per-epoch", type=int, default=0)
     parser.add_argument("--linear-probe", action="store_true")
     parser.add_argument("--linear-probe-gs-path", default="../../data/UMLS/common_nodes.xlsx")
     parser.add_argument("--linear-probe-splits-dir", default="../../data/UMLS/splits/umls_kg_splits")

@@ -81,6 +81,7 @@ config = {
     "mapped_mix_mapped_rate": 0.5,  # fraction of is_mapped=True edges masked each epoch for mapped_mix_dynamic_* modes
     "mapped_mix_non_mapped_rate": 0.5,  # fraction of is_mapped=False edges masked each epoch for mapped_mix_dynamic_* modes
     "all_mapped_plus_non_mapped_rate": 0.1,  # mask all mapped edges plus this fraction of non-mapped edges each epoch
+    "mapped_context_non_mapped_rate": 1.0,  # keep mapped edges visible and mask this fraction of non-mapped edges each epoch
     "mapped_biased_beta": 1.0,  # weighted global masking bias: gamma_e = U(0,1) + beta * is_mapped
     "edge_curriculum_split_ratio": 0.5,  # fraction of masked edges selected by model confidence; the rest is random
     "edge_curriculum_initial_rate": 0.05,
@@ -108,6 +109,9 @@ config = {
     "track_kg_negative_sampling": False,  # set this to True to track the negative sampling distribution and save it to a file
     "kg_negative_tracking_dir": "analysis/negative_sampling",
     "kg_negative_tracking_max_examples": None,  # None saves all detailed positive/negative examples
+    "debug_negative_sampling_epochs": [],  # lightweight debug, for example [1, 4]
+    "debug_negative_sampling_batches_per_epoch": 0,
+    "debug_negative_sampling_path": None,
     "track_onto_negative_sampling": False,  # set this to True to track ontology negative sampling per epoch
     "onto_negative_tracking_dir": "analysis/negative_sampling",
     "onto_negative_tracking_max_examples": None,

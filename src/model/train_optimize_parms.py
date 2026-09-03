@@ -2,6 +2,7 @@ import sys
 import os
 os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
 import json
+from pathlib import Path
 from datetime import datetime
 from collections import Counter
 
@@ -243,6 +244,12 @@ def _sample_recons_r_mask(data, mode, seed_value, device):
     if mode == "all_mapped_plus_balanced_dynamic":
         print("\nUsing all-mapped plus balanced non-mapped dynamic edge masking.\n")
         return _sample_all_mapped_plus_dynamic_mask(data, seed_value, device, strategy="balanced")
+    if mode == "mapped_context_non_mapped_dynamic_random":
+        print("\nUsing mapped-context plus random non-mapped dynamic edge masking.\n")
+        return _sample_mapped_context_non_mapped_dynamic_mask(data, seed_value, device, strategy="random")
+    if mode == "mapped_context_non_mapped_dynamic_balanced":
+        print("\nUsing mapped-context plus balanced non-mapped dynamic edge masking.\n")
+        return _sample_mapped_context_non_mapped_dynamic_mask(data, seed_value, device, strategy="balanced")
     if mode in ("mapped_only_dynamic_random", "mapped_selector_dynamic_random"):
         print("\nUsing mapped-only dynamic random edge masking.\n")
         return _sample_mapped_only_dynamic_mask(data, seed_value, device, strategy="random")
@@ -387,6 +394,29 @@ def _sample_all_mapped_plus_dynamic_mask(data, seed_value, device, strategy="ran
     print(
         f"all_mapped_plus_{strategy}_dynamic mask: total={selected.numel()}, "
         f"mapped={mapped_pool.numel()}, other={selected_other.numel()}, "
+        f"non_mapped_rate={non_mapped_rate}"
+    )
+    return selected, removed_edge_types
+
+
+def _sample_mapped_context_non_mapped_dynamic_mask(data, seed_value, device, strategy="random"):
+    non_mapped_rate = _validate_rate(
+        "mapped_context_non_mapped_rate",
+        config.get("mapped_context_non_mapped_rate", 1.0),
+    )
+    mapped_pool, other_pool = _mapped_and_other_pools(data)
+    other_count = int(other_pool.numel() * non_mapped_rate)
+    if other_count <= 0:
+        return _empty_edge_selection(device)
+
+    generator = torch.Generator(device="cpu").manual_seed(int(seed_value))
+    edge_types = _edge_type_values_for_selection(data)
+    selected = _sample_pool_by_strategy(other_pool, other_count, edge_types, generator, strategy)
+    selected = selected.to(device=device, dtype=torch.long)
+    removed_edge_types = _selected_edge_types(data, selected, device)
+    print(
+        f"mapped_context_non_mapped_{strategy}_dynamic mask: total={selected.numel()}, "
+        f"mapped_visible={mapped_pool.numel()}, non_mapped_masked={selected.numel()}, "
         f"non_mapped_rate={non_mapped_rate}"
     )
     return selected, removed_edge_types
@@ -1205,6 +1235,61 @@ def _write_negative_tracking_epoch(state, output_path, epoch, metrics, gdp):
         file.write(json.dumps(record, ensure_ascii=False) + "\n")
 
 
+def _negative_debug_batch_record(epoch, batch_index, positives, negatives, batch, gdp):
+    positives_cpu = positives.detach().cpu()
+    negatives_cpu = negatives.detach().cpu()
+    pair_count = min(positives_cpu.size(0), negatives_cpu.size(0))
+    positives_cpu = positives_cpu[:pair_count]
+    negatives_cpu = negatives_cpu[:pair_count]
+    node_ids = batch.n_id.detach().cpu() if hasattr(batch, "n_id") else None
+    relation_names = _relation_name_map(gdp)
+    node_names = _node_name_map(gdp)
+
+    pairs = []
+    for idx in range(pair_count):
+        pos = positives_cpu[idx].tolist()
+        neg = negatives_cpu[idx].tolist()
+        changed = []
+        if pos[0] != neg[0]:
+            changed.append("head")
+        if pos[1] != neg[1]:
+            changed.append("relation")
+        if pos[2] != neg[2]:
+            changed.append("tail")
+        pairs.append({
+            "changed": changed,
+            "positive": _triplet_to_record(pos, node_ids, node_names, relation_names),
+            "negative": _triplet_to_record(neg, node_ids, node_names, relation_names),
+        })
+
+    return {
+        "epoch": int(epoch),
+        "batch_index": int(batch_index),
+        "num_pairs": int(pair_count),
+        "head_corruptions": int((positives_cpu[:, 0] != negatives_cpu[:, 0]).sum().item()) if pair_count else 0,
+        "relation_corruptions": int((positives_cpu[:, 1] != negatives_cpu[:, 1]).sum().item()) if pair_count else 0,
+        "tail_corruptions": int((positives_cpu[:, 2] != negatives_cpu[:, 2]).sum().item()) if pair_count else 0,
+        "positive_relation_counts": _counter_to_named_top(
+            Counter(int(r) for r in positives_cpu[:, 1].tolist()),
+            relation_names,
+            top_k=50,
+        ) if pair_count else [],
+        "negative_relation_counts": _counter_to_named_top(
+            Counter(int(r) for r in negatives_cpu[:, 1].tolist()),
+            relation_names,
+            top_k=50,
+        ) if pair_count else [],
+        "pairs": pairs,
+    }
+
+
+def _write_negative_debug_batches(output_path, payload):
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path, "w", encoding="utf-8") as file:
+        json.dump(payload, file, ensure_ascii=False, indent=2)
+
+
 def _load_negative_replay(path, source_name="KG"):
     if not path:
         raise ValueError(f"replay_{source_name.lower()}_negative_sampling=True but the replay path is empty.")
@@ -1441,6 +1526,26 @@ def train_DisMult(model, data, optimizer,num_epochs,gdp, save_file,device,
     negative_tracking_max_examples = config.get("kg_negative_tracking_max_examples", 50)
     if negative_tracking_max_examples is not None:
         negative_tracking_max_examples = int(negative_tracking_max_examples)
+    debug_negative_sampling_epochs = {
+        int(value) for value in config.get("debug_negative_sampling_epochs", [])
+    }
+    debug_negative_sampling_batches_per_epoch = int(config.get("debug_negative_sampling_batches_per_epoch", 0) or 0)
+    debug_negative_sampling_path = config.get("debug_negative_sampling_path")
+    debug_negative_sampling_payload = None
+    debug_negative_sampling_counts = Counter()
+    if debug_negative_sampling_epochs and debug_negative_sampling_batches_per_epoch > 0:
+        debug_negative_sampling_path = debug_negative_sampling_path or os.path.join(
+            config.get("kg_negative_tracking_dir", "analysis/negative_sampling"),
+            f"{save_file}_negative_debug_batches.json",
+        )
+        debug_negative_sampling_payload = {
+            "epochs": sorted(debug_negative_sampling_epochs),
+            "batches_per_epoch": debug_negative_sampling_batches_per_epoch,
+            "negative_corruption_mode": negative_corruption_mode,
+            "negative_entity_sampling_scope": config.get("negative_entity_sampling_scope", "batch"),
+            "batches": [],
+        }
+        print(f"\nDebug KG negative sampling batches: {debug_negative_sampling_path}\n")
     track_onto_negative_sampling = bool(config.get("track_onto_negative_sampling", False))
     onto_negative_tracking_max_examples = config.get("onto_negative_tracking_max_examples", 50)
     if onto_negative_tracking_max_examples is not None:
@@ -1515,6 +1620,7 @@ def train_DisMult(model, data, optimizer,num_epochs,gdp, save_file,device,
             "random_dynamic_masked_only", "balanced_dynamic_masked_only", "mapped_random_dynamic",
             "mapped_biased_dynamic",
             "all_mapped_plus_random_dynamic", "all_mapped_plus_balanced_dynamic",
+            "mapped_context_non_mapped_dynamic_random", "mapped_context_non_mapped_dynamic_balanced",
             "mapped_only_dynamic_random", "mapped_only_dynamic_balanced",
             "mapped_selector_dynamic_random", "mapped_selector_dynamic_balanced",
             "mapped_mix_dynamic_random", "mapped_mix_dynamic_balanced",
@@ -1644,6 +1750,7 @@ def train_DisMult(model, data, optimizer,num_epochs,gdp, save_file,device,
             "random_dynamic_masked_only", "balanced_dynamic_masked_only", "mapped_random_dynamic",
             "mapped_biased_dynamic",
             "all_mapped_plus_random_dynamic", "all_mapped_plus_balanced_dynamic",
+            "mapped_context_non_mapped_dynamic_random", "mapped_context_non_mapped_dynamic_balanced",
             "mapped_only_dynamic_random", "mapped_only_dynamic_balanced",
             "mapped_selector_dynamic_random", "mapped_selector_dynamic_balanced",
             "mapped_mix_dynamic_random", "mapped_mix_dynamic_balanced",
@@ -1689,7 +1796,7 @@ def train_DisMult(model, data, optimizer,num_epochs,gdp, save_file,device,
         epoch_loader = [_full_graph_batch(data)] if negative_entity_sampling_scope == "global" else G_data_loader
         with tqdm(total=len(epoch_loader), desc=f"Epoch {epoch + 1}/{num_epochs}", unit="batch") as main_pbar:
 
-            for G2_batch in epoch_loader:
+            for batch_index, G2_batch in enumerate(epoch_loader, start=1):
 
                 G2_batch = G2_batch.to(device)
                 removed_batch = copy.copy(G2_batch)
@@ -1726,6 +1833,7 @@ def train_DisMult(model, data, optimizer,num_epochs,gdp, save_file,device,
                     "balanced_dynamic_masked_only", "mapped_random_dynamic",
                     "mapped_biased_dynamic",
                     "all_mapped_plus_random_dynamic", "all_mapped_plus_balanced_dynamic",
+                    "mapped_context_non_mapped_dynamic_random", "mapped_context_non_mapped_dynamic_balanced",
                     "mapped_only_dynamic_random", "mapped_only_dynamic_balanced",
                     "mapped_selector_dynamic_random", "mapped_selector_dynamic_balanced",
                     "mapped_mix_dynamic_random", "mapped_mix_dynamic_balanced",
@@ -1796,6 +1904,26 @@ def train_DisMult(model, data, optimizer,num_epochs,gdp, save_file,device,
                 if all_positive_triplets.size(0) == 0 or all_negative_triplets.size(0) == 0:
                     main_pbar.update(1)
                     continue
+                if (
+                    debug_negative_sampling_payload is not None
+                    and (epoch + 1) in debug_negative_sampling_epochs
+                    and debug_negative_sampling_counts[epoch + 1] < debug_negative_sampling_batches_per_epoch
+                ):
+                    debug_negative_sampling_payload["batches"].append(
+                        _negative_debug_batch_record(
+                            epoch + 1,
+                            batch_index,
+                            all_positive_triplets,
+                            all_negative_triplets,
+                            G2_batch,
+                            gdp,
+                        )
+                    )
+                    debug_negative_sampling_counts[epoch + 1] += 1
+                    _write_negative_debug_batches(
+                        debug_negative_sampling_path,
+                        debug_negative_sampling_payload,
+                    )
                 if negative_tracking_state is not None:
                     _update_negative_tracking_state(
                         negative_tracking_state,
