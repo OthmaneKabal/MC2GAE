@@ -248,8 +248,12 @@ def update_summary_csv(summary_path, finish_record):
 
 def install_wandb_patch(model_main, project, run_name, wandb_config):
     wandb = model_main.wandb
-    original_init = wandb.init
-    original_settings = getattr(wandb, "Settings", None)
+    if not hasattr(wandb, "_mc2gae_initial_ablation_original_init"):
+        wandb._mc2gae_initial_ablation_original_init = wandb.init
+    if not hasattr(wandb, "_mc2gae_initial_ablation_original_settings"):
+        wandb._mc2gae_initial_ablation_original_settings = getattr(wandb, "Settings", None)
+    original_init = wandb._mc2gae_initial_ablation_original_init
+    original_settings = wandb._mc2gae_initial_ablation_original_settings
 
     def patched_init(*args, **kwargs):
         kwargs["project"] = project
@@ -271,7 +275,9 @@ def install_wandb_patch(model_main, project, run_name, wandb_config):
 
 
 def install_dropout_hook(model_main, dropout):
-    original_encoder = model_main.TransGCNEncoder
+    if not hasattr(model_main, "_mc2gae_initial_ablation_original_transgcn"):
+        model_main._mc2gae_initial_ablation_original_transgcn = model_main.TransGCNEncoder
+    original_encoder = model_main._mc2gae_initial_ablation_original_transgcn
 
     def dropout_encoder(*args, **kwargs):
         kwargs["dropout"] = float(dropout)
