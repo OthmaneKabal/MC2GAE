@@ -507,7 +507,7 @@ def main():
     parser.add_argument("--batch-size", type=int, default=1024)
     parser.add_argument("--encoder", default="RotatEGCN_attn")
     parser.add_argument("--decoder", default="MLP")
-    parser.add_argument("--dropout", type=float, default=0.0)
+    parser.add_argument("--dropout", type=float, default=0.2)
     parser.add_argument("--wandb-project", default="Initial_Embedding_Quality_Ablation")
     parser.add_argument("--wandb-mode", default=os.environ.get("WANDB_MODE"))
     parser.add_argument("--out-root", default=str(DEFAULT_OUT_ROOT))
