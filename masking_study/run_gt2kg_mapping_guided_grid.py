@@ -54,6 +54,7 @@ LEGACY_GLOBAL_BUDGET_MODES = {
     "mapped_random_dynamic_15_15": 0.3,
     "mapped_random_dynamic_20_10": 0.3,
     "mapped_random_dynamic_20_30": 0.5,
+    "mapped_random_dynamic_10_90": 0.7,
 }
 ALL_MODES = (
     NO_RATE_MODES

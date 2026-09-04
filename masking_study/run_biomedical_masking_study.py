@@ -53,6 +53,7 @@ SHORT_MODE_NAMES = {
     "mapped_random_dynamic_15_15": "mrd15_15",
     "mapped_random_dynamic_20_10": "mrd20_10",
     "mapped_random_dynamic_20_30": "mrd20_30",
+    "mapped_random_dynamic_10_90": "mrd10_90",
     "mapping_guided_mapped_predicate": "mg_pred",
     "mapping_guided_old_predicate": "mg_old",
     "whole_graph": "whole",
@@ -325,6 +326,13 @@ MAPPING_GUIDED_MODES = [
         "target_relation_field": "predicate",
         "mapped_random_dynamic_mapped_fraction": 0.4,
         "description": "Dynamic masking with 20% mapped edges and 30% other edges when total_drop_rate=0.5.",
+    },
+    {
+        "name": "mapped_random_dynamic_10_90",
+        "recons_r_training_mode": "mapped_random_dynamic",
+        "target_relation_field": "predicate",
+        "mapped_random_dynamic_mapped_fraction": 0.1,
+        "description": "Dynamic masking with a global 70% budget: 10% of the masked edges from mapped edges and 90% from non-mapped edges.",
     },
 ]
 
