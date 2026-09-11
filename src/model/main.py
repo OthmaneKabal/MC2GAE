@@ -150,7 +150,7 @@ def _prepare_domain_range_embedding_tensors(constraints_path, kg_gdp, onto_gdp, 
     skipped_relations = 0
 
     for relation_name, values in relation_constraints.items():
-        if relation_name not in kg_gdp.predicate_to_id or relation_name == "isa":
+        if relation_name not in kg_gdp.predicate_to_id:
             skipped_relations += 1
             continue
         direct_domain = [
@@ -197,7 +197,7 @@ def _prepare_domain_range_embedding_tensors(constraints_path, kg_gdp, onto_gdp, 
     range_allowed_mask = torch.zeros((num_relations, len(sorted_type_names)), dtype=torch.float32, device=device)
 
     for relation_name, values in relation_constraints.items():
-        if relation_name not in kg_gdp.predicate_to_id or relation_name == "isa":
+        if relation_name not in kg_gdp.predicate_to_id:
             continue
         relation_id = kg_gdp.predicate_to_id[relation_name]
         for type_name in values.get("direct_domain", []):
@@ -452,9 +452,6 @@ def main():
                     print(encoder_)
                     for decoder_ in config["decoders"]:
                         if (encoder_ in ["RGCN", "GCN", "GAT"]) and (decoder_ in ["TransGCN_conv", "TransGCN_attn", "RotatEGCN_conv", "RotatEGCN_attn"]):
-                            print(f"Skipping invalid combination: enc={encoder_}, dec={decoder_}")
-                            continue
-                        if (encoder_ in ["RGCN", "GAT"]) and (decoder_ in ["GAT","RGCN"]):
                             print(f"Skipping invalid combination: enc={encoder_}, dec={decoder_}")
                             continue
                         use_num_bases = (encoder_ == "RGCN") or (decoder_ == "RGCN")
