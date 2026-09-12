@@ -100,6 +100,11 @@ def parse_args():
     parser.add_argument("--rgcn-bases", nargs="+", type=int, default=RGCN_BASES)
     parser.add_argument("--num-epochs", type=int, default=50)
     parser.add_argument("--batch-size", type=int, default=1024)
+    parser.add_argument(
+        "--num-neighbors", nargs=2, type=int, default=[-1, -1],
+        metavar=("HOP1", "HOP2"),
+        help="Maximum sampled neighbors per GNN hop; use -1 -1 for all neighbors.",
+    )
     parser.add_argument("--dropout", type=float, default=0.2)
     parser.add_argument("--plm-model", default="sentence-transformers/all-MiniLM-L6-v2")
     parser.add_argument("--embedding-tag", default="sentence-transformers_all-MiniLM-L6-v2")
@@ -214,7 +219,7 @@ def write_plan(path: Path, experiments: list[dict], args):
             "num_epochs": args.num_epochs,
             "batch_size": args.batch_size,
             "dropout": args.dropout,
-            "num_neighbors": [-1, -1],
+            "num_neighbors": args.num_neighbors,
             "negative_corruption_mode": "entity_only",
             "ontology": False,
             "save_checkpoints": False,
@@ -279,6 +284,7 @@ def worker_config(experiment: dict, args, run_dir: Path) -> dict:
         "run_dir": str(absolute_path(run_dir)),
         "num_epochs": args.num_epochs,
         "batch_size": args.batch_size,
+        "num_neighbors": args.num_neighbors,
         "dropout": args.dropout,
         "plm_model": args.plm_model,
         "wandb_project": args.wandb_project,
@@ -329,7 +335,7 @@ def run_worker(path: Path) -> int:
         "recons_r_target_relation_field": "predicate",
         "negative_corruption_mode": "entity_only",
         "negative_entity_sampling_scope": "batch",
-        "num_neighbors": [-1, -1],
+        "num_neighbors": spec["num_neighbors"],
         "batch_size": spec["batch_size"],
         "test_batch_size": spec["batch_size"],
         "num_epochs": spec["num_epochs"],
