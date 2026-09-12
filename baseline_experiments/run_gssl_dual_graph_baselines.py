@@ -445,7 +445,9 @@ def run_one(experiment: dict, args, db_path: Path, out_root: Path) -> dict:
         encoding="utf-8",
     )
     log_path = run_dir / "run.log"
-    command = [sys.executable, str(Path(__file__).resolve()), "--worker-config", str(spec_path)]
+    # Keep worker diagnostics visible immediately in the per-run log.  Without
+    # -u, output can remain buffered for several minutes during graph loading.
+    command = [sys.executable, "-u", str(Path(__file__).resolve()), "--worker-config", str(spec_path)]
     start = {
         "event": "start",
         "status": "running",

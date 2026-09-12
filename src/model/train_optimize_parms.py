@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 from datetime import datetime
 from collections import Counter
+import time
 
 from networkx.algorithms.connectivity import edge_augmentation
 
@@ -1245,6 +1246,11 @@ def _negative_debug_batch_record(epoch, batch_index, positives, negatives, batch
     relation_names = _relation_name_map(gdp)
     node_names = _node_name_map(gdp)
 
+    positive_triplets = [
+        _triplet_to_record(triplet.tolist(), node_ids, node_names, relation_names)
+        for triplet in positives_cpu
+    ]
+
     pairs = []
     for idx in range(pair_count):
         pos = positives_cpu[idx].tolist()
@@ -1266,6 +1272,8 @@ def _negative_debug_batch_record(epoch, batch_index, positives, negatives, batch
         "epoch": int(epoch),
         "batch_index": int(batch_index),
         "num_pairs": int(pair_count),
+        "num_positive_triplets": int(positives_cpu.size(0)),
+        "positive_triplets": positive_triplets,
         "head_corruptions": int((positives_cpu[:, 0] != negatives_cpu[:, 0]).sum().item()) if pair_count else 0,
         "relation_corruptions": int((positives_cpu[:, 1] != negatives_cpu[:, 1]).sum().item()) if pair_count else 0,
         "tail_corruptions": int((positives_cpu[:, 2] != negatives_cpu[:, 2]).sum().item()) if pair_count else 0,
@@ -1510,6 +1518,12 @@ def train_DisMult(model, data, optimizer,num_epochs,gdp, save_file,device,
                            lambda_onto_hierarchy=0.0,
                            negative_sampling_mode="uniform", soft_type_candidates=None,
                            soft_type_negative_ratio=0.7, negative_corruption_mode="mixed"):
+    startup_t0 = time.perf_counter()
+    print(
+        f"[TRAIN-STARTUP] train_DisMult entered: nodes={data.num_nodes} "
+        f"edges={data.edge_index.size(1)} epochs={num_epochs} device={device}",
+        flush=True,
+    )
     seed = _resolve_seed(seed)
     best_loss = float('inf')
     best_F1 = 0
@@ -1533,7 +1547,7 @@ def train_DisMult(model, data, optimizer,num_epochs,gdp, save_file,device,
     debug_negative_sampling_path = config.get("debug_negative_sampling_path")
     debug_negative_sampling_payload = None
     debug_negative_sampling_counts = Counter()
-    if debug_negative_sampling_epochs and debug_negative_sampling_batches_per_epoch > 0:
+    if debug_negative_sampling_epochs and debug_negative_sampling_batches_per_epoch != 0:
         debug_negative_sampling_path = debug_negative_sampling_path or os.path.join(
             config.get("kg_negative_tracking_dir", "analysis/negative_sampling"),
             f"{save_file}_negative_debug_batches.json",
@@ -1541,6 +1555,7 @@ def train_DisMult(model, data, optimizer,num_epochs,gdp, save_file,device,
         debug_negative_sampling_payload = {
             "epochs": sorted(debug_negative_sampling_epochs),
             "batches_per_epoch": debug_negative_sampling_batches_per_epoch,
+            "all_batches": debug_negative_sampling_batches_per_epoch < 0,
             "negative_corruption_mode": negative_corruption_mode,
             "negative_entity_sampling_scope": config.get("negative_entity_sampling_scope", "batch"),
             "batches": [],
@@ -1736,11 +1751,26 @@ def train_DisMult(model, data, optimizer,num_epochs,gdp, save_file,device,
         print("\nUsing full-graph batches so entity corruption is sampled from the whole graph.\n")
         G_data_loader = None
     else:
+        loader_t0 = time.perf_counter()
+        print(
+            f"[TRAIN-STARTUP] constructing GraphDataLoader: batch_size={config['batch_size']} "
+            f"num_neighbors={config['num_neighbors']} shuffle={config['shuffle']}",
+            flush=True,
+        )
         G_data_loader = GraphDataLoader(data, num_neighbors=config["num_neighbors"],
                                         batch_size=config["batch_size"], shuffle=config["shuffle"], seed=seed).get_loader()
         G_data_loader.edge_attr = data.edge_attr
+        print(
+            f"[TRAIN-STARTUP] GraphDataLoader ready in {time.perf_counter() - loader_t0:.2f}s",
+            flush=True,
+        )
     set_seed(seed)
     global_step = 0
+
+    print(
+        f"[TRAIN-STARTUP] entering epoch loop after {time.perf_counter() - startup_t0:.2f}s",
+        flush=True,
+    )
 
     for epoch in range(num_epochs):
         if _step_limit_reached(global_step):
@@ -1907,7 +1937,10 @@ def train_DisMult(model, data, optimizer,num_epochs,gdp, save_file,device,
                 if (
                     debug_negative_sampling_payload is not None
                     and (epoch + 1) in debug_negative_sampling_epochs
-                    and debug_negative_sampling_counts[epoch + 1] < debug_negative_sampling_batches_per_epoch
+                    and (
+                        debug_negative_sampling_batches_per_epoch < 0
+                        or debug_negative_sampling_counts[epoch + 1] < debug_negative_sampling_batches_per_epoch
+                    )
                 ):
                     debug_negative_sampling_payload["batches"].append(
                         _negative_debug_batch_record(

@@ -1,6 +1,7 @@
 
 import sys
 import os
+import time
 os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
 import json
 import random
@@ -301,6 +302,7 @@ def _ensure_seeded_wandb_init():
 
 
 def main():
+    startup_t0 = time.perf_counter()
     seed_config = config["seed"]
     if isinstance(seed_config, (list, tuple)):
         base_root_save_dir = config["root_save_dir"]
@@ -319,6 +321,12 @@ def main():
     _set_all_seeds(active_seed)
     _ensure_seeded_wandb_init()
 
+    print(
+        f"[STARTUP] seed={active_seed} device={config.get('device')} "
+        f"task={config.get('training_task')} graph={config.get('KG_path')}",
+        flush=True,
+    )
+
     results = []
     wandb_project_name = config["wandb_project_name"]
     # save_dir = config["save_dir"]
@@ -327,6 +335,8 @@ def main():
     Edges_path = config["Edges_path"]
     plm_embedding_model = config["plm_embedding_model"]
     device = config["device"]
+    phase_t0 = time.perf_counter()
+    print("[STARTUP] constructing GraphDataPreparation...", flush=True)
     gdp = GraphDataPreparation(
         Entities_path,
         KG_path,
@@ -334,9 +344,23 @@ def main():
         is_directed=True,
         model_name_init=plm_embedding_model,
     )
+    print(
+        f"[STARTUP] GraphDataPreparation constructed in {time.perf_counter() - phase_t0:.2f}s",
+        flush=True,
+    )
+    phase_t0 = time.perf_counter()
+    print("[STARTUP] preparing KG graph and PyG tensors...", flush=True)
     data = gdp.prepare_graph_with_type()
-    print(data)
+    print(
+        f"[STARTUP] KG graph prepared in {time.perf_counter() - phase_t0:.2f}s: "
+        f"nodes={data.num_nodes} edges={data.edge_index.size(1)} "
+        f"relations={getattr(data, 'num_edge_types', 'unknown')}",
+        flush=True,
+    )
+    print(data, flush=True)
+    phase_t0 = time.perf_counter()
     data = data.to(device)
+    print(f"[STARTUP] KG tensors moved to {device} in {time.perf_counter() - phase_t0:.2f}s", flush=True)
     if config.get("recons_r_target_relation_field", "predicate") == "old_predicate":
         data.num_recons_edge_types = int(data.num_old_edge_types)
     else:
@@ -361,6 +385,8 @@ def main():
     soft_type_negative_candidates = None
     if "Recons_R_with_onto" in config["training_task"]:
         print("\n--- Preparing ontology graph from semantic network ---\n")
+        phase_t0 = time.perf_counter()
+        print("[STARTUP] constructing ontology GraphDataPreparation...", flush=True)
         onto_gdp = GraphDataPreparation(
             config["onto_entities_path"],
             config["onto_KG_path"],
@@ -368,8 +394,19 @@ def main():
             is_directed=True,
             model_name_init=plm_embedding_model,
         )
+        print(
+            f"[STARTUP] ontology GraphDataPreparation constructed in {time.perf_counter() - phase_t0:.2f}s",
+            flush=True,
+        )
+        phase_t0 = time.perf_counter()
+        print("[STARTUP] preparing ontology graph and PyG tensors...", flush=True)
         onto_data = onto_gdp.prepare_graph_with_type().to(device)
-        print(onto_data)
+        print(
+            f"[STARTUP] ontology graph prepared and moved to {device} in "
+            f"{time.perf_counter() - phase_t0:.2f}s",
+            flush=True,
+        )
+        print(onto_data, flush=True)
         shared_relations = sorted(set(gdp.predicate_to_id) & set(onto_gdp.predicate_to_id))
         print(f"Shared KG/ontology relations for alignment: {len(shared_relations)}")
         if shared_relations:
@@ -915,9 +952,19 @@ def main():
                                 if kg_core_ids is not None and config.get("lambda_core_align", 0) != 0:
                                     core_projector = torch.nn.Linear(out_channels[-1], out_channels[-1]).to(device)
                                     optimizer_params += list(core_projector.parameters())
+                            print(
+                                f"[STARTUP] creating optimizer/model for {run_name} "
+                                f"(parameters={sum(parameter.numel() for parameter in optimizer_params):,})",
+                                flush=True,
+                            )
                             optimizer = optim.Adam(optimizer_params, lr=config["learning_rate"])
 
                             local_data = copy.deepcopy(data)
+                            print(
+                                f"[STARTUP] model and optimizer ready; entering training for {run_name} "
+                                f"after {time.perf_counter() - startup_t0:.2f}s",
+                                flush=True,
+                            )
 
                             if use_onto:
                                 performances = train_DisMult_with_onto(
