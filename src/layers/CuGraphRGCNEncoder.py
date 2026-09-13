@@ -88,7 +88,9 @@ class _DirectCuGraphRGCNConv(CuGraphRGCNConv):
             edge_type,
             int(sparse_size[0]),
             int(num_edge_types),
-            dst_max_in_degree=max_num_neighbors,
+            dst_max_in_degree=(
+                -1 if max_num_neighbors is None else int(max_num_neighbors)
+            ),
         )
 
 
