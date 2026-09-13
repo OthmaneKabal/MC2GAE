@@ -1004,7 +1004,9 @@ def _run_linear_probe_on_best_loss(model, data, gdp, cfg, device, save_file, wan
         raise FileNotFoundError(f"Linear probe splits dir not found: {cfg.get('linear_probe_splits_dir')}")
 
     gs_df = pd.read_excel(gs_path)
-    required_cols = {"idx", "term", "label"}
+    # Splits store row positions, so an explicit ``idx`` column is optional.
+    # Biomedical and DBpedia gold standards use different column schemas.
+    required_cols = {"term", "label"}
     missing_cols = required_cols - set(gs_df.columns)
     if missing_cols:
         raise ValueError(f"Linear probe GS missing columns: {sorted(missing_cols)}")
