@@ -6,10 +6,12 @@ try:
     from torch_geometric import EdgeIndex
     from torch_geometric import __version__ as pyg_version
     from torch_geometric.nn import CuGraphRGCNConv
+    import pylibcugraphops
 except ImportError:
     EdgeIndex = None
     pyg_version = "0.0.0"
     CuGraphRGCNConv = None
+    pylibcugraphops = None
 
 
 def _version_at_least(version, major, minor):
@@ -18,6 +20,47 @@ def _version_at_least(version, major, minor):
         return (int(parts[0]), int(parts[1])) >= (major, minor)
     except (IndexError, ValueError):
         return False
+
+
+class _DirectCuGraphRGCNConv(CuGraphRGCNConv):
+    """Use cuGraph's native CSC signature instead of PyG's HeteroCSC wrapper.
+
+    The installed cuGraphOps API documents ``make_csc_hg`` as accepting
+    ``(offsets, indices, n_node_types, n_edge_types, node_types,
+    edge_types, ...)``. Some PyG versions call the ``HeteroCSC`` wrapper with
+    an extra ``num_src_nodes`` positional argument, which shifts the native
+    arguments and produces misleading edge-type shape errors.
+    """
+
+    def get_typed_cugraph(self, edge_index, edge_type, num_edge_types,
+                          max_num_neighbors=None):
+        if pylibcugraphops is None:
+            raise ImportError("pylibcugraphops is required for cuGraph RGCN")
+        if not hasattr(edge_index, "get_csc"):
+            raise TypeError("Expected a PyG EdgeIndex with get_csc()")
+
+        (colptr, row), perm = edge_index.get_csc()
+        if perm is not None:
+            edge_type = edge_type[perm]
+        edge_type = edge_type.reshape(-1).to(dtype=torch.int32).contiguous()
+
+        if edge_type.numel() != row.numel():
+            raise ValueError(
+                "cuGraph CSC metadata mismatch: "
+                f"row has {row.numel()} edges but edge_type has "
+                f"{edge_type.numel()} values."
+            )
+
+        # Native pylibcugraphops signature for a homogeneous typed CSC graph.
+        return pylibcugraphops.make_csc_hg(
+            colptr,
+            row,
+            0,  # n_node_types
+            int(num_edge_types),
+            None,  # node_types
+            edge_type,
+            None,  # map_csc_to_coo
+        )
 
 
 class CuGraphRGCNEncoder(nn.Module):
@@ -50,7 +93,7 @@ class CuGraphRGCNEncoder(nn.Module):
         for layer_index in range(num_layers):
             input_dim = in_channels if layer_index == 0 else out_channels[layer_index - 1]
             self.convs.append(
-                CuGraphRGCNConv(
+                _DirectCuGraphRGCNConv(
                     input_dim,
                     out_channels[layer_index],
                     num_relations,
