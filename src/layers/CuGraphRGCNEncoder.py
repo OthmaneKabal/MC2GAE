@@ -3,8 +3,10 @@ import torch
 from torch_geometric.data import Data
 
 try:
+    from torch_geometric import EdgeIndex
     from torch_geometric.nn import CuGraphRGCNConv
 except ImportError:
+    EdgeIndex = None
     CuGraphRGCNConv = None
 
 
@@ -53,7 +55,7 @@ class CuGraphRGCNEncoder(nn.Module):
         self.relu = nn.ReLU()
 
     @staticmethod
-    def _to_csc(edge_index, num_nodes, message_sens):
+    def _prepare_adjacency(edge_index, edge_type, num_nodes, message_sens):
         if message_sens == "source_to_target":
             source, target = edge_index[0], edge_index[1]
         else:
@@ -62,12 +64,27 @@ class CuGraphRGCNEncoder(nn.Module):
         order = torch.argsort(target)
         row = source[order].contiguous()
         sorted_target = target[order]
+        sorted_edge_type = edge_type[order].contiguous()
+
+        # PyG >= 2.7 exposes the cuGraph operator with EdgeIndex input.
+        # Older PyG releases used the (row, colptr) CSC tuple instead.
+        if EdgeIndex is not None:
+            sorted_edge_index = torch.stack((source[order], target[order]), dim=0)
+            return (
+                EdgeIndex(
+                    sorted_edge_index,
+                    sparse_size=(num_nodes, num_nodes),
+                    sort_order="col",
+                ),
+                sorted_edge_type,
+            )
+
         counts = torch.bincount(sorted_target, minlength=num_nodes)
         colptr = torch.cat((
             torch.zeros(1, dtype=torch.long, device=edge_index.device),
             counts.cumsum(0),
         )).contiguous()
-        return row, colptr
+        return (row, colptr), sorted_edge_type
 
     def reset_parameters(self):
         for conv in self.convs:
@@ -80,10 +97,12 @@ class CuGraphRGCNEncoder(nn.Module):
         x = data.x
         edge_index = data.edge_index
         edge_type = data.edge_type
-        csc = self._to_csc(edge_index, x.size(0), self.message_sens)
+        adjacency, edge_type = self._prepare_adjacency(
+            edge_index, edge_type, x.size(0), self.message_sens
+        )
 
         for conv, bn in zip(self.convs, self.bns):
-            x = conv(x, csc, edge_type)
+            x = conv(x, adjacency, edge_type)
             x = bn(x)
             x = self.relu(x)
             x = self.dropout(x)
