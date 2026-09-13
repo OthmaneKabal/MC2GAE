@@ -96,7 +96,8 @@ class CuGraphRGCNEncoder(nn.Module):
             torch.zeros(1, dtype=torch.long, device=edge_index.device),
             counts.cumsum(0),
         )).contiguous()
-        return (row, colptr), sorted_edge_type
+        # PyG 2.5.x expects the source-node count as the third CSC item.
+        return (row, colptr, num_nodes), sorted_edge_type
 
     def reset_parameters(self):
         for conv in self.convs:
