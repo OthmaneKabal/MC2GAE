@@ -217,7 +217,8 @@ class CuGraphRGCNEncoder(nn.Module):
                     "CuGraphRGCNConv failed: "
                     f"PyG={pyg_version}, adjacency={adjacency_kind}{adjacency_shapes}, "
                     f"edge_type_shape={tuple(edge_type.shape)}, "
-                    f"edge_type_dtype={edge_type.dtype}, x_shape={tuple(x.shape)}"
+                    f"edge_type_dtype={edge_type.dtype}, x_shape={tuple(x.shape)}, "
+                    f"native_error={exc!r}"
                 ) from exc
             x = bn(x)
             x = self.relu(x)
