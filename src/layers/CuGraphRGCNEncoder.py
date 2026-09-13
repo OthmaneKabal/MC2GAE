@@ -123,7 +123,20 @@ class CuGraphRGCNEncoder(nn.Module):
         )
 
         for conv, bn in zip(self.convs, self.bns):
-            x = conv(x, adjacency, edge_type)
+            try:
+                x = conv(x, adjacency, edge_type)
+            except Exception as exc:
+                adjacency_kind = type(adjacency).__name__
+                adjacency_shapes = [
+                    tuple(item.shape) if torch.is_tensor(item) else type(item).__name__
+                    for item in adjacency
+                ] if isinstance(adjacency, tuple) else tuple(adjacency.shape)
+                raise RuntimeError(
+                    "CuGraphRGCNConv failed: "
+                    f"PyG={pyg_version}, adjacency={adjacency_kind}{adjacency_shapes}, "
+                    f"edge_type_shape={tuple(edge_type.shape)}, "
+                    f"edge_type_dtype={edge_type.dtype}, x_shape={tuple(x.shape)}"
+                ) from exc
             x = bn(x)
             x = self.relu(x)
             x = self.dropout(x)
