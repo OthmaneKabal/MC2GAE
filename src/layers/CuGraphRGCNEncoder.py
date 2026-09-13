@@ -88,6 +88,11 @@ class _DirectCuGraphRGCNConv(_CuGraphConvBase):
         if sparse_size[0] is None:
             raise ValueError("cuGraph EdgeIndex must define its source size")
 
+        # cuGraphOps can reject the aggregation launch when the sampled CSC
+        # graph carries no explicit maximum in-degree. Compute it from the
+        # actual batch rather than passing the PyG default ``None``.
+        max_in_degree = int((colptr[1:] - colptr[:-1]).max().item())
+
         # Keep the wrapper expected by the PyTorch operator, but use the
         # native signature inside its graph construction.
         return _DirectHeteroCSC(
@@ -96,9 +101,7 @@ class _DirectCuGraphRGCNConv(_CuGraphConvBase):
             edge_type,
             int(sparse_size[0]),
             int(num_edge_types),
-            dst_max_in_degree=(
-                -1 if max_num_neighbors is None else int(max_num_neighbors)
-            ),
+            dst_max_in_degree=max(1, max_in_degree),
         )
 
 
