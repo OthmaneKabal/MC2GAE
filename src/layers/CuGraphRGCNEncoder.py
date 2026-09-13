@@ -4,10 +4,20 @@ from torch_geometric.data import Data
 
 try:
     from torch_geometric import EdgeIndex
+    from torch_geometric import __version__ as pyg_version
     from torch_geometric.nn import CuGraphRGCNConv
 except ImportError:
     EdgeIndex = None
+    pyg_version = "0.0.0"
     CuGraphRGCNConv = None
+
+
+def _version_at_least(version, major, minor):
+    parts = version.split(".")
+    try:
+        return (int(parts[0]), int(parts[1])) >= (major, minor)
+    except (IndexError, ValueError):
+        return False
 
 
 class CuGraphRGCNEncoder(nn.Module):
@@ -68,7 +78,9 @@ class CuGraphRGCNEncoder(nn.Module):
 
         # PyG >= 2.7 exposes the cuGraph operator with EdgeIndex input.
         # Older PyG releases used the (row, colptr) CSC tuple instead.
-        if EdgeIndex is not None:
+        # PyG 2.6 introduced the EdgeIndex input expected by the current
+        # cuGraph operator. Older releases expect the explicit CSC tuple.
+        if EdgeIndex is not None and _version_at_least(pyg_version, 2, 6):
             sorted_edge_index = torch.stack((source[order], target[order]), dim=0)
             return (
                 EdgeIndex(
@@ -98,7 +110,13 @@ class CuGraphRGCNEncoder(nn.Module):
         edge_index = data.edge_index
         # NeighborLoader may preserve edge attributes as [E, 1], while the
         # cuGraph operator requires a flat integer relation vector [E].
-        edge_type = data.edge_type.reshape(-1).to(dtype=torch.long)
+        edge_type = data.edge_type.reshape(-1).to(dtype=torch.long).contiguous()
+        if edge_type.numel() != edge_index.size(1):
+            raise ValueError(
+                "CuGraphRGCNEncoder received mismatched edge metadata: "
+                f"edge_index has {edge_index.size(1)} edges but edge_type has "
+                f"{edge_type.numel()} values."
+            )
         adjacency, edge_type = self._prepare_adjacency(
             edge_index, edge_type, x.size(0), self.message_sens
         )
