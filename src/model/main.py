@@ -27,6 +27,7 @@ from MLPDecoder import MLPDecoder
 from TransGCNEncoder import TransGCNEncoder
 from TransGCNDecoder import TransGCNDecoder
 from RGCNEncoder import RGCNEncoder
+from CuGraphRGCNEncoder import CuGraphRGCNEncoder
 from RGCNDecoder import RGCNDecoder
 from GraphDataPreparation import GraphDataPreparation
 from MRGAE import MRGAE

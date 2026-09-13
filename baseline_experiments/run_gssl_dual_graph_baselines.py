@@ -37,6 +37,7 @@ ENCODERS = [
     "TransGCN_attn",
     "TransGCN_conv",
     "RGCN",
+    "CuGraphRGCN",
     "GAT",
     "GCN",
 ]
@@ -183,7 +184,7 @@ def build_experiments(args) -> list[dict]:
     for graph in args.graphs:
         for task in args.tasks:
             for encoder in args.encoders:
-                bases_values = args.rgcn_bases if encoder == "RGCN" else [None]
+                bases_values = args.rgcn_bases if encoder in ("RGCN", "CuGraphRGCN") else [None]
                 for bases in bases_values:
                     decoders = [None]
                     if task == "recons_x_symmetric":
@@ -359,8 +360,11 @@ def run_worker(path: Path) -> int:
         "save_checkpoints": False,
         "root_save_dir": str(run_dir / "checkpoints"),
         "wandb_project_name": spec["wandb_project"],
-        "encoders": [spec["encoder"]],
-        "decoders": ([spec["encoder"]] if spec["task"] == "recons_x_symmetric" else
+        # main.py keeps the legacy RGCN branch; for the cuGraph variant we
+        # route that branch to CuGraphRGCNEncoder below.
+        "encoders": ["RGCN" if spec["encoder"] == "CuGraphRGCN" else spec["encoder"]],
+        "decoders": (["RGCN" if spec["encoder"] == "CuGraphRGCN" else spec["encoder"]]
+                      if spec["task"] == "recons_x_symmetric" else
                      ["MLP"] if spec["task"] == "recons_x_mlp" else []),
         "message_sens": ["source_to_target"],
         "hyperparams_grid": {
@@ -371,6 +375,9 @@ def run_worker(path: Path) -> int:
 
     import train_optimize_parms
     import main as model_main
+
+    if spec["encoder"] == "CuGraphRGCN":
+        model_main.RGCNEncoder = model_main.CuGraphRGCNEncoder
 
     # Some legacy constructor calls in main.py rely on their class defaults.
     # Wrap them for this study so every GNN encoder uses the requested dropout.
