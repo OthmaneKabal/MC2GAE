@@ -96,7 +96,9 @@ class CuGraphRGCNEncoder(nn.Module):
     def forward(self, data: Data):
         x = data.x
         edge_index = data.edge_index
-        edge_type = data.edge_type
+        # NeighborLoader may preserve edge attributes as [E, 1], while the
+        # cuGraph operator requires a flat integer relation vector [E].
+        edge_type = data.edge_type.reshape(-1).to(dtype=torch.long)
         adjacency, edge_type = self._prepare_adjacency(
             edge_index, edge_type, x.size(0), self.message_sens
         )
