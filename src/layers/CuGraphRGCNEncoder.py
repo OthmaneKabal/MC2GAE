@@ -7,11 +7,13 @@ try:
     from torch_geometric import __version__ as pyg_version
     from torch_geometric.nn import CuGraphRGCNConv
     import pylibcugraphops
+    from pylibcugraphops.pytorch.graph import HeteroCSC
 except ImportError:
     EdgeIndex = None
     pyg_version = "0.0.0"
     CuGraphRGCNConv = None
     pylibcugraphops = None
+    HeteroCSC = None
 
 
 def _version_at_least(version, major, minor):
@@ -20,6 +22,30 @@ def _version_at_least(version, major, minor):
         return (int(parts[0]), int(parts[1])) >= (major, minor)
     except (IndexError, ValueError):
         return False
+
+
+class _DirectHeteroCSC(HeteroCSC):
+    """Keep the cuGraph wrapper while fixing its native argument order."""
+
+    def _build_graph(self):
+        if self.is_bipartite:
+            raise NotImplementedError(
+                "Direct cuGraph RGCN currently supports homogeneous CSC only"
+            )
+
+        self.graph_csc = pylibcugraphops.make_csc_hg(
+            self.offsets,
+            self.indices,
+            self.num_src_nodes,
+            self.num_node_types,
+            self.num_edge_types,
+            self.node_types,
+            self.edge_types,
+            self.map_csc_to_coo,
+            self.rev_offsets,
+            self.rev_indices,
+            self.map_rev_to_coo,
+        )
 
 
 class _DirectCuGraphRGCNConv(CuGraphRGCNConv):
@@ -54,16 +80,15 @@ class _DirectCuGraphRGCNConv(CuGraphRGCNConv):
         if sparse_size[0] is None:
             raise ValueError("cuGraph EdgeIndex must define its source size")
 
-        # Native pylibcugraphops signature for a homogeneous typed CSC graph.
-        return pylibcugraphops.make_csc_hg(
+        # Keep the wrapper expected by the PyTorch operator, but use the
+        # native signature inside its graph construction.
+        return _DirectHeteroCSC(
             colptr,
             row,
-            int(sparse_size[0]),  # n_src_nodes
-            0,  # n_node_types
-            int(num_edge_types),
-            None,  # node_types
             edge_type,
-            None,  # map_csc_to_coo
+            int(sparse_size[0]),
+            int(num_edge_types),
+            dst_max_in_degree=max_num_neighbors,
         )
 
 
