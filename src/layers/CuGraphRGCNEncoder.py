@@ -25,11 +25,10 @@ def _version_at_least(version, major, minor):
 class _DirectCuGraphRGCNConv(CuGraphRGCNConv):
     """Use cuGraph's native CSC signature instead of PyG's HeteroCSC wrapper.
 
-    The installed cuGraphOps API documents ``make_csc_hg`` as accepting
-    ``(offsets, indices, n_node_types, n_edge_types, node_types,
-    edge_types, ...)``. Some PyG versions call the ``HeteroCSC`` wrapper with
-    an extra ``num_src_nodes`` positional argument, which shifts the native
-    arguments and produces misleading edge-type shape errors.
+    The installed cuGraphOps binding accepts
+    ``(offsets, indices, n_src_nodes, n_node_types, n_edge_types,
+    node_types, edge_types, ...)``. We call it directly so the relation
+    vector remains an explicit 1D argument.
     """
 
     def get_typed_cugraph(self, edge_index, edge_type, num_edge_types,
@@ -51,10 +50,15 @@ class _DirectCuGraphRGCNConv(CuGraphRGCNConv):
                 f"{edge_type.numel()} values."
             )
 
+        sparse_size = edge_index.sparse_size()
+        if sparse_size[0] is None:
+            raise ValueError("cuGraph EdgeIndex must define its source size")
+
         # Native pylibcugraphops signature for a homogeneous typed CSC graph.
         return pylibcugraphops.make_csc_hg(
             colptr,
             row,
+            int(sparse_size[0]),  # n_src_nodes
             0,  # n_node_types
             int(num_edge_types),
             None,  # node_types
