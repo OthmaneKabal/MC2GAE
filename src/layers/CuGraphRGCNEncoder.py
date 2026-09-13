@@ -24,31 +24,39 @@ def _version_at_least(version, major, minor):
         return False
 
 
-class _DirectHeteroCSC(HeteroCSC):
-    """Keep the cuGraph wrapper while fixing its native argument order."""
+if HeteroCSC is not None:
+    class _DirectHeteroCSC(HeteroCSC):
+        """Keep the cuGraph wrapper while fixing native argument order."""
 
-    def _build_graph(self):
-        if self.is_bipartite:
-            raise NotImplementedError(
-                "Direct cuGraph RGCN currently supports homogeneous CSC only"
+        def _build_graph(self):
+            if self.is_bipartite:
+                raise NotImplementedError(
+                    "Direct cuGraph RGCN currently supports homogeneous CSC only"
+                )
+
+            self.graph_csc = pylibcugraphops.make_csc_hg(
+                self.offsets,
+                self.indices,
+                self.num_src_nodes,
+                self.num_node_types,
+                self.num_edge_types,
+                self.node_types,
+                self.edge_types,
+                self.map_csc_to_coo,
+                self.rev_offsets,
+                self.rev_indices,
+                self.map_rev_to_coo,
             )
-
-        self.graph_csc = pylibcugraphops.make_csc_hg(
-            self.offsets,
-            self.indices,
-            self.num_src_nodes,
-            self.num_node_types,
-            self.num_edge_types,
-            self.node_types,
-            self.edge_types,
-            self.map_csc_to_coo,
-            self.rev_offsets,
-            self.rev_indices,
-            self.map_rev_to_coo,
-        )
+else:
+    class _DirectHeteroCSC:
+        def __init__(self, *args, **kwargs):
+            raise ImportError("pylibcugraphops HeteroCSC is unavailable")
 
 
-class _DirectCuGraphRGCNConv(CuGraphRGCNConv):
+_CuGraphConvBase = CuGraphRGCNConv if CuGraphRGCNConv is not None else nn.Module
+
+
+class _DirectCuGraphRGCNConv(_CuGraphConvBase):
     """Use cuGraph's native CSC signature instead of PyG's HeteroCSC wrapper.
 
     The installed cuGraphOps binding accepts
