@@ -116,6 +116,11 @@ def parse_args():
     parser.add_argument("--db", type=Path, default=DEFAULT_DB)
     parser.add_argument("--summary", type=Path, default=DEFAULT_SUMMARY)
     parser.add_argument("--plan", type=Path, default=DEFAULT_PLAN)
+    parser.add_argument(
+        "--stream-output",
+        action="store_true",
+        help="Show worker output directly in the terminal instead of run.log.",
+    )
     parser.add_argument("--status-only", action="store_true")
     parser.add_argument("--rerun-completed", action="store_true")
     parser.add_argument("--worker-config", type=Path)
@@ -470,8 +475,16 @@ def run_one(experiment: dict, args, db_path: Path, out_root: Path) -> dict:
         "command": command,
     }
     append_jsonl(db_path, start)
-    with log_path.open("w", encoding="utf-8") as log:
-        process = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, cwd=REPO_ROOT)
+    if args.stream_output:
+        process = subprocess.run(command, cwd=REPO_ROOT)
+    else:
+        with log_path.open("w", encoding="utf-8") as log:
+            process = subprocess.run(
+                command,
+                stdout=log,
+                stderr=subprocess.STDOUT,
+                cwd=REPO_ROOT,
+            )
     metrics = extract_metrics(run_dir)
     finish = {
         "event": "finish",
