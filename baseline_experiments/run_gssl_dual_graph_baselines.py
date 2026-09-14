@@ -585,7 +585,7 @@ def estimated_memory_gb(experiment: dict, args) -> float:
     bases_factor = 1.0 + (0.08 if experiment.get("num_bases") == 10 else 0.0)
     # The base includes graph tensors, embeddings, CUDA context and allocator
     # overhead. It is deliberately conservative for all-neighbor sampling.
-    return 5.5 * graph_factor * hidden_factor * task_factor * encoder_factor * bases_factor
+    return 8.5 * graph_factor * hidden_factor * task_factor * encoder_factor * bases_factor
 
 
 def run_memory_aware(
@@ -597,19 +597,26 @@ def run_memory_aware(
     estimates = {experiment["run_id"]: estimated_memory_gb(experiment, args)
                  for experiment in pending}
     active = {}
+    initial_info = gpu_memory_info()
+    baseline_used_gb = initial_info[0] if initial_info is not None else 0.0
 
     with concurrent.futures.ThreadPoolExecutor(
         max_workers=max(1, args.max_parallel)
     ) as pool:
         while pending or active:
             info = gpu_memory_info()
+            reserved_gb = sum(item["estimate"] for item in active.values())
             if info is None:
                 total_gb = 80.0
-                used_gb = sum(item["estimate"] for item in active.values())
+                used_gb = baseline_used_gb + reserved_gb
                 probe = "estimate-only"
             else:
-                used_gb, total_gb = info
-                probe = f"nvidia-smi={used_gb:.1f}/{total_gb:.1f}GB"
+                actual_used_gb, total_gb = info
+                # During graph startup nvidia-smi can lag behind CUDA. Keep
+                # reservations in the budget until the corresponding worker
+                # finishes, while still respecting a higher live measurement.
+                used_gb = max(actual_used_gb, baseline_used_gb + reserved_gb)
+                probe = f"nvidia-smi={actual_used_gb:.1f}/{total_gb:.1f}GB reserved={reserved_gb:.1f}GB"
             budget_gb = total_gb * budget_fraction - args.gpu_reserve_gb
 
             launched = True
@@ -638,7 +645,6 @@ def run_memory_aware(
                     estimate = estimates[experiment["run_id"]]
                     future = pool.submit(run_one, experiment, args, db_path, args.out_root)
                     active[future] = {"experiment": experiment, "estimate": estimate}
-                    used_gb += estimate if info is None else 0.0
                     launched = True
                     print(
                         f"[SCHEDULER] launch {experiment['run_id']} "
@@ -651,7 +657,9 @@ def run_memory_aware(
                     time.sleep(min(0.5, poll_seconds))
                     info = gpu_memory_info()
                     if info is not None:
-                        used_gb, total_gb = info
+                        actual_used_gb, total_gb = info
+                        reserved_gb = sum(item["estimate"] for item in active.values())
+                        used_gb = max(actual_used_gb, baseline_used_gb + reserved_gb)
                         budget_gb = total_gb * budget_fraction - args.gpu_reserve_gb
 
             if not active:
