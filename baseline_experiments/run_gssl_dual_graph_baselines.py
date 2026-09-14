@@ -16,6 +16,7 @@ import shutil
 import subprocess
 import sys
 import threading
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -113,6 +114,29 @@ def parse_args():
     parser.add_argument("--wandb-project", default="GSSL_Dual_Graph_Baselines")
     parser.add_argument("--wandb-mode", choices=["online", "offline", "disabled"], default="online")
     parser.add_argument("--max-parallel", type=int, default=1)
+    parser.add_argument(
+        "--memory-aware",
+        action="store_true",
+        help="Schedule workers using GPU memory estimates and nvidia-smi.",
+    )
+    parser.add_argument(
+        "--gpu-memory-fraction",
+        type=float,
+        default=0.90,
+        help="Maximum fraction of total GPU memory available to this runner.",
+    )
+    parser.add_argument(
+        "--gpu-reserve-gb",
+        type=float,
+        default=4.0,
+        help="GPU memory reserved for CUDA/PyTorch overhead.",
+    )
+    parser.add_argument(
+        "--memory-poll-seconds",
+        type=float,
+        default=2.0,
+        help="Polling interval used by the memory-aware scheduler.",
+    )
     parser.add_argument("--out-root", type=Path, default=DEFAULT_ROOT / "runs")
     parser.add_argument("--db", type=Path, default=DEFAULT_DB)
     parser.add_argument("--summary", type=Path, default=DEFAULT_SUMMARY)
@@ -509,6 +533,150 @@ def run_one(experiment: dict, args, db_path: Path, out_root: Path) -> dict:
     return finish
 
 
+def gpu_memory_info() -> tuple[float, float] | None:
+    """Return used and total GPU memory in GiB, or None if unavailable."""
+    try:
+        result = subprocess.run(
+            [
+                "nvidia-smi",
+                "--query-gpu=memory.used,memory.total",
+                "--format=csv,noheader,nounits",
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=5,
+        )
+        first_line = next(line for line in result.stdout.splitlines() if line.strip())
+        used_mib, total_mib = (float(value.strip()) for value in first_line.split(",", 1))
+        return used_mib / 1024.0, total_mib / 1024.0
+    except (FileNotFoundError, subprocess.SubprocessError, ValueError, StopIteration):
+        return None
+
+
+def estimated_memory_gb(experiment: dict, args) -> float:
+    """Conservative first estimate used before runtime measurements exist.
+
+    The estimate is intentionally based on graph/task/model size rather than a
+    single global worker count. The live nvidia-smi value remains authoritative
+    while jobs are running.
+    """
+    graph_factor = 1.40 if experiment["graph"].startswith("dbpedia") else 1.0
+    hidden_factor = {256: 1.0, 384: 1.35, 512: 1.75}.get(
+        int(experiment["channels"][0]), 1.75
+    )
+    task_factor = {
+        "recons_r": 1.20,
+        "recons_x_symmetric": 1.10,
+        "recons_x_mlp": 1.00,
+        "contrastive": 0.90,
+    }[experiment["task"]]
+    encoder_factor = {
+        "RotatEGCN_attn": 1.50,
+        "RotatEGCN_conv": 1.35,
+        "TransGCN_attn": 1.50,
+        "TransGCN_conv": 1.35,
+        "CuGraphGAT": 0.85,
+        "GAT": 0.85,
+        "GCN": 0.75,
+        "RGCN": 1.45,
+        "CuGraphRGCN": 1.35,
+    }[experiment["encoder"]]
+    bases_factor = 1.0 + (0.08 if experiment.get("num_bases") == 10 else 0.0)
+    # The base includes graph tensors, embeddings, CUDA context and allocator
+    # overhead. It is deliberately conservative for all-neighbor sampling.
+    return 5.5 * graph_factor * hidden_factor * task_factor * encoder_factor * bases_factor
+
+
+def run_memory_aware(
+    pending: list[dict], args, db_path: Path, summary_path: Path
+) -> None:
+    """Run jobs whenever their estimated peak fits the current GPU budget."""
+    budget_fraction = min(max(args.gpu_memory_fraction, 0.10), 0.95)
+    poll_seconds = max(args.memory_poll_seconds, 0.25)
+    estimates = {experiment["run_id"]: estimated_memory_gb(experiment, args)
+                 for experiment in pending}
+    active = {}
+
+    with concurrent.futures.ThreadPoolExecutor(
+        max_workers=max(1, args.max_parallel)
+    ) as pool:
+        while pending or active:
+            info = gpu_memory_info()
+            if info is None:
+                total_gb = 80.0
+                used_gb = sum(item["estimate"] for item in active.values())
+                probe = "estimate-only"
+            else:
+                used_gb, total_gb = info
+                probe = f"nvidia-smi={used_gb:.1f}/{total_gb:.1f}GB"
+            budget_gb = total_gb * budget_fraction - args.gpu_reserve_gb
+
+            launched = True
+            while pending and len(active) < max(1, args.max_parallel) and launched:
+                launched = False
+                selected_index = None
+                for index, experiment in enumerate(pending):
+                    estimate = estimates[experiment["run_id"]]
+                    if used_gb + estimate <= budget_gb:
+                        selected_index = index
+                        break
+
+                if selected_index is None:
+                    if not active and pending and info is None:
+                        selected_index = 0
+                    elif not active and pending and used_gb < total_gb - args.gpu_reserve_gb:
+                        selected_index = 0
+                        print(
+                            "[SCHEDULER] estimate exceeds the configured budget; "
+                            "starting one job alone.",
+                            flush=True,
+                        )
+
+                if selected_index is not None:
+                    experiment = pending.pop(selected_index)
+                    estimate = estimates[experiment["run_id"]]
+                    future = pool.submit(run_one, experiment, args, db_path, args.out_root)
+                    active[future] = {"experiment": experiment, "estimate": estimate}
+                    used_gb += estimate if info is None else 0.0
+                    launched = True
+                    print(
+                        f"[SCHEDULER] launch {experiment['run_id']} "
+                        f"estimate={estimate:.1f}GB active={len(active)} "
+                        f"pending={len(pending)} {probe}",
+                        flush=True,
+                    )
+                    # Give CUDA allocation a moment before probing for another
+                    # slot, avoiding a burst of processes during graph startup.
+                    time.sleep(min(0.5, poll_seconds))
+                    info = gpu_memory_info()
+                    if info is not None:
+                        used_gb, total_gb = info
+                        budget_gb = total_gb * budget_fraction - args.gpu_reserve_gb
+
+            if not active:
+                if pending:
+                    time.sleep(poll_seconds)
+                continue
+
+            done, _ = concurrent.futures.wait(
+                list(active),
+                timeout=poll_seconds,
+                return_when=concurrent.futures.FIRST_COMPLETED,
+            )
+            for future in done:
+                record = future.result()
+                completed_count = len(done)
+                print(
+                    f"[SCHEDULER] {record['status']} {record['run_id']} "
+                    f"finished={completed_count} active={len(active) - 1} "
+                    f"pending={len(pending)}",
+                    flush=True,
+                )
+                active.pop(future, None)
+                write_summary(summary_path, list(load_finished(db_path).values()))
+
+
 def main():
     args = parse_args()
     if args.worker_config:
@@ -532,21 +700,22 @@ def main():
     if args.status_only:
         return
 
-    completed_records = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, args.max_parallel)) as pool:
-        futures = {
-            pool.submit(run_one, experiment, args, db_path, args.out_root): experiment
-            for experiment in pending
-        }
-        for index, future in enumerate(concurrent.futures.as_completed(futures), start=1):
-            record = future.result()
-            completed_records.append(record)
-            print(
-                f"[{index}/{len(pending)}] {record['status']} {record['run_id']}",
-                flush=True,
-            )
-            all_finished = list(load_finished(db_path).values())
-            write_summary(summary_path, all_finished)
+    if args.memory_aware:
+        run_memory_aware(pending, args, db_path, summary_path)
+    else:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, args.max_parallel)) as pool:
+            futures = {
+                pool.submit(run_one, experiment, args, db_path, args.out_root): experiment
+                for experiment in pending
+            }
+            for index, future in enumerate(concurrent.futures.as_completed(futures), start=1):
+                record = future.result()
+                print(
+                    f"[{index}/{len(pending)}] {record['status']} {record['run_id']}",
+                    flush=True,
+                )
+                all_finished = list(load_finished(db_path).values())
+                write_summary(summary_path, all_finished)
 
     write_summary(summary_path, list(load_finished(db_path).values()))
     print("GSSL baseline suite finished.")

@@ -27,17 +27,21 @@ ARCHITECTURES = [
     "RotatEGCN_conv",
     "TransGCN_attn",
     "TransGCN_conv",
-    "RGCN",
-    "GAT",
     "GCN",
-    "CuGraphRGCN",
     "CuGraphGAT",
 ]
 
-
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--max-parallel", type=int, default=5)
+    parser.add_argument(
+        "--max-parallel",
+        type=int,
+        default=7,
+        help="Hard upper bound on concurrent workers; memory scheduling chooses the actual count.",
+    )
+    parser.add_argument("--gpu-memory-fraction", type=float, default=0.90)
+    parser.add_argument("--gpu-reserve-gb", type=float, default=4.0)
+    parser.add_argument("--memory-poll-seconds", type=float, default=2.0)
     parser.add_argument("--num-epochs", type=int, default=50)
     parser.add_argument("--batch-size", type=int, default=1024)
     parser.add_argument(
@@ -67,11 +71,7 @@ def parse_args():
     return parser.parse_args()
 
 
-def main() -> int:
-    args = parse_args()
-    if args.max_parallel < 1:
-        raise ValueError("--max-parallel must be >= 1")
-
+def build_command(args):
     command = [
         sys.executable,
         "-u",
@@ -115,6 +115,13 @@ def main() -> int:
         args.wandb_mode,
         "--max-parallel",
         str(args.max_parallel),
+        "--memory-aware",
+        "--gpu-memory-fraction",
+        str(args.gpu_memory_fraction),
+        "--gpu-reserve-gb",
+        str(args.gpu_reserve_gb),
+        "--memory-poll-seconds",
+        str(args.memory_poll_seconds),
         "--out-root",
         str(args.out_root),
         "--db",
@@ -130,8 +137,16 @@ def main() -> int:
         command.append("--status-only")
     if args.rerun_completed:
         command.append("--rerun-completed")
+    return command
 
-    print("Launching all-architectures all-graphs GSSL runner:")
+
+def main() -> int:
+    args = parse_args()
+    if args.max_parallel < 1:
+        raise ValueError("--max-parallel must be >= 1")
+
+    command = build_command(args)
+    print("Launching memory-aware architecture scheduler:", flush=True)
     print(" ".join(command), flush=True)
     return subprocess.run(command, cwd=REPO_ROOT).returncode
 
