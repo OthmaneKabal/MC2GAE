@@ -38,6 +38,7 @@ ENCODERS = [
     "TransGCN_conv",
     "RGCN",
     "CuGraphRGCN",
+    "CuGraphGAT",
     "GAT",
     "GCN",
 ]
@@ -367,8 +368,14 @@ def run_worker(path: Path) -> int:
         "wandb_project_name": spec["wandb_project"],
         # main.py keeps the legacy RGCN branch; for the cuGraph variant we
         # route that branch to CuGraphRGCNEncoder below.
-        "encoders": ["RGCN" if spec["encoder"] == "CuGraphRGCN" else spec["encoder"]],
-        "decoders": (["RGCN" if spec["encoder"] == "CuGraphRGCN" else spec["encoder"]]
+        "encoders": [
+            "RGCN" if spec["encoder"] == "CuGraphRGCN" else
+            "GAT" if spec["encoder"] == "CuGraphGAT" else spec["encoder"]
+        ],
+        "decoders": ([
+            "RGCN" if spec["encoder"] == "CuGraphRGCN" else
+            "GAT" if spec["encoder"] == "CuGraphGAT" else spec["encoder"]
+        ]
                       if spec["task"] == "recons_x_symmetric" else
                      ["MLP"] if spec["task"] == "recons_x_mlp" else []),
         "message_sens": ["source_to_target"],
@@ -383,6 +390,9 @@ def run_worker(path: Path) -> int:
 
     if spec["encoder"] == "CuGraphRGCN":
         model_main.RGCNEncoder = model_main.CuGraphRGCNEncoder
+    elif spec["encoder"] == "CuGraphGAT":
+        model_main.GATEncoder = model_main.CuGraphGATEncoder
+        model_main.GATDecoder = model_main.CuGraphGATDecoder
 
     # Some legacy constructor calls in main.py rely on their class defaults.
     # Wrap them for this study so every GNN encoder uses the requested dropout.

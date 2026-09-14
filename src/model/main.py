@@ -23,6 +23,8 @@ from GCNDecoder import GCNDecoder
 from GCNEncoder import GCNEncoder
 from GATDecoder import GATDecoder
 from GATEncoder import GATEncoder
+from CuGraphGATDecoder import CuGraphGATDecoder
+from CuGraphGATEncoder import CuGraphGATEncoder
 from MLPDecoder import MLPDecoder
 from TransGCNEncoder import TransGCNEncoder
 from TransGCNDecoder import TransGCNDecoder
