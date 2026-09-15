@@ -103,6 +103,7 @@ def parse_args():
     parser.add_argument("--rgcn-bases", nargs="+", type=int, default=RGCN_BASES)
     parser.add_argument("--num-epochs", type=int, default=50)
     parser.add_argument("--batch-size", type=int, default=1024)
+    parser.add_argument("--linear-probe-batch-size", type=int, default=256)
     parser.add_argument(
         "--num-neighbors", nargs=2, type=int, default=[-1, -1],
         metavar=("HOP1", "HOP2"),
@@ -315,6 +316,7 @@ def worker_config(experiment: dict, args, run_dir: Path) -> dict:
         "run_dir": str(absolute_path(run_dir)),
         "num_epochs": args.num_epochs,
         "batch_size": args.batch_size,
+        "linear_probe_batch_size": args.linear_probe_batch_size,
         "num_neighbors": args.num_neighbors,
         "dropout": args.dropout,
         "plm_model": args.plm_model,
@@ -385,7 +387,7 @@ def run_worker(path: Path) -> int:
         "run_linear_probe_on_best_loss": True,
         "linear_probe_gs_path": spec["gs_path"],
         "linear_probe_splits_dir": spec["splits_dir"],
-        "linear_probe_batch_size": min(int(spec["batch_size"]), 256),
+        "linear_probe_batch_size": int(spec.get("linear_probe_batch_size", 256)),
         "linear_probe_num_neighbors": spec["num_neighbors"],
         "num_steps": None,
         "shuffle": False,
