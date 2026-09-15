@@ -2475,9 +2475,11 @@ def train_X_reconstruction(model, data ,optimizer, num_epochs, gdp, save_file,de
             for batch in G1_data_loader:
 
                 batch = batch.to(device)
-                n_id = batch.n_id  ## The global node index for every sampled node
-                mask = torch.isin(n_id, batch.input_id)  ## mask to get only the embedding of input_id nodes
-                optimizer.zero_grad()
+                # NeighborLoader keeps requested target nodes first in the
+                # sampled batch, avoiding a torch.isin search over all nodes.
+                target_count = int(batch.batch_size)
+                target_ids = batch.n_id[:target_count]
+                optimizer.zero_grad(set_to_none=True)
                 embeddings, r_embd = _encode(model, batch)
 
                 # embeddings = model.encode(batch)
@@ -2487,21 +2489,23 @@ def train_X_reconstruction(model, data ,optimizer, num_epochs, gdp, save_file,de
                 else:
                     reconstructed_x = model.decode_x(batch, embeddings)
 
-                reconstructed_x = reconstructed_x[mask]
+                reconstructed_x = reconstructed_x[:target_count]
 
                 total_loss = 0.0
 
                 # Vérifier chaque terme et ajouter le loss correspondant au total
                 if "MSE" in loss_fct:
-                    mse_loss = mse_loss_fnc(data.x[n_id[mask]], reconstructed_x)
+                    mse_loss = mse_loss_fnc(data.x[target_ids], reconstructed_x)
                     total_loss += mse_loss
 
                 if "PCSE" in loss_fct:
-                    pcse_loss = similarity_pair_loss(data.x[n_id[mask]], reconstructed_x, embeddings[mask])
+                    pcse_loss = similarity_pair_loss(
+                        data.x[target_ids], reconstructed_x, embeddings[:target_count]
+                    )
                     total_loss += pcse_loss
 
                 if "SCE" in loss_fct:
-                    sce_loss = sce_loss_fnc(data.x[n_id[mask]], reconstructed_x)
+                    sce_loss = sce_loss_fnc(data.x[target_ids], reconstructed_x)
                     total_loss += sce_loss
 
                 loss = total_loss
