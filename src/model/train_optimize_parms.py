@@ -566,9 +566,13 @@ def _mapped_edge_indices(data, device):
 
 
 def _distmult_scores(decoder, z, triplets):
-    edge_index = torch.stack((triplets[:, 0], triplets[:, 2]))
-    edge_type = triplets[:, 1]
-    return decoder.forward(z, edge_index, edge_type)
+    # Index the three triplet columns directly. Building a temporary
+    # ``edge_index`` tensor here adds an avoidable allocation for every
+    # positive and negative score computation.
+    head = z[triplets[:, 0]]
+    relation = decoder.relation_embedding[triplets[:, 1]]
+    tail = z[triplets[:, 2]]
+    return torch.sum(head * relation * tail, dim=1)
 
 
 def _distmult_bce_loss(decoder, z, positive_triplets, negative_triplets):

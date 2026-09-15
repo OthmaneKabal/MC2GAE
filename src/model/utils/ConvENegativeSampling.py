@@ -1,5 +1,4 @@
 import torch
-from torch_geometric.data import Data
 import random
 
 
@@ -81,13 +80,17 @@ def generate_negatives(data, batch, negative_ratio=1, relation_weight=None, trip
     data_edge_type = data.edge_type
     num_relations = batch.num_relations if hasattr(batch, "num_relations") else torch.max(data_edge_type).item() + 1
     node_ids = batch.n_id if hasattr(batch, "n_id") else torch.arange(num_nodes, device=edge_index.device)
-    node_position_by_global_id = {int(global_id): idx for idx, global_id in enumerate(node_ids.detach().cpu().tolist())}
+    # Copy node ids once per batch instead of synchronizing on every scalar.
+    node_ids_cpu = node_ids.detach().cpu().tolist()
+    node_position_by_global_id = {
+        int(global_id): idx for idx, global_id in enumerate(node_ids_cpu)
+    }
     if negative_entity_sampling_scope not in ("batch", "global"):
         raise ValueError("negative_entity_sampling_scope must be one of: batch, global")
     if negative_entity_sampling_scope == "global":
-        candidate_node_ids = torch.arange(data.num_nodes, device=edge_index.device)
+        candidate_node_ids = range(data.num_nodes)
     else:
-        candidate_node_ids = node_ids
+        candidate_node_ids = node_ids_cpu
     use_soft_type_sampling = (
         negative_sampling_mode == "soft_type_aware" and
         soft_type_candidates is not None and
@@ -104,11 +107,15 @@ def generate_negatives(data, batch, negative_ratio=1, relation_weight=None, trip
     if triplet_set is None:
         triplet_set = create_triplet_lookup(data)
 
-    # Collect all positive triplets
-    for i in range(edge_index.size(1)):
-        h, t = edge_index[:, i]
-        r = edge_type[i]
-        positives.append((h.item(), r.item(), t.item()))
+    # One device-to-host copy per batch, instead of one synchronization per
+    # scalar in the Python sampling loop. Sampling decisions are unchanged.
+    edge_index_cpu = edge_index.detach().cpu()
+    edge_type_cpu = edge_type.detach().cpu()
+    positives = list(zip(
+        edge_index_cpu[0].tolist(),
+        edge_type_cpu.tolist(),
+        edge_index_cpu[1].tolist(),
+    ))
 
     # Generate negatives
     for h, r, t in positives:
@@ -127,13 +134,13 @@ def generate_negatives(data, batch, negative_ratio=1, relation_weight=None, trip
 
                 if corruption == "head":
                     # Corrupt head
-                    global_t = node_ids[t].item()
+                    global_t = node_ids_cpu[t]
                     h_neg = None
                     if use_soft_type_sampling and _rng_random(rng) < soft_type_negative_ratio:
                         h_neg = _sample_soft_type_candidate(
                             soft_type_candidates.get("domain"),
                             r,
-                            node_ids,
+                            node_ids_cpu,
                             node_position_by_global_id,
                             triplet_set,
                             global_t,
@@ -147,19 +154,19 @@ def generate_negatives(data, batch, negative_ratio=1, relation_weight=None, trip
                                 "Could not sample a negative head from the selected entity scope. "
                                 "Use full-graph training for negative_entity_sampling_scope='global'."
                             )
-                    global_h_neg = node_ids[h_neg].item()
+                    global_h_neg = node_ids_cpu[h_neg]
                     if not is_triplet_in_data(triplet_set, (global_h_neg, r, global_t)):
                         negatives.append((h_neg, r, t))
                         break  # Valid negative found, exit loop
                 elif corruption == "tail":
                     # Corrupt tail
-                    global_h = node_ids[h].item()
+                    global_h = node_ids_cpu[h]
                     t_neg = None
                     if use_soft_type_sampling and _rng_random(rng) < soft_type_negative_ratio:
                         t_neg = _sample_soft_type_candidate(
                             soft_type_candidates.get("range"),
                             r,
-                            node_ids,
+                            node_ids_cpu,
                             node_position_by_global_id,
                             triplet_set,
                             global_h,
@@ -173,7 +180,7 @@ def generate_negatives(data, batch, negative_ratio=1, relation_weight=None, trip
                                 "Could not sample a negative tail from the selected entity scope. "
                                 "Use full-graph training for negative_entity_sampling_scope='global'."
                             )
-                    global_t_neg = node_ids[t_neg].item()
+                    global_t_neg = node_ids_cpu[t_neg]
                     if not is_triplet_in_data(triplet_set, (global_h, r, global_t_neg)):
                         negatives.append((h, r, t_neg))
                         break  # Valid negative found, exit loop
@@ -187,8 +194,8 @@ def generate_negatives(data, batch, negative_ratio=1, relation_weight=None, trip
                         )
                     else:
                         r_neg = _rng_randint(rng, 0, num_relations - 1)
-                    global_h = node_ids[h].item()
-                    global_t = node_ids[t].item()
+                    global_h = node_ids_cpu[h]
+                    global_t = node_ids_cpu[t]
                     if not is_triplet_in_data(triplet_set, (global_h, r_neg, global_t)):
                         negatives.append((h, r_neg, t))
                         break  # Valid negative found, exit loop
@@ -204,17 +211,9 @@ def get_positives(batch):
     edge_index = batch.edge_index  # (2, num_edges)
     edge_type = batch.edge_type    # (num_edges,)
 
-    positives = []
-
-    # Collect all positive triplets
-    for i in range(edge_index.size(1)):
-        h, t = edge_index[:, i]
-        r = edge_type[i]
-        positives.append((h.item(), r.item(), t.item()))
-
-    if not positives:
+    if edge_index.size(1) == 0:
         return torch.empty((0, 3), dtype=torch.long, device=edge_index.device)
 
-    # Convert positives to tensor
-    positive_tensor = torch.tensor(positives, dtype=torch.long, device=edge_index.device)
-    return positive_tensor
+    # Same (head, relation, tail) layout, fully vectorized on the current
+    # device.
+    return torch.stack((edge_index[0], edge_type, edge_index[1]), dim=1).long()
