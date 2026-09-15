@@ -1847,8 +1847,8 @@ def train_DisMult(model, data, optimizer,num_epochs,gdp, save_file,device,
             )
         model.train()
         total_loss = 0
-        all_preds = []
-        all_true_labels = []
+        relation_correct = torch.zeros((), dtype=torch.long, device=device)
+        relation_total = 0
         steps_this_epoch = 0
         total_kg_loss = 0
         total_onto_loss = 0
@@ -2150,15 +2150,12 @@ def train_DisMult(model, data, optimizer,num_epochs,gdp, save_file,device,
                 pos_preds = (torch.sigmoid(pos_scores) > 0.55).int()
                 neg_preds = (torch.sigmoid(neg_scores) > 0.55).int()
 
-                # True labels
-                pos_labels = torch.ones_like(pos_preds)
-                neg_labels = torch.zeros_like(neg_preds)
-
-                # Collect predictions and true labels
-                all_preds.extend(pos_preds.cpu().numpy())
-                all_preds.extend(neg_preds.cpu().numpy())
-                all_true_labels.extend(pos_labels.cpu().numpy())
-                all_true_labels.extend(neg_labels.cpu().numpy())
+                # For binary micro metrics, accuracy, precision, recall and
+                # F1 are identical. Count on the device and transfer only
+                # two scalars after the epoch instead of copying every
+                # prediction to NumPy for every batch.
+                relation_correct += (pos_preds == 1).sum() + (neg_preds == 0).sum()
+                relation_total += pos_preds.numel() + neg_preds.numel()
                 loss = kg_loss + lambda_onto * onto_loss + lambda_align * align_loss + \
                        lambda_core_contrastive * core_contrastive_loss + \
                        lambda_core_align * core_align_loss + \
@@ -2220,7 +2217,13 @@ def train_DisMult(model, data, optimizer,num_epochs,gdp, save_file,device,
             print("\n")
             print(metrics)
 
-            R_accuracy, R_precision, R_recall, R_f1 = _calculate_relation_micro_metrics(all_preds, all_true_labels)
+            if relation_total:
+                R_accuracy = float(relation_correct.item()) / relation_total
+            else:
+                R_accuracy = 0.0
+            R_precision = R_accuracy
+            R_recall = R_accuracy
+            R_f1 = R_accuracy
             print(f"R_accuracy: {R_accuracy}, R_precision: {R_precision}, R_recall: {R_recall},R_f1: {R_f1}")
             if negative_tracking_state is not None and negative_tracking_path is not None:
                 _write_negative_tracking_epoch(

@@ -355,19 +355,16 @@ def generate_batch_term_embeddings(model, graph, gdp, terms, batch_size, num_nei
     with torch.no_grad():
         # Convertit les termes en indices
         term_indices = []
-        term_to_index = {}
         for term in terms:
             idx = gdp.nodes_index.get(term)
             if idx is not None:
                 term_indices.append(idx)
-                term_to_index[idx] = term
             else:
                 print(f"Warning: term '{term}' not found in gdp index.")
 
         if not term_indices:
             return {}
 
-        input_tensor = torch.tensor(term_indices, dtype=torch.long)
         # DataLoader avec tous les nœuds ciblés
         data_loader = GraphDataLoader(
             graph,
@@ -377,18 +374,19 @@ def generate_batch_term_embeddings(model, graph, gdp, terms, batch_size, num_nei
             shuffle=False
         ).get_loader()
         embeddings_dict = {}
+        decoded_indexes = gdp.decode_indexes()
         for batch in tqdm(data_loader):
             if isinstance(model.encoder, TransGCNEncoder):
                 batch_embeddings, _ = model.encode(batch)
             else:
                 batch_embeddings = model.encode(batch)
-            # batch_embeddings = model(batch)  # shape: [num_nodes_in_batch, dim]
-            mask = torch.isin(batch.n_id, input_tensor[batch.input_id])
-
-            input_embeddings = batch_embeddings[mask]
-            embedding_indexes = batch.n_id[mask]
+            # NeighborLoader places requested input nodes first in the batch.
+            # This avoids a repeated torch.isin search over sampled nodes.
+            input_count = int(batch.batch_size)
+            input_embeddings = batch_embeddings[:input_count]
+            embedding_indexes = batch.n_id[:input_count]
             for idx, emb in zip(embedding_indexes, input_embeddings):
-                embeddings_dict[gdp.decode_indexes()[int(idx)]] = emb.detach().cpu().numpy()
+                embeddings_dict[decoded_indexes[int(idx)]] = emb.detach().cpu().numpy()
         return embeddings_dict
 
 
@@ -409,7 +407,7 @@ def generate_batch_GS_term_embeddings(model, graph, gdp, gs_path, core_concepts,
     return dict_terms_embeddings, dict_cc_embeddings
 
 
-def classify_terms_by_cosine_similarity(gs_embeddings, core_concepts_embeddings, with_other = False, threshold = 0.5, with_similarity = False):
+def _classify_terms_by_cosine_similarity_slow(gs_embeddings, core_concepts_embeddings, with_other = False, threshold = 0.5, with_similarity = False):
     """
     Classe les termes du GS en fonction de leur similarité cosinus avec les core concepts.
     :param with_other: si on va considerer la classe 'other'
@@ -443,6 +441,48 @@ def classify_terms_by_cosine_similarity(gs_embeddings, core_concepts_embeddings,
         if with_similarity:
             classifications[term]['similarity'] = best_similarity
     # print(f'*****Median: {np.median(similarities)} ********** Mean: {np.mean(similarities)} ***********')
+    return classifications
+
+
+def classify_terms_by_cosine_similarity(gs_embeddings, core_concepts_embeddings, with_other=False, threshold=0.5, with_similarity=False):
+    """Vectorized equivalent of the original pairwise cosine loop."""
+    term_names = list(gs_embeddings)
+    concept_names = list(core_concepts_embeddings)
+    classifications = {}
+    if not term_names:
+        return classifications
+    if not concept_names:
+        for term in term_names:
+            classifications[term] = {'class': 'o'}
+            if with_similarity:
+                classifications[term]['similarity'] = -1.0
+        return classifications
+
+    term_matrix = np.asarray([gs_embeddings[name] for name in term_names])
+    concept_matrix = np.asarray([core_concepts_embeddings[name] for name in concept_names])
+    term_norms = np.linalg.norm(term_matrix, axis=1, keepdims=True)
+    concept_norms = np.linalg.norm(concept_matrix, axis=1, keepdims=True)
+    normalized_terms = np.divide(
+        term_matrix, term_norms, out=np.zeros_like(term_matrix), where=term_norms != 0
+    )
+    normalized_concepts = np.divide(
+        concept_matrix, concept_norms, out=np.zeros_like(concept_matrix), where=concept_norms != 0
+    )
+    similarity_matrix = normalized_terms @ normalized_concepts.T
+    best_indices = np.argmax(similarity_matrix, axis=1)
+    best_similarities = similarity_matrix[np.arange(len(term_names)), best_indices]
+
+    for row, term in enumerate(term_names):
+        best_similarity = float(best_similarities[row])
+        best_core_concept = concept_names[int(best_indices[row])]
+        class_ = (
+            best_core_concept
+            if not with_other or best_similarity >= threshold
+            else 'o'
+        )
+        classifications[term] = {'class': class_}
+        if with_similarity:
+            classifications[term]['similarity'] = best_similarity
     return classifications
 
 
