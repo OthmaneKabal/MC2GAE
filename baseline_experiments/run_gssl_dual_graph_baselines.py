@@ -89,6 +89,13 @@ GRAPHS = {
     },
 }
 
+GRAPH_NUM_NEIGHBORS = {
+    "biomed_clean": [168, 168],
+    "biomed_noisy": [19, 19],
+    "dbpedia_clean": [136, 136],
+    "dbpedia_noisy": [38, 38],
+}
+
 TASKS = ("recons_r", "recons_x_symmetric", "recons_x_mlp", "contrastive")
 JSONL_LOCK = threading.Lock()
 
@@ -108,6 +115,11 @@ def parse_args():
         "--num-neighbors", nargs=2, type=int, default=[-1, -1],
         metavar=("HOP1", "HOP2"),
         help="Maximum sampled neighbors per GNN hop; use -1 -1 for all neighbors.",
+    )
+    parser.add_argument(
+        "--graph-aware-num-neighbors",
+        action="store_true",
+        help="Use the measured graph-specific fanout instead of --num-neighbors.",
     )
     parser.add_argument("--dropout", type=float, default=0.2)
     parser.add_argument("--plm-model", default="sentence-transformers/all-MiniLM-L6-v2")
@@ -149,6 +161,17 @@ def parse_args():
     )
     parser.add_argument("--status-only", action="store_true")
     parser.add_argument("--rerun-completed", action="store_true")
+    parser.add_argument(
+        "--profile-efficiency",
+        action="store_true",
+        help="Record per-epoch timing and sampled CPU/GPU resource usage.",
+    )
+    parser.add_argument(
+        "--profile-sample-seconds",
+        type=float,
+        default=1.0,
+        help="Resource sampling interval used by --profile-efficiency.",
+    )
     parser.add_argument("--worker-config", type=Path)
     return parser.parse_args()
 
@@ -225,6 +248,11 @@ def build_experiments(args) -> list[dict]:
                     for decoder in decoders:
                         for channels in args.hidden_sizes:
                             for seed in args.seeds:
+                                num_neighbors = (
+                                    GRAPH_NUM_NEIGHBORS[graph]
+                                    if args.graph_aware_num_neighbors
+                                    else list(args.num_neighbors)
+                                )
                                 run_id = experiment_id(
                                     graph, task, encoder, decoder, channels, seed, bases
                                 )
@@ -237,6 +265,7 @@ def build_experiments(args) -> list[dict]:
                                     "num_bases": bases,
                                     "channels": [channels, channels],
                                     "seed": seed,
+                                    "num_neighbors": list(num_neighbors),
                                 })
     return experiments
 
@@ -251,11 +280,18 @@ def write_plan(path: Path, experiments: list[dict], args):
             "num_epochs": args.num_epochs,
             "batch_size": args.batch_size,
             "dropout": args.dropout,
-            "num_neighbors": args.num_neighbors,
+            "num_neighbors": (
+                GRAPH_NUM_NEIGHBORS
+                if args.graph_aware_num_neighbors
+                else args.num_neighbors
+            ),
+            "graph_aware_num_neighbors": args.graph_aware_num_neighbors,
             "negative_corruption_mode": "entity_only",
             "ontology": False,
             "save_checkpoints": False,
             "plm_model": args.plm_model,
+            "profile_efficiency": args.profile_efficiency,
+            "profile_sample_seconds": args.profile_sample_seconds,
         },
         "experiments": experiments,
     }
@@ -280,12 +316,36 @@ def extract_metrics(run_dir: Path) -> dict:
     return metrics
 
 
+def extract_profile(run_dir: Path) -> dict:
+    profile_path = run_dir / "efficiency_profile.json"
+    if not profile_path.exists():
+        return {"profile_found": False}
+    try:
+        profile = json.loads(profile_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return {
+            "profile_found": False,
+            "profile_error": repr(exc),
+            "profile_file": str(profile_path),
+        }
+    return {
+        "profile_found": True,
+        "profile_file": str(profile_path),
+        **profile,
+    }
+
+
 def write_summary(path: Path, records: list[dict]):
     path = absolute_path(path)
     rows = []
     for record in records:
-        row = {key: value for key, value in record.items() if key not in {"metrics", "command"}}
+        row = {
+            key: value
+            for key, value in record.items()
+            if key not in {"metrics", "profile", "command"}
+        }
         row.update({f"metric_{key}": value for key, value in record.get("metrics", {}).items()})
+        row.update({f"profile_{key}": value for key, value in record.get("profile", {}).items()})
         rows.append(row)
     if rows:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -317,11 +377,13 @@ def worker_config(experiment: dict, args, run_dir: Path) -> dict:
         "num_epochs": args.num_epochs,
         "batch_size": args.batch_size,
         "linear_probe_batch_size": args.linear_probe_batch_size,
-        "num_neighbors": args.num_neighbors,
+        "num_neighbors": experiment.get("num_neighbors", args.num_neighbors),
         "dropout": args.dropout,
         "plm_model": args.plm_model,
         "wandb_project": args.wandb_project,
         "wandb_mode": args.wandb_mode,
+        "profile_efficiency": args.profile_efficiency,
+        "profile_sample_seconds": args.profile_sample_seconds,
     }
 
 
@@ -394,6 +456,7 @@ def run_worker(path: Path) -> int:
         "save_checkpoints": False,
         "root_save_dir": str(run_dir / "checkpoints"),
         "wandb_project_name": spec["wandb_project"],
+        "efficiency_profile_enabled": bool(spec.get("profile_efficiency", False)),
         # main.py keeps the legacy RGCN branch; for the cuGraph variant we
         # route that branch to CuGraphRGCNEncoder below.
         "encoders": [
@@ -463,6 +526,33 @@ def run_worker(path: Path) -> int:
         return original_init(*args, **kwargs)
     model_main.wandb.init = named_init
 
+    if spec.get("profile_efficiency", False):
+        def profiled_training_call(function):
+            def wrapper(model, data, *function_args, **function_kwargs):
+                cfg["_efficiency_num_parameters"] = sum(
+                    parameter.numel() for parameter in model.parameters()
+                )
+                cfg["_efficiency_num_nodes"] = int(data.num_nodes)
+                cfg["_efficiency_num_edges"] = int(data.edge_index.size(1))
+                cfg["_efficiency_num_relations"] = int(
+                    getattr(data, "num_edge_types", 0) or 0
+                )
+                return function(model, data, *function_args, **function_kwargs)
+
+            wrapper.__name__ = function.__name__
+            return wrapper
+
+        for function_name in (
+            "train_DisMult",
+            "train_X_reconstruction",
+            "train_Contrastive",
+        ):
+            setattr(
+                model_main,
+                function_name,
+                profiled_training_call(getattr(model_main, function_name)),
+            )
+
     # Keep best states in memory for evaluation, but do not write checkpoints.
     original_save_model = train_optimize_parms.save_model
     def save_model_if_enabled(*args, **kwargs):
@@ -473,23 +563,53 @@ def run_worker(path: Path) -> int:
 
     config_path = run_dir / "run_config.json"
     config_path.write_text(json.dumps(cfg, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+    profiler = None
+    if spec.get("profile_efficiency", False):
+        from efficiency_profiler import EfficiencyProfiler
+
+        profiler = EfficiencyProfiler(run_dir, spec, cfg)
+        profiler.start()
+
+    status = "failed"
+    error = None
+    metrics = {"metrics_found": False}
     try:
         model_main.config.update(cfg)
         model_main.main()
         metrics = extract_metrics(run_dir)
-        (run_dir / "worker_status.json").write_text(
-            json.dumps({"status": "completed", "metrics": metrics}, ensure_ascii=False, indent=2, default=str),
-            encoding="utf-8",
-        )
-        return 0
+        if metrics.get("metrics_found"):
+            status = "completed"
+        else:
+            error = "Training returned without a results workbook."
     except Exception as exc:
-        (run_dir / "worker_status.json").write_text(
-            json.dumps({"status": "failed", "error": repr(exc)}, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+        error = repr(exc)
         with log_path.open("a", encoding="utf-8") as handle:
             handle.write(f"\nWORKER ERROR: {exc!r}\n")
-        return 1
+    profile = None
+    profile_error = None
+    if profiler is not None:
+        try:
+            cfg["_efficiency_result_metrics"] = metrics
+            profile = profiler.stop(status, error=error)
+        except Exception as exc:
+            profile_error = repr(exc)
+            with log_path.open("a", encoding="utf-8") as handle:
+                handle.write(f"\nPROFILER ERROR: {exc!r}\n")
+
+    worker_status = {
+        "status": status,
+        "metrics": metrics,
+        "profile": profile,
+    }
+    if error is not None:
+        worker_status["error"] = error
+    if profile_error is not None:
+        worker_status["profile_error"] = profile_error
+    (run_dir / "worker_status.json").write_text(
+        json.dumps(worker_status, ensure_ascii=False, indent=2, default=str),
+        encoding="utf-8",
+    )
+    return 0 if status == "completed" else 1
 
 
 def run_one(experiment: dict, args, db_path: Path, out_root: Path) -> dict:
@@ -524,6 +644,7 @@ def run_one(experiment: dict, args, db_path: Path, out_root: Path) -> dict:
                 cwd=REPO_ROOT,
             )
     metrics = extract_metrics(run_dir)
+    profile = extract_profile(run_dir) if args.profile_efficiency else {}
     finish = {
         "event": "finish",
         "status": "completed" if process.returncode == 0 and metrics.get("metrics_found") else "failed",
@@ -532,6 +653,7 @@ def run_one(experiment: dict, args, db_path: Path, out_root: Path) -> dict:
         **experiment,
         "out_dir": str(run_dir),
         "metrics": metrics,
+        "profile": profile,
     }
     append_jsonl(db_path, finish)
     return finish

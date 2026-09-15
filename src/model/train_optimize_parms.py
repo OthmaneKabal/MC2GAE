@@ -85,6 +85,38 @@ def _encode_nodes(model, data):
     return node_embeddings
 
 
+def _profile_phase(name):
+    if config.get("efficiency_profile_enabled", False):
+        config["_efficiency_phase"] = name
+
+
+def _record_profile_phase(name, started_at):
+    if not config.get("efficiency_profile_enabled", False):
+        return
+    config.setdefault("_efficiency_phase_timings", []).append({
+        "phase": name,
+        "seconds": time.perf_counter() - started_at,
+    })
+
+
+def _record_profile_epoch(epoch, epoch_started_at, training_finished_at,
+                          evaluation_started_at, evaluation_finished_at,
+                          epoch_finished_at, steps):
+    if not config.get("efficiency_profile_enabled", False):
+        return
+    profile_t0 = config.get("_efficiency_profile_t0", epoch_started_at)
+    config.setdefault("_efficiency_epoch_timings", []).append({
+        "epoch": int(epoch) + 1,
+        "steps": int(steps),
+        "started_elapsed_seconds": epoch_started_at - profile_t0,
+        "train_seconds": training_finished_at - epoch_started_at,
+        "pre_evaluation_seconds": evaluation_started_at - training_finished_at,
+        "evaluation_seconds": evaluation_finished_at - evaluation_started_at,
+        "post_evaluation_seconds": epoch_finished_at - evaluation_finished_at,
+        "epoch_total_seconds": epoch_finished_at - epoch_started_at,
+    })
+
+
 def _filter_edges(data, edge_mask):
     data.edge_index = data.edge_index[:, edge_mask]
     if hasattr(data, "edge_type") and data.edge_type is not None:
@@ -1047,6 +1079,9 @@ def _run_linear_probe_on_best_loss(model, data, gdp, cfg, device, save_file, wan
     if not cfg.get("run_linear_probe_on_best_loss", False):
         return {}
 
+    linear_probe_started_at = time.perf_counter()
+    _profile_phase("linear_probe")
+
     gs_path = _resolve_existing_path(cfg.get("linear_probe_gs_path"))
     splits_dir = _resolve_existing_path(cfg.get("linear_probe_splits_dir"))
     if not gs_path or not os.path.exists(gs_path):
@@ -1128,6 +1163,8 @@ def _run_linear_probe_on_best_loss(model, data, gdp, cfg, device, save_file, wan
         summary[f"linear_probe_split_{split_seed}_best_epoch"] = result["best_epoch"]
     if wandb is not None:
         wandb.log(summary)
+    _record_profile_phase("linear_probe", linear_probe_started_at)
+    _profile_phase("post_training")
     return summary
 
 
@@ -1139,6 +1176,8 @@ def _attach_best_loss_evaluations(model, data, gdp, device, save_file, best_metr
                                   best_loss_model_state, best_loss_unsup_metrics, wandb=None, cfg=None):
     cfg = cfg or config
     if best_loss_model_state is not None:
+        best_loss_evaluation_started_at = time.perf_counter()
+        _profile_phase("best_loss_evaluation")
         gs_path = _resolve_existing_path(cfg.get("Gs_path_no_other"))
         if not gs_path or not os.path.exists(gs_path):
             raise FileNotFoundError(f"Best-loss unsupervised GS file not found: {cfg.get('Gs_path_no_other')}")
@@ -1161,6 +1200,7 @@ def _attach_best_loss_evaluations(model, data, gdp, device, save_file, best_metr
             **relation_and_loss_metrics,
             "best_loss_eval_gs_path": gs_path,
         }
+        _record_profile_phase("best_loss_evaluation", best_loss_evaluation_started_at)
 
     if best_loss_unsup_metrics:
         best_metrics.update(_prefixed_metrics("best_loss_unsup_", best_loss_unsup_metrics))
@@ -1828,6 +1868,8 @@ def train_DisMult(model, data, optimizer,num_epochs,gdp, save_file,device,
     for epoch in range(num_epochs):
         if _step_limit_reached(global_step):
             break
+        epoch_started_at = time.perf_counter()
+        _profile_phase("train")
         edge_curriculum_rate = None
         if recons_r_training_mode in (
             "random_dynamic_masked_only", "balanced_dynamic_masked_only", "mapped_random_dynamic",
@@ -2181,6 +2223,7 @@ def train_DisMult(model, data, optimizer,num_epochs,gdp, save_file,device,
                 if _step_limit_reached(global_step):
                     break
 
+            training_finished_at = time.perf_counter()
             if negative_replay_records is not None and not _step_limit_reached(global_step):
                 if negative_replay_cursor != len(negative_replay_records):
                     raise ValueError(
@@ -2211,10 +2254,14 @@ def train_DisMult(model, data, optimizer,num_epochs,gdp, save_file,device,
             avg_domain_range_embedding_loss = total_domain_range_embedding_loss / max(steps_this_epoch, 1)
             avg_onto_hierarchy_loss = total_onto_hierarchy_loss / max(steps_this_epoch, 1)
             print("Evaluation\n")
+            evaluation_started_at = time.perf_counter()
+            _profile_phase("evaluation")
             # metrics = evaluate(model, data, config["Gs_path_no_other"], config["core_concepts"], gdp)
             metrics = _evaluate_preserving_train_rng(
                 model, data, config["Gs_path_no_other"], config["core_concepts"], gdp, config
             )
+            evaluation_finished_at = time.perf_counter()
+            _profile_phase("post_evaluation")
 
             print("\n")
             print(metrics)
@@ -2322,6 +2369,12 @@ def train_DisMult(model, data, optimizer,num_epochs,gdp, save_file,device,
                        "R_accuracy": R_accuracy, "R_precision": R_precision,
                        "R_recall": R_recall, "R_f1": R_f1,
                        "edge_curriculum_rate": edge_curriculum_rate,})
+            epoch_finished_at = time.perf_counter()
+            _record_profile_epoch(
+                epoch, epoch_started_at, training_finished_at,
+                evaluation_started_at, evaluation_finished_at,
+                epoch_finished_at, steps_this_epoch,
+            )
 
     if use_onto and visualizations_dir is not None:
         if best_visual_state is not None:
@@ -2458,6 +2511,8 @@ def train_X_reconstruction(model, data ,optimizer, num_epochs, gdp, save_file,de
     for epoch in range(num_epochs):
         if _step_limit_reached(global_step):
             break
+        epoch_started_at = time.perf_counter()
+        _profile_phase("train")
         model.train()
         total_loss = 0
         if "MSE" in loss_fct:
@@ -2518,10 +2573,15 @@ def train_X_reconstruction(model, data ,optimizer, num_epochs, gdp, save_file,de
                 batch_pbar.update(1)
                 if _step_limit_reached(global_step):
                     break
+            training_finished_at = time.perf_counter()
             avg_loss = epoch_loss / max(steps_this_epoch, 1)
 
             print("Evaluation\n")
+            evaluation_started_at = time.perf_counter()
+            _profile_phase("evaluation")
             metrics = evaluate(model, data, config["Gs_path_no_other"], config["core_concepts"], gdp, config)
+            evaluation_finished_at = time.perf_counter()
+            _profile_phase("post_evaluation")
             print("\n")
             print(metrics)
             if avg_loss < best_loss:
@@ -2546,6 +2606,12 @@ def train_X_reconstruction(model, data ,optimizer, num_epochs, gdp, save_file,de
             wandb.log({"epoch": epoch + 1, "step": global_step, "mce loss": avg_loss,
                        "recons_x_feature_masking": use_feature_masking,
                        **_wandb_classification_metrics(metrics)})
+            epoch_finished_at = time.perf_counter()
+            _record_profile_epoch(
+                epoch, epoch_started_at, training_finished_at,
+                evaluation_started_at, evaluation_finished_at,
+                epoch_finished_at, steps_this_epoch,
+            )
 
     best_metrics = _attach_best_loss_evaluations(
         model, data, gdp, device, save_file,
@@ -2845,6 +2911,8 @@ def train_Contrastive(model, data, optimizer, num_epochs, gdp, save_file,
     best_loss = float('inf')
     best_accuracy = 0
     best_metrics = {}
+    best_loss_model_state = None
+    best_loss_unsup_metrics = None
 
     #print("\n--- Preparing views for contrastive learning ---\n")
     #masked_features_data = view_partial_features_masking(data, max_masking_percentage=config["max_masking_percentage"])
@@ -2852,7 +2920,12 @@ def train_Contrastive(model, data, optimizer, num_epochs, gdp, save_file,
     #    data, config["total_drop_rate"], max_drop_fraction_per_node=0.3, random_seed=42
     #)
 
-    removed_edge_indices = removed_edge_indices.to(device)
+    removed_edge_indices = removed_edge_indices.to(device=device, dtype=torch.long)
+    removed_edge_lookup = torch.zeros(
+        int(data.edge_index.size(1)), dtype=torch.bool, device=device
+    )
+    if removed_edge_indices.numel() > 0:
+        removed_edge_lookup[removed_edge_indices] = True
 
     G_data_loader = GraphDataLoader(data, num_neighbors=config["num_neighbors"],
                                     batch_size=config["batch_size"], shuffle=config["shuffle"], seed=seed).get_loader()
@@ -2861,6 +2934,8 @@ def train_Contrastive(model, data, optimizer, num_epochs, gdp, save_file,
     for epoch in range(num_epochs):
         if _step_limit_reached(global_step):
             break
+        epoch_started_at = time.perf_counter()
+        _profile_phase("train")
         model.train()
         total_loss = 0
         steps_this_epoch = 0
@@ -2868,40 +2943,37 @@ def train_Contrastive(model, data, optimizer, num_epochs, gdp, save_file,
         with tqdm(total=len(G_data_loader), desc=f"Epoch {epoch + 1}/{num_epochs}", unit="batch") as pbar:
             for batch in G_data_loader:
                 batch = batch.to(device)
-                optimizer.zero_grad()
+                optimizer.zero_grad(set_to_none=True)
 
                 # View 1: masking features
-                view_1 = copy.deepcopy(batch)
+                view_1 = copy.copy(batch)
                 view_1.x = masked_features_data.x[view_1.n_id]
 
                 # View 2: masking edges
-                view_2 = copy.deepcopy(batch)
-                edge_mask = ~torch.isin(view_2.e_id, removed_edge_indices)
+                view_2 = copy.copy(batch)
+                edge_mask = ~removed_edge_lookup[view_2.e_id.long()]
                 _filter_edges(view_2, edge_mask)
 
-                # Masquer les input_id
-                mask_nodes = torch.isin(batch.n_id, batch.input_id)
+                # NeighborLoader places target/input nodes first in the batch.
+                target_count = int(batch.batch_size)
 
                 # Encodage + projection
                 H1 = _encode_nodes(model, view_1)
                 H2 = _encode_nodes(model, view_2)
-                ##
-                if not isinstance(mask_nodes, torch.Tensor):
-                    mask_nodes = torch.tensor(mask_nodes)
+                # Project only the target nodes, which are first in the batch.
+
 
                 # Si mask_nodes est un masque booléen
-                if mask_nodes.dtype == torch.bool:
-                    mask_nodes = mask_nodes.to(H1.device)
+
 
                 # Sinon on suppose que c'est une liste d'indices
-                else:
-                    mask_nodes = mask_nodes.long().to(H1.device)
+
 
                 ###
 
                 # Appliquer les projecteurs
-                z1 = model.projector_fc1(H1[mask_nodes])
-                z2 = model.projector_fc2(H2[mask_nodes])
+                z1 = model.projector_fc1(H1[:target_count])
+                z2 = model.projector_fc2(H2[:target_count])
 
                 # Calcul de la perte contrastive standard
                 c_loss = contrastive_loss(z1, z2)
@@ -2910,21 +2982,33 @@ def train_Contrastive(model, data, optimizer, num_epochs, gdp, save_file,
                 optimizer.step()
                 global_step += 1
                 steps_this_epoch += 1
-                total_loss += c_loss.item()
+                loss_value = c_loss.detach().item()
+                total_loss += loss_value
 
-                pbar.set_postfix(loss=c_loss.item())
+                pbar.set_postfix(loss=loss_value)
                 pbar.update(1)
                 if _step_limit_reached(global_step):
                     break
 
+        training_finished_at = time.perf_counter()
         avg_loss = total_loss / max(steps_this_epoch, 1)
 
         print("\n--- Evaluation ---")
+        evaluation_started_at = time.perf_counter()
+        _profile_phase("evaluation")
         metrics = evaluate(model, data, config["Gs_path_no_other"], config["core_concepts"], gdp, config)
+        evaluation_finished_at = time.perf_counter()
+        _profile_phase("post_evaluation")
         print(metrics)
 
         if avg_loss < best_loss:
             best_loss = avg_loss
+            best_loss_model_state = copy.deepcopy(model.state_dict())
+            best_loss_unsup_metrics = {
+                **metrics,
+                "best_loss": avg_loss,
+                "best_loss_epoch": epoch + 1,
+            }
             save_model(model, optimizer, epoch, save_dir=save_dir, file_name=save_file, is_best_acc=False)
             print(f"Model saved with lowest contrastive loss: {best_loss:.4f}")
 
@@ -2941,7 +3025,19 @@ def train_Contrastive(model, data, optimizer, num_epochs, gdp, save_file,
                 "contrastive_loss": avg_loss,
                 **_wandb_classification_metrics(metrics)
             })
+        epoch_finished_at = time.perf_counter()
+        _record_profile_epoch(
+            epoch, epoch_started_at, training_finished_at,
+            evaluation_started_at, evaluation_finished_at,
+            epoch_finished_at, steps_this_epoch,
+        )
 
+    best_metrics = _attach_best_loss_evaluations(
+        model, data, gdp, device, save_file,
+        best_metrics, best_loss_model_state, best_loss_unsup_metrics,
+        wandb=wandb,
+        cfg=config,
+    )
     return _finalize_best_result(best_metrics, save_file)
 
 

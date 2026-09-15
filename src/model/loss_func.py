@@ -6,6 +6,7 @@ from torch import nn, cosine_similarity
 
 class ContrastiveLoss(torch.nn.Module):
     def __init__(self, tau=0.5):
+        super().__init__()
         self.tau = tau
 
     def sim(self, z1: torch.Tensor, z2: torch.Tensor):
@@ -71,13 +72,37 @@ class ContrastiveLoss(torch.nn.Module):
     def contrastive_loss_exclude(self, H_1: torch.Tensor, H_2: torch.Tensor, edge_index: torch.Tensor, excluded: torch.Tensor):
         l1 = self.semi_loss_exclude(H_1, H_2, edge_index, excluded)
         l2 = self.semi_loss_exclude(H_2, H_1, edge_index, excluded)
-        return l1 + l2 / 2
-    def contrastive_loss(self, H_1: torch.Tensor, H_2: torch.Tensor):
-        # Calcul de la perte semi-contrastive entre H_1 et H_2
-        l1 = self.semi_loss(H_1, H_2)
-        l2 = self.semi_loss(H_2, H_1)
-        # Moyenne des deux pertes pour la symétrie
         return (l1 + l2) / 2
+
+    def contrastive_loss(self, H_1: torch.Tensor, H_2: torch.Tensor):
+        """Compute both directions while reusing the cross-view similarity.
+
+        ``sim(z2, z1)`` is the transpose of ``sim(z1, z2)``. Reusing it
+        preserves the symmetric InfoNCE objective while removing one dense
+        matrix multiplication and one dense exponential per batch.
+        """
+        z1 = F.normalize(H_1, p=2, dim=1)
+        z2 = F.normalize(H_2, p=2, dim=1)
+        refl_sim_1 = torch.exp(torch.mm(z1, z1.t()) / self.tau)
+        refl_sim_2 = torch.exp(torch.mm(z2, z2.t()) / self.tau)
+        between_sim = torch.exp(torch.mm(z1, z2.t()) / self.tau)
+
+        positive = between_sim.diag()
+        loss_1 = -torch.log(
+            positive / (
+                refl_sim_1.sum(1)
+                + between_sim.sum(1)
+                - refl_sim_1.diag()
+            )
+        ).mean()
+        loss_2 = -torch.log(
+            positive / (
+                refl_sim_2.sum(1)
+                + between_sim.sum(0)
+                - refl_sim_2.diag()
+            )
+        ).mean()
+        return (loss_1 + loss_2) / 2
 
 def similarity_pair_loss(x, reconstructed_x, embeddings, k=None):
     """
