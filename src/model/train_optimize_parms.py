@@ -937,7 +937,11 @@ def _extract_common_node_embeddings(model, data, gdp, terms, device, cfg=None):
         batch_size=probe_batch_size,
         shuffle=False,
         seed=int(cfg.get("active_seed", cfg.get("seed", 0))),
-        input_nodes=selected_node_ids,
+        # Some PyG versions evaluate ``input_nodes`` in a boolean context
+        # internally; passing a tensor then raises "Boolean value of Tensor
+        # with more than one value is ambiguous". A plain list is equivalent
+        # for NeighborLoader and avoids that version-specific behavior.
+        input_nodes=selected_node_ids.tolist(),
     ).get_loader()
 
     wanted_positions = {int(node_id): position for position, node_id in enumerate(selected_node_ids.tolist())}
