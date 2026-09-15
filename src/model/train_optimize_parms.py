@@ -948,7 +948,9 @@ def _extract_common_node_embeddings(model, data, gdp, terms, device, cfg=None):
         input_nodes=selected_node_ids.tolist(),
     ).get_loader()
 
-    wanted_positions = {int(node_id): position for position, node_id in enumerate(selected_node_ids.tolist())}
+    wanted_positions = {}
+    for position, node_id in enumerate(selected_node_ids.tolist()):
+        wanted_positions.setdefault(int(node_id), []).append(position)
     found_embeddings = {}
     was_training = model.training
     model.eval()
@@ -960,8 +962,8 @@ def _extract_common_node_embeddings(model, data, gdp, terms, device, cfg=None):
             input_global_ids = probe_batch.n_id[:input_count].detach().cpu().tolist()
             input_embeddings = node_embeddings[:input_count].detach().cpu()
             for local_position, global_id in enumerate(input_global_ids):
-                if global_id in wanted_positions:
-                    found_embeddings[wanted_positions[global_id]] = input_embeddings[local_position]
+                for position in wanted_positions.get(global_id, []):
+                    found_embeddings[position] = input_embeddings[local_position]
             del probe_batch, node_embeddings, input_embeddings
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
