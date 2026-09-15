@@ -385,6 +385,8 @@ def run_worker(path: Path) -> int:
         "run_linear_probe_on_best_loss": True,
         "linear_probe_gs_path": spec["gs_path"],
         "linear_probe_splits_dir": spec["splits_dir"],
+        "linear_probe_batch_size": min(int(spec["batch_size"]), 256),
+        "linear_probe_num_neighbors": spec["num_neighbors"],
         "num_steps": None,
         "shuffle": False,
         "save_checkpoints": False,

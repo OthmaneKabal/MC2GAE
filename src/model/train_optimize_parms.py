@@ -903,7 +903,8 @@ def _linear_probe_metrics(logits, labels):
     }
 
 
-def _extract_common_node_embeddings(model, data, gdp, terms, device):
+def _extract_common_node_embeddings(model, data, gdp, terms, device, cfg=None):
+    cfg = cfg or config
     node_index = getattr(gdp, "nodes_index", {})
     lower_node_index = {str(term).lower(): idx for term, idx in node_index.items()}
     selected_node_ids = []
@@ -921,17 +922,57 @@ def _extract_common_node_embeddings(model, data, gdp, terms, device):
     if not selected_node_ids:
         raise ValueError("Linear probe found no common_nodes terms in the graph.")
 
+    selected_node_ids = torch.tensor(selected_node_ids, dtype=torch.long)
+    selected_rows = torch.tensor(selected_rows, dtype=torch.long)
+
+    # Linear-probe inference must not encode the whole KG in one GPU batch.
+    # That full-graph pass keeps all message-passing intermediates alive and
+    # can require tens of GiB even though the probe itself is tiny.
+    probe_batch_size = int(cfg.get("linear_probe_batch_size", 256))
+    probe_batch_size = max(probe_batch_size, 1)
+    probe_num_neighbors = cfg.get("linear_probe_num_neighbors", cfg.get("num_neighbors", [200, 200]))
+    probe_loader = GraphDataLoader(
+        data,
+        num_neighbors=probe_num_neighbors,
+        batch_size=probe_batch_size,
+        shuffle=False,
+        seed=int(cfg.get("active_seed", cfg.get("seed", 0))),
+        input_nodes=selected_node_ids,
+    ).get_loader()
+
+    wanted_positions = {int(node_id): position for position, node_id in enumerate(selected_node_ids.tolist())}
+    found_embeddings = {}
     was_training = model.training
     model.eval()
-    full_batch = _full_graph_batch(data).to(device)
     with torch.no_grad():
-        embeddings = _encode_nodes(model, full_batch).detach().cpu()
+        for probe_batch in probe_loader:
+            probe_batch = probe_batch.to(device)
+            node_embeddings = _encode_nodes(model, probe_batch)
+            input_count = int(getattr(probe_batch, "batch_size", node_embeddings.size(0)))
+            input_global_ids = probe_batch.n_id[:input_count].detach().cpu().tolist()
+            input_embeddings = node_embeddings[:input_count].detach().cpu()
+            for local_position, global_id in enumerate(input_global_ids):
+                if global_id in wanted_positions:
+                    found_embeddings[wanted_positions[global_id]] = input_embeddings[local_position]
+            del probe_batch, node_embeddings, input_embeddings
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
     if was_training:
         model.train()
 
-    selected_node_ids = torch.tensor(selected_node_ids, dtype=torch.long)
-    selected_rows = torch.tensor(selected_rows, dtype=torch.long)
-    return embeddings[selected_node_ids], selected_rows, missing_terms
+    missing_embedding_positions = [
+        position for position in range(selected_node_ids.numel())
+        if position not in found_embeddings
+    ]
+    if missing_embedding_positions:
+        raise ValueError(
+            "Linear probe could not compute embeddings for "
+            f"{len(missing_embedding_positions)} selected graph nodes."
+        )
+    embeddings = torch.stack([
+        found_embeddings[position] for position in range(selected_node_ids.numel())
+    ])
+    return embeddings, selected_rows, missing_terms
 
 
 def _train_one_linear_probe(embeddings, labels, train_idx, val_idx, test_idx, cfg, device, split_seed):
@@ -1012,7 +1053,7 @@ def _run_linear_probe_on_best_loss(model, data, gdp, cfg, device, save_file, wan
         raise ValueError(f"Linear probe GS missing columns: {sorted(missing_cols)}")
 
     embeddings, available_rows, missing_terms = _extract_common_node_embeddings(
-        model, data, gdp, gs_df["term"].tolist(), device
+        model, data, gdp, gs_df["term"].tolist(), device, cfg=cfg
     )
     label_names = sorted(gs_df["label"].astype(str).unique())
     label_to_id = {label: idx for idx, label in enumerate(label_names)}
